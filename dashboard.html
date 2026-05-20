@@ -1,0 +1,2018 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Technocas CRM — Inbox</title>
+  <!-- Auth guard: must run before anything else paints. -->
+  <script>
+    if (sessionStorage.getItem('tcAuth') !== '1') {
+      window.location.replace('index.html');
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#eef2ff',100:'#e0e7ff',500:'#4f46e5',600:'#4338ca',700:'#3730a3' },
+            ink:   { 900:'#0b0f1a',800:'#0d1220',700:'#111827' }
+          },
+          fontFamily: { sans: ['Inter','ui-sans-serif','system-ui','-apple-system','Segoe UI','Roboto','Helvetica','Arial','sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* thin scrollbars in panels */
+    .nice-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+    .nice-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 999px; }
+    .nice-scroll::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+    .sidebar-scroll::-webkit-scrollbar { width: 6px; }
+    .sidebar-scroll::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 999px; }
+    [data-tab-panel]:not(.active) { display: none !important; }
+
+    /* ---- Collapsible sidebar ---- */
+    #app-shell { grid-template-columns: 240px 1fr; transition: grid-template-columns .25s ease; }
+    #app-shell[data-collapsed="true"] { grid-template-columns: 72px 1fr; }
+
+    /* hide text labels / badges / section titles when collapsed */
+    #app-shell[data-collapsed="true"] .sb-label,
+    #app-shell[data-collapsed="true"] .sb-section,
+    #app-shell[data-collapsed="true"] .sb-badge,
+    #app-shell[data-collapsed="true"] .sb-brand-text,
+    #app-shell[data-collapsed="true"] .sb-help-text { display: none !important; }
+
+    /* center icons & tighten padding when collapsed */
+    #app-shell[data-collapsed="true"] .sb-item { justify-content: center; padding-left: 0; padding-right: 0; }
+    #app-shell[data-collapsed="true"] .sb-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+    #app-shell[data-collapsed="true"] .sb-help { padding: 0.5rem; justify-content: center; }
+
+    /* tooltip on hover when collapsed */
+    #app-shell[data-collapsed="true"] .sb-item { position: relative; }
+    #app-shell[data-collapsed="true"] .sb-item[data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+      background: #0f172a; color: #fff; font-size: 11px; font-weight: 600;
+      padding: 4px 8px; border-radius: 6px; white-space: nowrap; z-index: 50;
+      box-shadow: 0 4px 10px rgba(0,0,0,.2);
+    }
+
+    /* rotate chevron when collapsed */
+    #app-shell[data-collapsed="true"] #sb-toggle-icon { transform: rotate(180deg); }
+
+    /* ---- Resizable panel grid ---- */
+    #panels {
+      --col-filters: 300px;
+      --col-ai: 460px;
+      grid-template-columns: var(--col-filters) 6px minmax(0,1fr) 6px var(--col-ai);
+      transition: grid-template-columns .25s ease;
+    }
+    #panels[data-filters="collapsed"] { --col-filters: 52px !important; }
+    #panels[data-ai="closed"]         { --col-ai: 0px !important; }
+    /* don't animate column widths while dragging */
+    #panels.is-resizing { transition: none !important; }
+
+    /* drag handles */
+    .resize-handle {
+      cursor: col-resize;
+      position: relative;
+      user-select: none;
+      touch-action: none;
+      background: transparent;
+    }
+    .resize-handle::before {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0; left: 2px; right: 2px;
+      border-radius: 999px;
+      background: transparent;
+      transition: background .15s ease;
+    }
+    .resize-handle:hover::before,
+    .resize-handle.dragging::before { background: rgba(79,70,229,.4); }
+    /* hide handles when the adjacent panel is in collapsed/closed state */
+    #panels[data-filters="collapsed"] #resize-filters { visibility: hidden; }
+    #panels[data-ai="closed"]         #resize-ai      { visibility: hidden; }
+
+    /* ---- Dropdown component ---- */
+    [data-dropdown] { position: relative; }
+    [data-dropdown] [data-dropdown-menu] {
+      display: none;
+      position: absolute;
+      z-index: 60;
+      min-width: 160px;
+      background: #fff;
+      border: 1px solid rgb(226 232 240);
+      border-radius: 0.625rem;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+      padding: 0.25rem;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    [data-dropdown] [data-dropdown-menu][data-align="right"] { right: 0; }
+    [data-dropdown][data-open] [data-dropdown-menu] { display: block; }
+    [data-dropdown] [data-dropdown-toggle] [data-chevron] { transition: transform .2s ease; }
+    [data-dropdown][data-open] [data-dropdown-toggle] [data-chevron] { transform: rotate(180deg); }
+    [data-dropdown-item] {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.55rem;
+      border-radius: 0.4rem;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+      color: #334155;
+    }
+    [data-dropdown-item]:hover { background: rgb(241 245 249); }
+
+    #panels[data-ai="closed"] #ai-panel { display: none !important; }
+    #panels[data-ai="open"]   #ai-reopen { display: none !important; }
+
+    #panels[data-filters="collapsed"] #filters-body,
+    #panels[data-filters="collapsed"] #filters-list,
+    #panels[data-filters="collapsed"] #filters-footer,
+    #panels[data-filters="collapsed"] .fp-only-expanded { display: none !important; }
+    #panels[data-filters="expanded"]  .fp-only-collapsed { display: none !important; }
+
+    /* header layout when collapsed */
+    #panels[data-filters="collapsed"] #filters-header { flex-direction: column; gap: .5rem; padding: .75rem .5rem; }
+
+</style>
+</head>
+<body class="h-screen overflow-hidden bg-slate-50 font-sans text-slate-800 antialiased">
+
+<div id="app-shell" class="grid h-screen">
+  <!-- =================== SIDEBAR =================== -->
+  <aside class="flex flex-col bg-ink-900 text-slate-300">
+    <div class="sb-brand flex h-16 items-center gap-2 px-5">
+      <div class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600">
+        <span class="text-sm font-black text-white">T</span>
+      </div>
+      <span class="sb-brand-text text-lg font-bold text-white">Technocas</span>
+      <button id="sb-toggle" class="sb-brand-text ml-auto grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Collapse sidebar">
+        <svg id="sb-toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .25s ease"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+    </div>
+    <!-- floating expand button shown only when collapsed -->
+    <button id="sb-toggle-collapsed" class="mx-auto mt-1 hidden h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Expand sidebar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+
+    <nav class="sidebar-scroll flex-1 overflow-y-auto px-3 pb-6">
+      <!-- main -->
+      <ul class="space-y-1">
+        <li><a href="#" data-tip="Inbox" class="sb-item group flex items-center justify-between rounded-lg bg-brand-600 px-3 py-2.5 text-white">
+          <span class="flex items-center gap-3 text-sm font-semibold">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/></svg>
+            <span class="sb-label">Inbox</span>
+          </span>
+          <span class="sb-badge rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold">12</span>
+        </a></li>
+
+        <li><a href="#" data-tip="Mentions" class="sb-item group flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span class="sb-label">Mentions</span>
+          </span>
+        </a></li>
+
+        <li><a href="#" data-tip="Unassigned" class="sb-item group flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg>
+            <span class="sb-label">Unassigned</span>
+          </span>
+          <span class="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">4</span>
+        </a></li>
+
+        <li><a href="#" data-tip="All Conversations" class="sb-item group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="sb-label">All Conversations</span>
+        </a></li>
+
+        <li><a href="#" data-tip="Bookmarks" class="sb-item group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          <span class="sb-label">Bookmarks</span>
+        </a></li>
+      </ul>
+
+      <!-- channels -->
+      <p class="sb-section mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Channels</p>
+      <ul class="space-y-1">
+        <li><a href="#" data-tip="WhatsApp" class="sb-item flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-500 text-white">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24z"/></svg>
+            </span>
+            <span class="sb-label">WhatsApp</span>
+          </span>
+          <span class="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">8</span>
+        </a></li>
+        <li><a href="#" data-tip="Instagram" class="sb-item flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600 text-white">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>
+            </span>
+            <span class="sb-label">Instagram</span>
+          </span>
+          <span class="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">3</span>
+        </a></li>
+        <li><a href="#" data-tip="Facebook" class="sb-item flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-blue-600 text-white">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.99 22 12z"/></svg>
+            </span>
+            <span class="sb-label">Facebook</span>
+          </span>
+          <span class="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">2</span>
+        </a></li>
+        <li><a href="#" data-tip="Email" class="sb-item flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-700 text-white">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-10 5L2 7"/></svg>
+            </span>
+            <span class="sb-label">Email</span>
+          </span>
+          <span class="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">1</span>
+        </a></li>
+        <li><a href="#" data-tip="Website Live Chat" class="sb-item flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-indigo-500 text-white">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <span class="sb-label">Website Live Chat</span>
+          </span>
+          <span class="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">2</span>
+        </a></li>
+      </ul>
+
+      <!-- CRM -->
+      <p class="sb-section mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">CRM</p>
+      <ul class="space-y-1">
+        <li><a href="#" data-tip="Leads" class="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          <span class="sb-label">Leads</span>
+        </a></li>
+        <li><a href="#" data-tip="Tasks" class="sb-item flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            <span class="sb-label">Tasks</span>
+          </span>
+          <span class="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">6</span>
+        </a></li>
+        <li><a href="#" data-tip="Calendar" class="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+          <span class="sb-label">Calendar</span>
+        </a></li>
+        <li><a href="#" data-tip="Reports" class="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
+          <span class="sb-label">Reports</span>
+        </a></li>
+      </ul>
+
+      <!-- Settings -->
+      <p class="sb-section mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Settings</p>
+      <ul class="space-y-1">
+        <li><a href="#" data-tip="Team" class="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="sb-label">Team</span>
+        </a></li>
+        <li><a href="#" data-tip="Integrations" class="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+          <span class="sb-label">Integrations</span>
+        </a></li>
+        <li><a href="#" data-tip="Settings" class="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="sb-label">Settings</span>
+        </a></li>
+      </ul>
+    </nav>
+
+    <div class="sb-help mx-3 mb-4 rounded-xl bg-white/5 p-3">
+      <div class="flex items-center gap-3">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-500/20 text-brand-500">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-7h3z"/><path d="M3 19a2 2 0 0 0 2 2h1v-7H3z"/></svg>
+        </span>
+        <div class="sb-help-text text-xs">
+          <div class="font-semibold text-white">Need Help?</div>
+          <div class="text-slate-400">Chat with support</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- =================== MAIN =================== -->
+  <div class="flex h-screen flex-col overflow-hidden">
+    <!-- top bar -->
+    <header class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
+      <div class="flex items-center gap-3 text-slate-700">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
+        <span class="text-sm font-semibold">Inbox</span>
+        <span class="ml-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Online
+        </span>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <div class="relative">
+          <span class="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+          <input id="global-search" type="search" placeholder="Search conversations..." class="w-80 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-12 text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20" />
+          <kbd class="pointer-events-none absolute inset-y-0 right-2 my-auto grid h-6 place-items-center rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-500">⌘K</kbd>
+        </div>
+
+        <button class="relative grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100" aria-label="Notifications">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <span class="absolute -top-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white">6</span>
+        </button>
+
+        <div class="flex items-center gap-3 border-l border-slate-200 pl-4">
+          <img alt="Mike Johnson" src="https://i.pravatar.cc/40?img=12" class="h-9 w-9 rounded-full object-cover" />
+          <div class="text-xs leading-tight">
+            <div class="font-semibold">Mike Johnson</div>
+            <div class="text-slate-500">Sales Manager</div>
+          </div>
+          <button id="logout-btn" class="ml-2 grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" aria-label="Log out" title="Log out">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 3 panels -->
+    <section id="panels" data-filters="expanded" data-ai="open" class="grid flex-1 overflow-hidden">
+
+      <!-- ========== LEFT: filters + conversations list ========== -->
+      <div class="flex flex-col overflow-hidden border-r border-slate-200 bg-white">
+        <!-- header strip -->
+        <div id="filters-header" class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div data-dropdown class="fp-only-expanded">
+            <button data-dropdown-toggle class="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+              <span data-dropdown-label>All Inboxes</span>
+              <svg data-chevron width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div data-dropdown-menu class="mt-1 w-52">
+              <button data-dropdown-item data-label="All Inboxes">📥 All Inboxes</button>
+              <button data-dropdown-item data-label="WhatsApp">🟢 WhatsApp</button>
+              <button data-dropdown-item data-label="Instagram">📷 Instagram</button>
+              <button data-dropdown-item data-label="Facebook">🔵 Facebook</button>
+              <button data-dropdown-item data-label="Email">✉ Email</button>
+              <button data-dropdown-item data-label="Website Live Chat">💬 Website Live Chat</button>
+            </div>
+          </div>
+
+          <!-- collapsed-only icon for inboxes -->
+          <button class="fp-only-collapsed grid h-9 w-9 place-items-center rounded-lg bg-slate-50 hover:bg-slate-100" aria-label="All Inboxes" title="All Inboxes">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+          </button>
+
+          <div class="flex items-center gap-1">
+            <button class="fp-only-expanded grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100" aria-label="Filter"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>
+            <button class="fp-only-expanded grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100" aria-label="View"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
+            <!-- COLLAPSE control -->
+            <button id="filters-toggle" class="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Toggle filters">
+              <svg id="filters-toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .25s ease"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div id="filters-body" class="border-b border-slate-200 p-4">
+          <div class="mb-3 flex items-center justify-between">
+            <h3 class="text-sm font-bold">Filters</h3>
+            <button class="text-xs font-semibold text-brand-600 hover:text-brand-700">Clear all</button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="col-span-2">
+              <label class="mb-1 block font-semibold text-slate-600">Date Range</label>
+              <button class="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                <span class="flex items-center gap-2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>May 1 – May 31, 2024</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+            </div>
+
+            <div class="col-span-2">
+              <label class="mb-1 block font-semibold text-slate-600">Category</label>
+              <select class="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Categories</option></select>
+            </div>
+
+            <div>
+              <label class="mb-1 block font-semibold text-slate-600">Agent</label>
+              <select class="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Agents</option></select>
+            </div>
+            <div>
+              <label class="mb-1 block font-semibold text-slate-600">Lead Status</label>
+              <select class="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Status</option></select>
+            </div>
+
+            <div>
+              <label class="mb-1 block font-semibold text-slate-600">Channel</label>
+              <select class="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Channels</option></select>
+            </div>
+            <div>
+              <label class="mb-1 block font-semibold text-slate-600">Tags</label>
+              <select class="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Tags</option></select>
+            </div>
+          </div>
+
+          <div class="relative mt-3">
+            <input type="search" placeholder="Search name, phone, email..." class="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-3 pr-9 text-xs outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20"/>
+            <span class="pointer-events-none absolute inset-y-0 right-0 grid place-items-center pr-3 text-slate-400">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            </span>
+          </div>
+
+          <div class="mt-3 flex items-center justify-between text-xs">
+            <span class="font-semibold text-slate-500">48 conversations found</span>
+            <div data-dropdown>
+              <button data-dropdown-toggle class="inline-flex items-center gap-1 font-semibold text-slate-600">
+                Sort by: <span data-dropdown-label>Latest</span>
+                <svg data-chevron width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div data-dropdown-menu data-align="right" class="mt-1 w-40">
+                <button data-dropdown-item data-label="Latest">Latest</button>
+                <button data-dropdown-item data-label="Oldest">Oldest</button>
+                <button data-dropdown-item data-label="Unread first">Unread first</button>
+                <button data-dropdown-item data-label="Hot Leads">Hot Leads</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Conversation list -->
+        <div id="filters-list" class="nice-scroll flex-1 overflow-y-auto">
+          <!-- Active item -->
+          <button class="flex w-full gap-3 border-l-4 border-brand-500 bg-brand-50/50 px-4 py-3 text-left hover:bg-brand-50">
+            <div class="relative">
+              <span class="grid h-10 w-10 place-items-center rounded-full bg-emerald-100 text-emerald-700 font-bold text-sm">JC</span>
+              <span class="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-emerald-500 ring-2 ring-white text-white">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24z"/></svg>
+              </span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between">
+                <div class="truncate text-sm font-semibold">John Carter</div>
+                <span class="text-[11px] text-slate-500">10:24 AM</span>
+              </div>
+              <div class="mt-0.5 flex items-center justify-between gap-2">
+                <p class="truncate text-xs text-slate-600">Hi, we need 50 hoodies for our school event.</p>
+                <span class="grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">2</span>
+              </div>
+            </div>
+          </button>
+
+          <!-- Other items -->
+          <button class="flex w-full gap-3 border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50">
+            <div class="relative">
+              <span class="grid h-10 w-10 place-items-center rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm">TM</span>
+              <span class="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-lg bg-gradient-to-br from-amber-400 to-fuchsia-600 ring-2 ring-white"></span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between"><div class="truncate text-sm font-semibold">Tom Mark</div><span class="text-[11px] text-slate-500">10:15 AM</span></div>
+              <div class="mt-0.5 flex items-center justify-between gap-2"><p class="truncate text-xs text-slate-500">Can you share the price list for t-shirts?</p><span class="grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">1</span></div>
+            </div>
+          </button>
+
+          <button class="flex w-full gap-3 border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50">
+            <div class="relative">
+              <span class="grid h-10 w-10 place-items-center rounded-full bg-violet-100 text-violet-700 font-bold text-sm">SL</span>
+              <span class="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-blue-600 ring-2 ring-white text-white">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.99 22 12z"/></svg>
+              </span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between"><div class="truncate text-sm font-semibold">Steve Lee</div><span class="text-[11px] text-slate-500">09:47 AM</span></div>
+              <p class="mt-0.5 truncate text-xs text-slate-500">We need a design for our company anniversary.</p>
+            </div>
+          </button>
+
+          <button class="flex w-full gap-3 border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50">
+            <div class="relative">
+              <span class="grid h-10 w-10 place-items-center rounded-full bg-emerald-100 text-emerald-700 font-bold text-sm">MG</span>
+              <span class="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-emerald-500 ring-2 ring-white"></span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between"><div class="truncate text-sm font-semibold">Mark Green</div><span class="text-[11px] text-slate-500">09:30 AM</span></div>
+              <p class="mt-0.5 truncate text-xs text-slate-500">When can we expect the delivery?</p>
+            </div>
+          </button>
+
+          <button class="flex w-full gap-3 border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50">
+            <div class="relative">
+              <span class="grid h-10 w-10 place-items-center rounded-full bg-pink-100 text-pink-700 font-bold text-sm">HB</span>
+              <span class="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-lg bg-gradient-to-br from-amber-400 to-fuchsia-600 ring-2 ring-white"></span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between"><div class="truncate text-sm font-semibold">Hanna Baker</div><span class="text-[11px] text-slate-500">Yesterday</span></div>
+              <p class="mt-0.5 truncate text-xs text-slate-500">Do you have size chart?</p>
+            </div>
+          </button>
+
+          <button class="flex w-full gap-3 border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50">
+            <div class="relative">
+              <span class="grid h-10 w-10 place-items-center rounded-full bg-amber-100 text-amber-700 font-bold text-sm">PS</span>
+              <span class="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-blue-600 ring-2 ring-white"></span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between"><div class="truncate text-sm font-semibold">Paul Smith</div><span class="text-[11px] text-slate-500">Yesterday</span></div>
+              <p class="mt-0.5 truncate text-xs text-slate-500">What's the minimum order quantity?</p>
+            </div>
+          </button>
+
+          <button class="flex w-full gap-3 border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50">
+            <div class="relative">
+              <span class="grid h-10 w-10 place-items-center rounded-full bg-rose-100 text-rose-700 font-bold text-sm">AL</span>
+              <span class="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-slate-600 ring-2 ring-white"></span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between"><div class="truncate text-sm font-semibold">Amanda Lewis</div><span class="text-[11px] text-slate-500">2d ago</span></div>
+              <p class="mt-0.5 truncate text-xs text-slate-500">Thanks! Please send the final quote.</p>
+            </div>
+          </button>
+        </div>
+
+        <a id="filters-footer" href="#" class="flex items-center justify-center gap-2 border-t border-slate-200 bg-white py-3 text-sm font-semibold text-brand-600 hover:bg-slate-50">
+          View all conversations
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+      </div>
+
+      <!-- Drag handle between Filters and Conversation -->
+      <div id="resize-filters" class="resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize filters panel" title="Drag to resize"></div>
+
+      <!-- ========== MIDDLE: customer card + tabs ========== -->
+      <div class="flex h-full flex-col overflow-hidden bg-white">
+        <!-- header card -->
+        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div class="flex min-w-0 items-start gap-3">
+            <span id="customer-avatar" class="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-700 font-bold">JC</span>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 whitespace-nowrap">
+                <h2 id="customer-name" class="truncate text-lg font-bold">John Carter</h2>
+                <button id="customer-status" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-100" title="Change lead status">🔥 Hot Lead</button>
+              </div>
+              <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                <span id="customer-channel" class="inline-flex items-center gap-1.5 whitespace-nowrap"><span class="grid h-4 w-4 place-items-center rounded-full bg-emerald-500 text-white"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24z"/></svg></span> WhatsApp</span>
+                <span id="customer-phone" class="whitespace-nowrap">+1 (312) 555-0192</span>
+                <span id="customer-company" class="inline-flex items-center gap-1 whitespace-nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Springfield High School</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex shrink-0 items-center gap-2">
+            <div data-dropdown>
+              <button data-dropdown-toggle class="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                <span data-dropdown-label>Assign to</span>
+                <svg data-chevron width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div data-dropdown-menu data-align="right" class="mt-1 w-56">
+                <div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Team members</div>
+                <button data-dropdown-item data-label="Mike Johnson"><span class="grid h-5 w-5 place-items-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-600">MJ</span> Mike Johnson <span class="ml-auto text-[10px] text-emerald-600">● online</span></button>
+                <button data-dropdown-item data-label="Jane Smith"><span class="grid h-5 w-5 place-items-center rounded-full bg-fuchsia-100 text-[10px] font-bold text-fuchsia-600">JS</span> Jane Smith</button>
+                <button data-dropdown-item data-label="Emily Davis"><span class="grid h-5 w-5 place-items-center rounded-full bg-pink-100 text-[10px] font-bold text-pink-600">ED</span> Emily Davis</button>
+                <button data-dropdown-item data-label="Alex Brown"><span class="grid h-5 w-5 place-items-center rounded-full bg-amber-100 text-[10px] font-bold text-amber-700">AB</span> Alex Brown</button>
+                <button data-dropdown-item data-label="Sara Khan"><span class="grid h-5 w-5 place-items-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">SK</span> Sara Khan</button>
+                <div class="my-1 border-t border-slate-100"></div>
+                <button data-dropdown-item data-label="Unassigned" class="text-rose-600">↺ Unassign</button>
+              </div>
+            </div>
+            <button id="ai-reopen" class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-700 hover:bg-violet-100" aria-label="Open AI Supervisor" title="Open AI Supervisor">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
+              AI Supervisor
+            </button>
+            <button class="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 hover:bg-slate-50" aria-label="More"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+
+        <!-- TABS (Conversation / Customer Info / History only) -->
+        <nav class="flex items-center gap-8 border-b border-slate-200 px-5" role="tablist" data-tabs="middle">
+          <button role="tab" data-target="tab-conversation" class="whitespace-nowrap border-b-2 border-brand-500 py-3 text-sm font-semibold text-brand-600">Conversation</button>
+          <button role="tab" data-target="tab-customer"     class="whitespace-nowrap border-b-2 border-transparent py-3 text-sm font-medium text-slate-500 hover:text-slate-700">Customer Info</button>
+          <button role="tab" data-target="tab-history"      class="whitespace-nowrap border-b-2 border-transparent py-3 text-sm font-medium text-slate-500 hover:text-slate-700">History</button>
+        </nav>
+
+        <!-- TAB: Conversation -->
+        <div data-tab-panel id="tab-conversation" class="active flex min-h-0 flex-1 flex-col">
+          <div id="chat-messages" class="nice-scroll flex-1 overflow-y-auto bg-slate-50/40 px-6 py-5">
+            <div class="my-2 flex justify-center"><span class="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">May 12, 2024</span></div>
+
+            <!-- incoming -->
+            <div class="mt-4 flex items-start gap-2">
+              <span class="mt-1 grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">JC</span>
+              <div class="max-w-md rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100">
+                Hi, we need 50 hoodies for our school event. Can you send me a quote?
+                <div class="mt-1 text-[10px] text-slate-400">10:24 AM</div>
+              </div>
+            </div>
+
+            <!-- outgoing -->
+            <div class="mt-4 flex items-start justify-end gap-2">
+              <div class="max-w-md rounded-2xl rounded-tr-md bg-brand-50 px-4 py-2.5 text-sm text-brand-900 shadow-sm ring-1 ring-brand-100">
+                Hello John! Sure, I'd be happy to help. Could you please share the design and sizes needed?
+                <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-500">10:26 AM
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 11 13 20"/></svg>
+                </div>
+              </div>
+              <img alt="agent" src="https://i.pravatar.cc/36?img=12" class="mt-1 h-8 w-8 rounded-full" />
+            </div>
+
+            <!-- incoming with attachment -->
+            <div class="mt-4 flex items-start gap-2">
+              <span class="mt-1 grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">JC</span>
+              <div class="space-y-2">
+                <div class="max-w-md rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100">
+                  Here is the design. We need sizes S–2XL.
+                  <div class="mt-1 text-[10px] text-slate-400">10:28 AM</div>
+                </div>
+                <div class="flex max-w-md items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <span class="grid h-10 w-10 place-items-center rounded-lg bg-rose-50 text-rose-500">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  </span>
+                  <div class="flex-1 min-w-0">
+                    <div class="truncate text-sm font-semibold">school_hoodie_design.png</div>
+                    <div class="text-xs text-slate-500">2.4 MB · PNG</div>
+                  </div>
+                  <button class="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Download">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- outgoing -->
+            <div class="mt-4 flex items-start justify-end gap-2">
+              <div class="max-w-md rounded-2xl rounded-tr-md bg-brand-50 px-4 py-2.5 text-sm text-brand-900 shadow-sm ring-1 ring-brand-100">
+                Thanks! I'll prepare the quote and send it shortly.
+                <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-500">10:30 AM
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 11 13 20"/></svg>
+                </div>
+              </div>
+              <img alt="agent" src="https://i.pravatar.cc/36?img=12" class="mt-1 h-8 w-8 rounded-full" />
+            </div>
+
+            <!-- system event -->
+            <div class="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500">
+              <span>10:35 AM</span>·<span>Conversation assigned to Mike Johnson</span>
+            </div>
+          </div>
+
+          <!-- composer -->
+          <div class="border-t border-slate-200 bg-white px-6 py-3">
+            <div class="mb-2 flex items-center gap-4 text-sm" id="composer-mode">
+              <button data-mode="reply" class="border-b-2 border-brand-500 pb-1 font-semibold text-brand-600">Reply</button>
+              <button data-mode="note"  class="border-b-2 border-transparent pb-1 font-medium text-slate-500 hover:text-slate-700">Note</button>
+            </div>
+            <textarea id="composer-input" rows="2" placeholder="Type your message..." class="block w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
+            <div class="mt-2 flex items-center justify-between">
+              <div class="flex items-center gap-1 text-slate-500">
+                <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100" aria-label="Emoji"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+                <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100" aria-label="Attach"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+                <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100" aria-label="Image"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></button>
+                <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100" aria-label="File"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>
+                <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100" aria-label="Mention"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg></button>
+              </div>
+              <button id="send-btn" class="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: Customer Info -->
+        <div data-tab-panel id="tab-customer" class="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div class="grid grid-cols-2 gap-4">
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+              <div class="mb-3 flex items-center justify-between">
+                <h4 class="text-sm font-bold">Contact Information</h4>
+                <button class="text-xs font-semibold text-brand-600 hover:text-brand-700">Edit</button>
+              </div>
+              <dl class="space-y-2.5 text-sm">
+                <div class="flex justify-between"><dt class="text-slate-500">Full Name</dt><dd class="font-medium">John Carter</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Phone</dt><dd class="font-medium">+1 (312) 555-0192</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Email</dt><dd class="font-medium">john.carter@springfieldhs.edu</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Company / School</dt><dd class="font-medium">Springfield High School</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Role</dt><dd class="font-medium">Events Coordinator</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Preferred Channel</dt><dd class="font-medium">WhatsApp</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Location</dt><dd class="font-medium">Springfield, IL, USA</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Time Zone</dt><dd class="font-medium">GMT−05:00 (Central)</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Customer Since</dt><dd class="font-medium">May 10, 2024</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Last Active</dt><dd class="font-medium">Today at 10:24 AM</dd></div>
+              </dl>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+              <div class="mb-3 flex items-center justify-between">
+                <h4 class="text-sm font-bold">Customer Summary</h4>
+                <button class="text-xs font-semibold text-brand-600 hover:text-brand-700">Edit</button>
+              </div>
+              <dl class="space-y-2.5 text-sm">
+                <div class="flex justify-between"><dt class="text-slate-500">Total Orders</dt><dd class="font-medium">3</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Total Spent</dt><dd class="font-medium">$2,450.00</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Average Order Value</dt><dd class="font-medium">$816.67</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Last Order</dt><dd class="font-medium">May 2, 2024</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Next Follow-up</dt><dd class="font-medium">May 15, 2024</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Lead Status</dt><dd class="font-semibold text-rose-600">Hot Lead</dd></div>
+                <div class="flex justify-between"><dt class="text-slate-500">Customer Type</dt><dd class="font-medium">Returning Customer</dd></div>
+              </dl>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+              <div class="mb-3 flex items-center justify-between">
+                <h4 class="text-sm font-bold">Shipping Address</h4>
+                <button class="text-xs font-semibold text-brand-600 hover:text-brand-700">Edit</button>
+              </div>
+              <address class="not-italic text-sm leading-6">
+                John Carter<br />
+                Springfield High School<br />
+                1234 Bulldog Way<br />
+                Springfield, IL 62701<br />
+                United States
+              </address>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+              <div class="mb-3 flex items-center justify-between">
+                <h4 class="text-sm font-bold">Billing Address</h4>
+                <button class="text-xs font-semibold text-brand-600 hover:text-brand-700">Edit</button>
+              </div>
+              <address class="not-italic text-sm leading-6">
+                John Carter<br />
+                Springfield High School<br />
+                1234 Bulldog Way<br />
+                Springfield, IL 62701<br />
+                United States
+              </address>
+            </div>
+
+            <div class="col-span-2 rounded-xl border border-slate-200 bg-white p-4">
+              <div class="mb-3 flex items-center justify-between">
+                <h4 class="text-sm font-bold">Notes About Customer</h4>
+                <button class="text-xs font-semibold text-brand-600 hover:text-brand-700">Edit</button>
+              </div>
+              <ul class="list-disc space-y-1.5 pl-5 text-sm">
+                <li>Looking for 50 hoodies for school event.</li>
+                <li>Interested in custom front logo and large back print.</li>
+                <li>Prefers high quality and quick turnaround.</li>
+                <li>Budget conscious but willing to pay for quality.</li>
+                <li>Asked for pricing, design help, and delivery time.</li>
+                <li>Prefers to pay via Zelle.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: History -->
+        <div data-tab-panel id="tab-history" class="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="mb-3 flex items-center justify-between">
+              <h4 class="text-sm font-bold">Active Customer Activity (Stages)</h4>
+              <div class="flex items-center gap-2">
+                <button class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-50">Export <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+                <button class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-50">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  Filter
+                </button>
+              </div>
+            </div>
+
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th class="py-2 font-semibold">Date &amp; Time</th>
+                  <th class="py-2 font-semibold">Stage</th>
+                  <th class="py-2 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr><td class="py-2.5">May 12, 2024 10:23 AM</td><td>Lead Initiation</td><td><span class="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Completed</span></td></tr>
+                <tr><td class="py-2.5">May 12, 2024 10:23 AM</td><td>Auto Responded</td><td><span class="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Completed</span></td></tr>
+                <tr><td class="py-2.5">May 12, 2024 10:26 AM</td><td>Human Responded</td><td><span class="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Completed</span></td></tr>
+                <tr><td class="py-2.5">May 12, 2024 10:28 AM</td><td>Design Received</td><td><span class="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Completed</span></td></tr>
+                <tr><td class="py-2.5">May 12, 2024 10:31 AM</td><td>Address Provided</td><td><span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Not Yet Reached</span></td></tr>
+                <tr><td class="py-2.5">May 12, 2024 10:33 AM</td><td>Quotation Given</td><td><span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Not Yet Reached</span></td></tr>
+                <tr><td class="py-2.5">May 12, 2024 10:35 AM</td><td>Chat after Quotation : positive / Unresponded</td><td><span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Not Yet Reached</span></td></tr>
+                <tr><td class="py-2.5">May 12, 2024 10:40 AM</td><td>Unresponded</td><td><span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Not Yet Reached</span></td></tr>
+              </tbody>
+            </table>
+
+            <div class="mt-4 flex items-center gap-4 text-xs">
+              <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span> Completed</span>
+              <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-blue-500"></span> In Progress</span>
+              <span class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-slate-300"></span> Not Yet Reached</span>
+            </div>
+
+            <div class="mt-4 grid grid-cols-3 gap-2">
+              <button class="inline-flex items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 py-2 text-sm font-semibold text-brand-600 hover:bg-brand-50">+ Add Stage</button>
+              <button class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 py-2 text-sm font-semibold hover:bg-slate-50">✎ Edit Stages</button>
+              <button class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50">🗑 Delete Stages</button>
+            </div>
+
+            <div class="mt-4 rounded-lg bg-emerald-50/60 px-3 py-2 text-xs">
+              <div class="font-semibold text-slate-600">Last Activity</div>
+              <div class="font-bold text-emerald-700">May 12, 2024 at 10:35 AM</div>
+              <div class="text-slate-600">Conversation assigned to Mike Johnson</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drag handle between Conversation and AI Supervisor -->
+      <div id="resize-ai" class="resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize AI Supervisor panel" title="Drag to resize"></div>
+
+      <!-- ========== RIGHT: AI SUPERVISOR ========== -->
+      <aside id="ai-panel" class="flex h-full flex-col overflow-hidden border-l border-slate-200 bg-white">
+        <!-- header -->
+        <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div class="flex items-center gap-2">
+            <span class="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
+            </span>
+            <h3 class="text-sm font-bold">AI Supervisor</h3>
+            <span class="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Beta</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="relative inline-flex cursor-pointer items-center">
+              <input type="checkbox" class="peer sr-only" checked>
+              <span class="h-5 w-9 rounded-full bg-slate-200 peer-checked:bg-brand-500 transition-colors"></span>
+              <span class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"></span>
+            </label>
+            <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100" aria-label="More"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+            <button id="ai-close" class="grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100" aria-label="Close AI Supervisor"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+        </div>
+
+        <!-- 4-tab nav -->
+        <nav class="flex items-center gap-5 border-b border-slate-200 px-5 text-sm" role="tablist" data-tabs="right">
+          <button role="tab" data-target="ai-responses" class="whitespace-nowrap border-b-2 border-brand-500 py-3 font-semibold text-brand-600">Responses</button>
+          <button role="tab" data-target="ai-actions"   class="whitespace-nowrap border-b-2 border-transparent py-3 font-medium text-slate-500 hover:text-slate-700">Actions</button>
+          <button role="tab" data-target="ai-designer"  class="whitespace-nowrap border-b-2 border-transparent py-3 font-medium text-slate-500 hover:text-slate-700">Designer Jobs</button>
+          <button role="tab" data-target="ai-intent"    class="whitespace-nowrap border-b-2 border-transparent py-3 font-medium text-slate-500 hover:text-slate-700">Intent &amp; Insights</button>
+        </nav>
+
+        <!-- ===== Responses ===== -->
+        <div data-tab-panel id="ai-responses" class="active nice-scroll flex-1 overflow-y-auto px-5 py-4">
+          <!-- Professionalism score -->
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 text-sm font-bold">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                Agent Professionalism Score
+              </div>
+              <button class="text-xs font-semibold text-brand-600 hover:text-brand-700">View details</button>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2"><span class="text-3xl font-extrabold text-emerald-600">88</span><span class="text-sm text-slate-500">/100</span><span class="ml-2 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700">Good Performance</span></div>
+
+            <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
+              <div class="rounded-lg bg-slate-50 p-2.5">
+                <div class="text-slate-500">First Response Time</div>
+                <div class="text-base font-bold">1m 42s</div>
+                <div class="text-emerald-600 font-semibold">Excellent</div>
+              </div>
+              <div class="rounded-lg bg-slate-50 p-2.5">
+                <div class="text-slate-500">Avg Response Time</div>
+                <div class="text-base font-bold">3m 18s</div>
+                <div class="text-amber-600 font-semibold">Good</div>
+              </div>
+              <div class="rounded-lg bg-slate-50 p-2.5">
+                <div class="text-slate-500">Relevant Response</div>
+                <div class="text-base font-bold">92%</div>
+                <div class="text-emerald-600 font-semibold">Excellent</div>
+              </div>
+              <div class="rounded-lg bg-slate-50 p-2.5">
+                <div class="text-slate-500">Information Collection</div>
+                <div class="text-base font-bold">78%</div>
+                <div class="text-rose-600 font-semibold">Needs Improve</div>
+              </div>
+              <div class="rounded-lg bg-slate-50 p-2.5">
+                <div class="text-slate-500">Customer Satisfaction</div>
+                <div class="text-base font-bold">4.6/5</div>
+                <div class="text-emerald-600 font-semibold">Excellent</div>
+              </div>
+              <div class="rounded-lg bg-slate-50 p-2.5">
+                <div class="text-slate-500">Objection Handling</div>
+                <div class="text-base font-bold">High</div>
+                <div class="text-emerald-600 font-semibold">Excellent</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Interpretation -->
+          <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex items-center gap-2 text-sm font-bold">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-4"/><path d="M9 11V7a3 3 0 1 1 6 0v4"/></svg>
+              AI Interpretation
+            </div>
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+              <li>Customer is interested but comparing prices.</li>
+              <li>Budget is a consideration.</li>
+              <li>Likely needs reassurance on quality and delivery time.</li>
+              <li>Request for oversized back print indicates streetwear preference.</li>
+              <li>Customer expects quick and easy payment options.</li>
+            </ul>
+          </div>
+
+          <!-- AI Recommended Reply -->
+          <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex items-center gap-2 text-sm font-bold">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              AI Recommended Reply (Editable)
+            </div>
+            <p id="ai-reply-text" class="mt-2 whitespace-pre-line text-sm text-slate-700">Thanks for sharing the design and sizes!
+
+I'll prepare the best quote options for 50 hoodies (S–2XL). Could you please confirm your preferred hoodie style (pullover or zip-up), color preference, and delivery ZIP code so I can finalize the quote accurately?
+
+Looking forward to helping with your school event!</p>
+            <div class="mt-3 flex items-center gap-2">
+              <button id="ai-reply-edit"   class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50">✎ Edit</button>
+              <button id="ai-reply-send"   class="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">▶ Send</button>
+              <button id="ai-reply-ignore" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50">⊘ Ignore</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== Actions ===== -->
+        <div data-tab-panel id="ai-actions" class="nice-scroll flex-1 overflow-y-auto px-5 py-4">
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex items-center gap-2 text-sm font-bold">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+              AI Suggested Actions
+            </div>
+
+            <ul class="mt-3 space-y-3 text-sm">
+              <li class="rounded-lg border border-slate-200 p-3">
+                <div class="flex items-start gap-3">
+                  <span class="grid h-9 w-9 place-items-center rounded-full bg-indigo-50 text-indigo-600">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  </span>
+                  <div class="flex-1">
+                    <div class="font-semibold">Suggest to send Website link</div>
+                    <div class="text-xs text-slate-500">Reason: Customer verifying your business and exploring more.</div>
+                    <div class="text-xs font-semibold text-emerald-600">Priority: High</div>
+                  </div>
+                  <div class="flex gap-1">
+                    <button class="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700">Send</button>
+                    <button class="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50">Hold</button>
+                    <button class="rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50">Cancel</button>
+                  </div>
+                </div>
+              </li>
+
+              <li class="rounded-lg border border-slate-200 p-3">
+                <div class="flex items-start gap-3">
+                  <span class="grid h-9 w-9 place-items-center rounded-full bg-rose-50 text-rose-600">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3"/><path d="M14 9v6h6"/></svg>
+                  </span>
+                  <div class="flex-1">
+                    <div class="font-semibold">Suggest to send Pinterest link</div>
+                    <div class="text-xs text-slate-500">Reason: Customer interested in your past designs.</div>
+                    <div class="text-xs font-semibold text-amber-600">Priority: Medium</div>
+                  </div>
+                  <div class="flex gap-1">
+                    <button class="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700">Send</button>
+                    <button class="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50">Hold</button>
+                    <button class="rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50">Cancel</button>
+                  </div>
+                </div>
+              </li>
+
+              <li class="rounded-lg border border-slate-200 p-3">
+                <div class="flex items-start gap-3">
+                  <span class="grid h-9 w-9 place-items-center rounded-full bg-emerald-50 text-emerald-600 font-bold">$</span>
+                  <div class="flex-1">
+                    <div class="font-semibold">Suggest to send Zelle Payment QR</div>
+                    <div class="text-xs text-slate-500">Reason: Customer asked for fast and easy payment option.</div>
+                    <div class="text-xs font-semibold text-emerald-600">Priority: High</div>
+                  </div>
+                  <div class="flex gap-1">
+                    <button class="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700">Send</button>
+                    <button class="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50">Hold</button>
+                    <button class="rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50">Cancel</button>
+                  </div>
+                </div>
+              </li>
+
+              <li class="rounded-lg border border-slate-200 p-3">
+                <div class="flex items-start gap-3">
+                  <span class="grid h-9 w-9 place-items-center rounded-full bg-amber-50 text-amber-600">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                  </span>
+                  <div class="flex-1">
+                    <div class="font-semibold">Suggest to ask Delivery Deadline</div>
+                    <div class="text-xs text-slate-500">Reason: Missing info needed to provide accurate quote.</div>
+                    <div class="text-xs font-semibold text-amber-600">Priority: Medium</div>
+                  </div>
+                  <div class="flex gap-1">
+                    <button class="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700">Send</button>
+                    <button class="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50">Hold</button>
+                    <button class="rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50">Cancel</button>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex items-center gap-2 text-sm font-bold">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+              Missing Information
+            </div>
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+              <li>Shipping Address / ZIP Code</li>
+              <li>Exact Delivery Date</li>
+              <li>Payment Terms Preference</li>
+            </ul>
+          </div>
+
+          <div class="mt-4 grid grid-cols-3 gap-3 text-sm">
+            <!-- Communication column -->
+            <div class="flex flex-col gap-2">
+              <div class="rounded-xl border border-slate-200 bg-white p-3">
+                <div class="mb-2 font-semibold">Communication</div>
+                <ul class="space-y-1.5 text-xs">
+                  <li class="flex items-center gap-2"><input type="checkbox" checked class="h-3.5 w-3.5 accent-brand-600"> Send Website</li>
+                  <li class="flex items-center gap-2"><input type="checkbox" checked class="h-3.5 w-3.5 accent-brand-600"> Send Email</li>
+                  <li class="flex items-center gap-2"><input type="checkbox" checked class="h-3.5 w-3.5 accent-brand-600"> Send Pinterest</li>
+                  <li class="flex items-center gap-2"><input type="checkbox" checked class="h-3.5 w-3.5 accent-brand-600"> Send Catalog</li>
+                </ul>
+              </div>
+              <button class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Send to Chat
+              </button>
+            </div>
+
+            <!-- Payment column -->
+            <div class="flex flex-col gap-2">
+              <div class="rounded-xl border border-slate-200 bg-white p-3">
+                <div class="mb-2 font-semibold">Payment</div>
+                <ul class="space-y-1.5 text-xs">
+                  <li class="flex items-center gap-2"><input type="checkbox" checked class="h-3.5 w-3.5 accent-brand-600"> Zelle QR</li>
+                  <li class="flex items-center gap-2"><input type="checkbox" checked class="h-3.5 w-3.5 accent-brand-600"> Cash App QR</li>
+                  <li class="flex items-center gap-2"><input type="checkbox" class="h-3.5 w-3.5 accent-brand-600"> PayPal</li>
+                </ul>
+              </div>
+              <button class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Send to Chat
+              </button>
+            </div>
+
+            <!-- Document column -->
+            <div class="flex flex-col gap-2">
+              <div class="rounded-xl border border-slate-200 bg-white p-3">
+                <div class="mb-2 font-semibold">Document</div>
+                <ul class="space-y-1.5 text-xs">
+                  <li class="text-brand-600 font-semibold hover:underline cursor-pointer">Preview Quote</li>
+                  <li class="text-brand-600 font-semibold hover:underline cursor-pointer">Preview Invoice</li>
+                </ul>
+              </div>
+              <button class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Send to Chat
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== Designer Jobs ===== -->
+        <div data-tab-panel id="ai-designer" class="nice-scroll flex-1 overflow-y-auto px-5 py-4">
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h4 class="flex items-center gap-2 text-sm font-bold">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-violet-600"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+                  Designer Jobs
+                </h4>
+                <p class="mt-0.5 text-xs text-slate-500">All artworks and tasks extracted from this conversation.</p>
+              </div>
+            </div>
+
+            <!-- Designer task cards -->
+            <ul id="designer-list" class="space-y-2">
+              <!-- Row 1 -->
+              <li class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                <input type="checkbox" checked class="mt-1 h-3.5 w-3.5 shrink-0 accent-brand-600">
+                <div class="grid w-8 shrink-0 place-items-center text-xs font-semibold text-slate-500">1</div>
+                <div class="shrink-0">
+                  <div class="grid h-12 w-12 place-items-center rounded-md bg-slate-900 ring-1 ring-slate-200">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>
+                  </div>
+                  <div class="mt-1 text-center text-[10px] text-slate-500">AW-2026-001</div>
+                </div>
+                <div class="min-w-0 flex-1 space-y-1">
+                  <button class="flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
+                    <span class="inline-flex items-center gap-1.5 truncate"><span class="grid h-4 w-4 place-items-center rounded-full bg-fuchsia-100 text-[9px] font-bold text-fuchsia-600">JS</span> Jane Smith</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <button class="flex w-full items-center justify-between rounded-md bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100">High <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <p class="text-xs leading-snug text-slate-600">Create front design with school logo on left chest and event text on right chest.</p>
+                </div>
+                <div class="flex shrink-0 flex-col gap-1">
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-brand-600 hover:bg-brand-50" aria-label="Edit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-rose-500 hover:bg-rose-50" aria-label="Delete"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                </div>
+              </li>
+
+              <!-- Row 2 -->
+              <li class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                <input type="checkbox" checked class="mt-1 h-3.5 w-3.5 shrink-0 accent-brand-600">
+                <div class="grid w-8 shrink-0 place-items-center text-xs font-semibold text-slate-500">2</div>
+                <div class="shrink-0">
+                  <div class="grid h-12 w-12 place-items-center rounded-md bg-slate-900 ring-1 ring-slate-200">
+                    <span class="text-center text-[7px] font-bold leading-tight text-white">SPRINGFIELD<br/>EVENT 2024</span>
+                  </div>
+                  <div class="mt-1 text-center text-[10px] text-slate-500">AW-2026-002</div>
+                </div>
+                <div class="min-w-0 flex-1 space-y-1">
+                  <button class="flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
+                    <span class="inline-flex items-center gap-1.5 truncate"><span class="grid h-4 w-4 place-items-center rounded-full bg-indigo-100 text-[9px] font-bold text-indigo-600">MJ</span> Mike Johnson</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <button class="flex w-full items-center justify-between rounded-md bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100">High <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <p class="text-xs leading-snug text-slate-600">Add "Springfield High School Event 2024" in large text on the back.</p>
+                </div>
+                <div class="flex shrink-0 flex-col gap-1">
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-brand-600 hover:bg-brand-50" aria-label="Edit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-rose-500 hover:bg-rose-50" aria-label="Delete"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                </div>
+              </li>
+
+              <!-- Row 3 -->
+              <li class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                <input type="checkbox" class="mt-1 h-3.5 w-3.5 shrink-0 accent-brand-600">
+                <div class="grid w-8 shrink-0 place-items-center text-xs font-semibold text-slate-500">3</div>
+                <div class="shrink-0">
+                  <div class="grid h-12 w-12 place-items-center rounded-md bg-slate-800 ring-1 ring-slate-200">
+                    <span class="grid h-6 w-6 place-items-center rounded-full bg-amber-400 text-[8px] font-black text-amber-900">SH</span>
+                  </div>
+                  <div class="mt-1 text-center text-[10px] text-slate-500">AW-2026-003</div>
+                </div>
+                <div class="min-w-0 flex-1 space-y-1">
+                  <button class="flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
+                    <span class="inline-flex items-center gap-1.5 truncate"><span class="grid h-4 w-4 place-items-center rounded-full bg-pink-100 text-[9px] font-bold text-pink-600">ED</span> Emily Davis</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <button class="flex w-full items-center justify-between rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100">Medium <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <p class="text-xs leading-snug text-slate-600">Add mascot logo on left sleeve.</p>
+                </div>
+                <div class="flex shrink-0 flex-col gap-1">
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-brand-600 hover:bg-brand-50" aria-label="Edit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-rose-500 hover:bg-rose-50" aria-label="Delete"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                </div>
+              </li>
+
+              <!-- Row 4 -->
+              <li class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                <input type="checkbox" checked class="mt-1 h-3.5 w-3.5 shrink-0 accent-brand-600">
+                <div class="grid w-8 shrink-0 place-items-center text-xs font-semibold text-slate-500">4</div>
+                <div class="shrink-0">
+                  <div class="grid h-12 w-12 place-items-center rounded-md bg-white ring-1 ring-slate-300">
+                    <span class="text-center text-[7px] font-bold leading-tight text-slate-800">S M L<br/>XL 2XL</span>
+                  </div>
+                  <div class="mt-1 text-center text-[10px] text-slate-500">AW-2026-004</div>
+                </div>
+                <div class="min-w-0 flex-1 space-y-1">
+                  <button class="flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
+                    <span class="inline-flex items-center gap-1.5 truncate"><span class="grid h-4 w-4 place-items-center rounded-full bg-amber-100 text-[9px] font-bold text-amber-700">AB</span> Alex Brown</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <button class="flex w-full items-center justify-between rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">Low <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <p class="text-xs leading-snug text-slate-600">Design size label for S to 2XL.</p>
+                </div>
+                <div class="flex shrink-0 flex-col gap-1">
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-brand-600 hover:bg-brand-50" aria-label="Edit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-rose-500 hover:bg-rose-50" aria-label="Delete"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                </div>
+              </li>
+
+              <!-- Row 5 -->
+              <li class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                <input type="checkbox" class="mt-1 h-3.5 w-3.5 shrink-0 accent-brand-600">
+                <div class="grid w-8 shrink-0 place-items-center text-xs font-semibold text-slate-500">5</div>
+                <div class="shrink-0">
+                  <div class="flex h-12 w-12 overflow-hidden rounded-md ring-1 ring-slate-200"><div class="h-full w-1/2 bg-slate-900"></div><div class="h-full w-1/2 bg-slate-100"></div></div>
+                  <div class="mt-1 text-center text-[10px] text-slate-500">AW-2026-005</div>
+                </div>
+                <div class="min-w-0 flex-1 space-y-1">
+                  <button class="flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
+                    <span class="inline-flex items-center gap-1.5 truncate"><span class="grid h-4 w-4 place-items-center rounded-full bg-fuchsia-100 text-[9px] font-bold text-fuchsia-600">JS</span> Jane Smith</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <button class="flex w-full items-center justify-between rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100">Medium <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <p class="text-xs leading-snug text-slate-600">Generate hoodie mockups in black and white colors.</p>
+                </div>
+                <div class="flex shrink-0 flex-col gap-1">
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-brand-600 hover:bg-brand-50" aria-label="Edit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-rose-500 hover:bg-rose-50" aria-label="Delete"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                </div>
+              </li>
+
+              <!-- Row 6 -->
+              <li class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                <input type="checkbox" checked class="mt-1 h-3.5 w-3.5 shrink-0 accent-brand-600">
+                <div class="grid w-8 shrink-0 place-items-center text-xs font-semibold text-slate-500">6</div>
+                <div class="shrink-0">
+                  <div class="flex h-12 w-12 overflow-hidden rounded-md ring-1 ring-slate-200"><div class="h-full w-1/3" style="background:#1f2a44"></div><div class="h-full w-1/3" style="background:#a0a0a0"></div><div class="h-full w-1/3" style="background:#7d1f24"></div></div>
+                  <div class="mt-1 text-center text-[10px] text-slate-500">AW-2026-006</div>
+                </div>
+                <div class="min-w-0 flex-1 space-y-1">
+                  <button class="flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
+                    <span class="inline-flex items-center gap-1.5 truncate"><span class="grid h-4 w-4 place-items-center rounded-full bg-indigo-100 text-[9px] font-bold text-indigo-600">MJ</span> Mike Johnson</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <button class="flex w-full items-center justify-between rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">Low <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+                  <p class="text-xs leading-snug text-slate-600">Prepare color variations for navy, grey and maroon.</p>
+                </div>
+                <div class="flex shrink-0 flex-col gap-1">
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-brand-600 hover:bg-brand-50" aria-label="Edit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md text-rose-500 hover:bg-rose-50" aria-label="Delete"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                </div>
+              </li>
+            </ul>
+
+            <!-- Add row -->
+            <button id="add-row-btn" class="mt-3 flex w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-brand-300 bg-brand-50/40 py-3 text-sm font-semibold text-brand-600 hover:bg-brand-50">
+              <span class="inline-flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg> Add Row</span>
+              <span class="text-[10px] font-normal text-slate-500">Add more artworks / tasks</span>
+            </button>
+
+            <!-- Actions footer -->
+            <div class="mt-3 flex items-center justify-between gap-2">
+              <span id="task-count" class="text-xs font-semibold text-slate-500">3 tasks selected</span>
+              <div class="flex items-center gap-2">
+                <button class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-50">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                  Edit &amp; Resend
+                </button>
+                <button class="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+                  Generate Cards
+                </button>
+              </div>
+            </div>
+
+            <p class="mt-3 inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              Only selected tasks will be included in the generated cards.
+            </p>
+          </div>
+        </div>
+
+        <!-- ===== Intent & Insights ===== -->
+        <div data-tab-panel id="ai-intent" class="nice-scroll flex-1 overflow-y-auto px-5 py-4">
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-bold">Detected Intent</h4>
+              <div class="text-right">
+                <div class="text-[10px] uppercase tracking-wide text-slate-400">Confidence</div>
+                <div class="text-sm font-bold text-emerald-600">92%</div>
+              </div>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs text-slate-500">Primary Intent</div>
+              <div class="mt-1"><span class="inline-flex rounded-md bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-700">Bulk Order / Quotation Request</span></div>
+            </div>
+            <div class="mt-3 text-sm">
+              <div class="text-xs text-slate-500">Intent Summary</div>
+              <p class="mt-1 text-slate-700">Customer needs 50 hoodies for a school event and requested a quote.</p>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+            <h4 class="mb-3 text-sm font-bold">Customer Insights</h4>
+            <dl class="grid grid-cols-2 gap-y-2">
+              <dt class="text-slate-500">Product Interest</dt><dd class="font-semibold text-brand-700">DTF Transfers</dd>
+              <dt class="text-slate-500">Design Theme</dt><dd>Event : Graduation Ceremony</dd>
+              <dt class="text-slate-500">Buyer Type</dt><dd>Bulk</dd>
+              <dt class="text-slate-500">Buying Signals</dt><dd class="font-semibold text-emerald-700">High</dd>
+              <dt class="text-slate-500">Urgency</dt><dd class="font-semibold text-amber-600">Medium</dd>
+              <dt class="text-slate-500">Budget Sensitivity</dt><dd class="font-semibold text-amber-600">Medium</dd>
+              <dt class="text-slate-500">Decision Maker</dt><dd>Likely</dd>
+              <dt class="text-slate-500">Engagement Level</dt><dd class="font-semibold text-emerald-700">High</dd>
+              <dt class="text-slate-500">Repeat Customer</dt><dd>No</dd>
+            </dl>
+          </div>
+
+          <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-bold">Sentiment Analysis</h4>
+              <span class="text-xs font-semibold text-emerald-600">Positive · 85%</span>
+            </div>
+            <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div class="h-full rounded-full bg-emerald-500" style="width:85%"></div>
+            </div>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 class="mb-2 text-sm font-bold">Objections / Concerns</h4>
+              <ul class="space-y-1.5 text-xs">
+                <li class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span> Has not shared budget yet</li>
+                <li class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span> Delivery deadline not confirmed</li>
+                <li class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-rose-500"></span> Awaiting final sizes confirmation</li>
+              </ul>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 class="mb-2 text-sm font-bold">Lead Prediction</h4>
+              <div class="text-xs text-slate-500">Conversion Probability</div>
+              <div class="text-2xl font-extrabold text-emerald-600">82%</div>
+              <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100"><div class="h-full bg-emerald-500" style="width:82%"></div></div>
+              <div class="mt-1 flex justify-between text-[10px] text-slate-400"><span>Low</span><span>High</span></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </div>
+</div>
+
+<script>
+  // ============================================================
+  // TOAST NOTIFICATIONS
+  // ============================================================
+  const toast = (() => {
+    const host = document.createElement('div');
+    host.className = 'fixed bottom-5 right-5 z-[200] flex flex-col items-end gap-2';
+    document.body.appendChild(host);
+    return (msg, kind = 'success') => {
+      const colors = {
+        success: 'bg-emerald-600 text-white',
+        info:    'bg-slate-800 text-white',
+        error:   'bg-rose-600 text-white',
+      };
+      const t = document.createElement('div');
+      t.className = `pointer-events-auto rounded-lg ${colors[kind] || colors.info} px-3 py-2 text-sm font-semibold shadow-lg transition-all duration-200 translate-y-2 opacity-0`;
+      t.textContent = msg;
+      host.appendChild(t);
+      requestAnimationFrame(() => { t.classList.remove('translate-y-2','opacity-0'); });
+      setTimeout(() => {
+        t.classList.add('translate-y-2','opacity-0');
+        setTimeout(() => t.remove(), 220);
+      }, 2200);
+    };
+  })();
+
+  // ============================================================
+  // CONVERSATION DATA & SWITCHING
+  // ============================================================
+  const CONVERSATIONS = {
+    jc: {
+      name: 'John Carter', initials: 'JC', avatarBg: 'bg-emerald-100 text-emerald-700',
+      channel: 'WhatsApp', channelBg: 'bg-emerald-500',
+      phone: '+1 (312) 555-0192', company: 'Springfield High School',
+      status: 'Hot Lead', statusBg: 'bg-rose-50 text-rose-600 hover:bg-rose-100', statusIcon: '🔥',
+      messages: [
+        { dir:'in',  text:'Hi, we need 50 hoodies for our school event. Can you send me a quote?', time:'10:24 AM' },
+        { dir:'out', text:"Hello John! Sure, I'd be happy to help. Could you please share the design and sizes needed?", time:'10:26 AM' },
+        { dir:'in',  text:'Here is the design. We need sizes S–2XL.', time:'10:28 AM' },
+        { dir:'out', text:"Thanks! I'll prepare the quote and send it shortly.", time:'10:30 AM' },
+        { dir:'sys', text:'Conversation assigned to Mike Johnson', time:'10:35 AM' },
+      ],
+    },
+    tm: {
+      name: 'Tom Mark', initials: 'TM', avatarBg: 'bg-indigo-100 text-indigo-700',
+      channel: 'Instagram', channelBg: 'bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600',
+      phone: '@tom.mark', company: 'Mark Apparel Co.',
+      status: 'Warm Lead', statusBg: 'bg-amber-50 text-amber-700 hover:bg-amber-100', statusIcon: '⚡',
+      messages: [
+        { dir:'in',  text:'Can you share the price list for t-shirts?', time:'10:15 AM' },
+        { dir:'out', text:'Sure! What quantity are you looking at?', time:'10:17 AM' },
+      ],
+    },
+    sl: {
+      name: 'Steve Lee', initials: 'SL', avatarBg: 'bg-violet-100 text-violet-700',
+      channel: 'Facebook', channelBg: 'bg-blue-600',
+      phone: 'steve.lee.fb', company: 'Lee & Co. Marketing',
+      status: 'New Lead', statusBg: 'bg-sky-50 text-sky-700 hover:bg-sky-100', statusIcon: '✨',
+      messages: [
+        { dir:'in',  text:'We need a design for our company anniversary.', time:'09:47 AM' },
+        { dir:'in',  text:'Around 200 polo shirts, embroidered logo.', time:'09:48 AM' },
+      ],
+    },
+    mg: {
+      name: 'Mark Green', initials: 'MG', avatarBg: 'bg-emerald-100 text-emerald-700',
+      channel: 'WhatsApp', channelBg: 'bg-emerald-500',
+      phone: '+1 (646) 555-0144', company: 'GreenWave Studio',
+      status: 'Quote Sent', statusBg: 'bg-violet-50 text-violet-700 hover:bg-violet-100', statusIcon: '📨',
+      messages: [
+        { dir:'out', text:'Quote attached. Total: $1,840 incl. delivery.', time:'09:25 AM' },
+        { dir:'in',  text:'When can we expect the delivery?', time:'09:30 AM' },
+      ],
+    },
+    hb: {
+      name: 'Hanna Baker', initials: 'HB', avatarBg: 'bg-pink-100 text-pink-700',
+      channel: 'Instagram', channelBg: 'bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600',
+      phone: '@hanna.baker', company: 'Baker Boutique',
+      status: 'New Lead', statusBg: 'bg-sky-50 text-sky-700 hover:bg-sky-100', statusIcon: '✨',
+      messages: [
+        { dir:'in', text:'Do you have size chart?', time:'Yesterday 04:22 PM' },
+      ],
+    },
+    ps: {
+      name: 'Paul Smith', initials: 'PS', avatarBg: 'bg-amber-100 text-amber-700',
+      channel: 'Facebook', channelBg: 'bg-blue-600',
+      phone: 'paul.smith.fb', company: 'PS Sports Club',
+      status: 'Warm Lead', statusBg: 'bg-amber-50 text-amber-700 hover:bg-amber-100', statusIcon: '⚡',
+      messages: [
+        { dir:'in', text:"What's the minimum order quantity?", time:'Yesterday 11:10 AM' },
+      ],
+    },
+    al: {
+      name: 'Amanda Lewis', initials: 'AL', avatarBg: 'bg-rose-100 text-rose-700',
+      channel: 'Email', channelBg: 'bg-slate-700',
+      phone: 'amanda@lewistees.com', company: 'Lewis Tees',
+      status: 'Won', statusBg: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100', statusIcon: '🏆',
+      messages: [
+        { dir:'out', text:'Final quote attached. Looking forward to working with you!', time:'2 days ago' },
+        { dir:'in',  text:'Thanks! Please send the final quote.', time:'2 days ago' },
+      ],
+    },
+  };
+
+  let currentConvId = 'jc';
+  const STATUS_OPTIONS = [
+    { label:'New Lead',   icon:'✨', cls:'bg-sky-50 text-sky-700 hover:bg-sky-100' },
+    { label:'Warm Lead',  icon:'⚡', cls:'bg-amber-50 text-amber-700 hover:bg-amber-100' },
+    { label:'Hot Lead',   icon:'🔥', cls:'bg-rose-50 text-rose-600 hover:bg-rose-100' },
+    { label:'Quote Sent', icon:'📨', cls:'bg-violet-50 text-violet-700 hover:bg-violet-100' },
+    { label:'Won',        icon:'🏆', cls:'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' },
+    { label:'Lost',       icon:'✗',  cls:'bg-slate-100 text-slate-600 hover:bg-slate-200' },
+  ];
+
+  // Tag the conversation list buttons with data-conv-id and data-name based on initials
+  document.querySelectorAll('#filters-list > button').forEach((btn) => {
+    const nameEl = btn.querySelector('.text-sm.font-semibold');
+    if (!nameEl) return;
+    const name = nameEl.textContent.trim();
+    const initials = name.split(/\s+/).map(w=>w[0]).join('').toLowerCase().slice(0,2);
+    btn.dataset.convId = initials;
+    btn.dataset.name = name.toLowerCase();
+    btn.dataset.preview = (btn.querySelector('p')?.textContent || '').toLowerCase();
+  });
+
+  const customer = {
+    avatar:  document.getElementById('customer-avatar'),
+    name:    document.getElementById('customer-name'),
+    status:  document.getElementById('customer-status'),
+    channel: document.getElementById('customer-channel'),
+    phone:   document.getElementById('customer-phone'),
+    company: document.getElementById('customer-company'),
+  };
+
+  const chatBox = document.getElementById('chat-messages');
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderMessages(conv) {
+    const todayLabel = `<div class="my-2 flex justify-center"><span class="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">May 12, 2024</span></div>`;
+    const bubbles = conv.messages.map(m => {
+      if (m.dir === 'sys') {
+        return `<div class="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500"><span>${m.time}</span>·<span>${escapeHtml(m.text)}</span></div>`;
+      }
+      if (m.dir === 'in') {
+        return `<div class="mt-4 flex items-start gap-2">
+          <span class="mt-1 grid h-8 w-8 place-items-center rounded-full ${conv.avatarBg} text-xs font-bold">${conv.initials}</span>
+          <div class="max-w-md rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100">
+            ${escapeHtml(m.text)}
+            <div class="mt-1 text-[10px] text-slate-400">${m.time}</div>
+          </div>
+        </div>`;
+      }
+      if (m.dir === 'note') {
+        return `<div class="mt-4 flex items-start justify-end gap-2">
+          <div class="max-w-md rounded-2xl rounded-tr-md bg-amber-50 px-4 py-2.5 text-sm text-amber-900 shadow-sm ring-1 ring-amber-200">
+            <div class="mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Internal note
+            </div>
+            <div>${escapeHtml(m.text)}</div>
+            <div class="mt-1 text-right text-[10px] text-amber-700/70">${m.time}</div>
+          </div>
+        </div>`;
+      }
+      // outgoing
+      return `<div class="mt-4 flex items-start justify-end gap-2">
+        <div class="max-w-md rounded-2xl rounded-tr-md bg-brand-50 px-4 py-2.5 text-sm text-brand-900 shadow-sm ring-1 ring-brand-100">
+          ${escapeHtml(m.text)}
+          <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-500">${m.time}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 11 13 20"/></svg>
+          </div>
+        </div>
+        <img alt="agent" src="https://i.pravatar.cc/36?img=12" class="mt-1 h-8 w-8 rounded-full" />
+      </div>`;
+    }).join('');
+    chatBox.innerHTML = todayLabel + bubbles;
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  function channelIcon(channel) {
+    if (channel === 'WhatsApp') return '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24z"/></svg>';
+    if (channel === 'Facebook') return '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.99 22 12z"/></svg>';
+    if (channel === 'Instagram') return '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/></svg>';
+    if (channel === 'Email')     return '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-10 5L2 7"/></svg>';
+    return '';
+  }
+
+  function renderCustomer(conv) {
+    // Avatar (color + initials)
+    customer.avatar.className = `grid h-12 w-12 shrink-0 place-items-center rounded-full ${conv.avatarBg} font-bold`;
+    customer.avatar.textContent = conv.initials;
+    customer.name.textContent = conv.name;
+    customer.status.className = `inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${conv.statusBg}`;
+    customer.status.innerHTML = `${conv.statusIcon} ${conv.status}`;
+    customer.channel.innerHTML = `<span class="grid h-4 w-4 place-items-center rounded-full ${conv.channelBg} text-white">${channelIcon(conv.channel)}</span> ${conv.channel}`;
+    customer.phone.textContent = conv.phone;
+    customer.company.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${conv.company}`;
+  }
+
+  function activateConv(id) {
+    if (!CONVERSATIONS[id]) return;
+    currentConvId = id;
+    renderCustomer(CONVERSATIONS[id]);
+    renderMessages(CONVERSATIONS[id]);
+    // Highlight active in list
+    document.querySelectorAll('#filters-list > button').forEach(b => {
+      const isActive = b.dataset.convId === id;
+      b.classList.toggle('border-l-4', isActive);
+      b.classList.toggle('border-brand-500', isActive);
+      b.classList.toggle('bg-brand-50/50', isActive);
+      b.classList.toggle('border-b', !isActive);
+      b.classList.toggle('border-slate-100', !isActive);
+    });
+  }
+
+  // Click on conversation list → switch
+  document.getElementById('filters-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-conv-id]');
+    if (!btn) return;
+    activateConv(btn.dataset.convId);
+  });
+
+  // ============================================================
+  // COMPOSER: Reply / Note + Send + Enter-to-send
+  // ============================================================
+  let composerMode = 'reply';
+  const modeWrap = document.getElementById('composer-mode');
+  const input    = document.getElementById('composer-input');
+  const sendBtn  = document.getElementById('send-btn');
+
+  modeWrap.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-mode]');
+    if (!b) return;
+    composerMode = b.dataset.mode;
+    modeWrap.querySelectorAll('button').forEach(x => {
+      const active = x === b;
+      x.classList.toggle('border-brand-500', active);
+      x.classList.toggle('text-brand-600',   active);
+      x.classList.toggle('font-semibold',    active);
+      x.classList.toggle('border-transparent', !active);
+      x.classList.toggle('text-slate-500',     !active);
+      x.classList.toggle('font-medium',        !active);
+    });
+    input.placeholder = composerMode === 'note'
+      ? 'Write an internal note (visible to team only)...'
+      : 'Type your message...';
+  });
+
+  function timeNow() {
+    const d = new Date();
+    let h = d.getHours(), m = d.getMinutes();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${String(m).padStart(2,'0')} ${ampm}`;
+  }
+
+  function sendMessage(text, kind) {
+    if (!text.trim()) return;
+    const conv = CONVERSATIONS[currentConvId];
+    const dir = kind === 'note' ? 'note' : 'out';
+    conv.messages.push({ dir, text: text.trim(), time: timeNow() });
+    renderMessages(conv);
+    input.value = '';
+    input.focus();
+    toast(kind === 'note' ? 'Note saved' : 'Message sent', 'success');
+  }
+
+  sendBtn.addEventListener('click', () => sendMessage(input.value, composerMode));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(input.value, composerMode);
+    }
+  });
+
+  // ============================================================
+  // SEARCH CONVERSATIONS (top bar)
+  // ============================================================
+  document.getElementById('global-search').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('#filters-list > button').forEach(b => {
+      const hit = !q || (b.dataset.name||'').includes(q) || (b.dataset.preview||'').includes(q);
+      b.style.display = hit ? '' : 'none';
+    });
+  });
+
+  // ============================================================
+  // AI RECOMMENDED REPLY → push to composer / send / ignore / edit
+  // ============================================================
+  document.getElementById('ai-reply-send').addEventListener('click', () => {
+    const text = document.getElementById('ai-reply-text').textContent.trim();
+    sendMessage(text, 'reply');
+    toast('AI reply sent to chat', 'success');
+  });
+  document.getElementById('ai-reply-edit').addEventListener('click', () => {
+    input.value = document.getElementById('ai-reply-text').textContent.trim();
+    input.focus();
+    toast('AI reply loaded — edit and send', 'info');
+  });
+  document.getElementById('ai-reply-ignore').addEventListener('click', () => {
+    document.getElementById('ai-reply-text').closest('.rounded-xl').style.display = 'none';
+    toast('AI suggestion ignored', 'info');
+  });
+
+  // AI Suggested Actions buttons (Send / Hold / Cancel inside Actions tab)
+  document.querySelectorAll('#ai-actions li').forEach(li => {
+    const title = li.querySelector('.font-semibold')?.textContent.trim() || 'Action';
+    li.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', () => {
+        const label = b.textContent.trim();
+        if (label === 'Send')   { li.style.opacity = '.4'; toast(`✓ ${title} — sent`,    'success'); }
+        if (label === 'Hold')   { toast(`⏸ ${title} — held`,    'info'); }
+        if (label === 'Cancel') { li.remove(); toast(`✕ ${title} — cancelled`, 'error'); }
+      });
+    });
+  });
+
+  // ============================================================
+  // LEAD STATUS BADGE → click to change
+  // ============================================================
+  (function () {
+    const badge = document.getElementById('customer-status');
+    const menu = document.createElement('div');
+    menu.className = 'absolute z-[120] mt-1 hidden w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-xl';
+    badge.parentElement.style.position = 'relative';
+    badge.parentElement.appendChild(menu);
+    menu.innerHTML = STATUS_OPTIONS.map(o =>
+      `<button data-status="${o.label}" data-bg="${o.cls}" data-icon="${o.icon}" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-slate-50">
+         <span class="inline-flex h-5 w-5 items-center justify-center rounded-full ${o.cls.split(' ')[0]} ${o.cls.split(' ')[1]}">${o.icon}</span>
+         <span>${o.label}</span>
+       </button>`
+    ).join('');
+
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', () => menu.classList.add('hidden'));
+    menu.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-status]');
+      if (!btn) return;
+      const conv = CONVERSATIONS[currentConvId];
+      conv.status = btn.dataset.status;
+      conv.statusBg = btn.dataset.bg;
+      conv.statusIcon = btn.dataset.icon;
+      badge.className = `inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${conv.statusBg}`;
+      badge.innerHTML = `${conv.statusIcon} ${conv.status}`;
+      menu.classList.add('hidden');
+      toast(`Status → ${conv.status}`, 'success');
+    });
+  })();
+
+  // ============================================================
+  // Initial render
+  // ============================================================
+  activateConv('jc');
+
+  // ---- Logout ----
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    sessionStorage.removeItem('tcAuth');
+    sessionStorage.removeItem('tcUser');
+    window.location.replace('index.html');
+  });
+
+  // ---- Sidebar collapse / expand ----
+  (function () {
+    const shell        = document.getElementById('app-shell');
+    const toggle       = document.getElementById('sb-toggle');
+    const toggleColl   = document.getElementById('sb-toggle-collapsed');
+
+    const apply = (collapsed) => {
+      shell.dataset.collapsed = collapsed ? 'true' : 'false';
+      toggleColl.style.display = collapsed ? 'grid' : 'none';
+      localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+    };
+
+    apply(localStorage.getItem('sidebarCollapsed') === '1');
+
+    toggle.addEventListener('click', () => apply(true));
+    toggleColl.addEventListener('click', () => apply(false));
+  })();
+
+  // ---- AI Supervisor open / close ----
+  (function () {
+    const panels = document.getElementById('panels');
+    const close  = document.getElementById('ai-close');
+    const reopen = document.getElementById('ai-reopen');
+
+    const apply = (open) => {
+      panels.dataset.ai = open ? 'open' : 'closed';
+      localStorage.setItem('aiOpen', open ? '1' : '0');
+    };
+
+    apply(localStorage.getItem('aiOpen') !== '0');
+
+    close.addEventListener('click', () => apply(false));
+    reopen.addEventListener('click', () => apply(true));
+  })();
+
+  // ---- Filters panel collapse / expand ----
+  (function () {
+    const panels = document.getElementById('panels');
+    const btn    = document.getElementById('filters-toggle');
+    const icon   = document.getElementById('filters-toggle-icon');
+
+    const apply = (collapsed) => {
+      panels.dataset.filters = collapsed ? 'collapsed' : 'expanded';
+      icon.style.transform = collapsed ? 'rotate(180deg)' : 'rotate(0deg)';
+      btn.setAttribute('aria-label', collapsed ? 'Expand filters' : 'Collapse filters');
+      localStorage.setItem('filtersCollapsed', collapsed ? '1' : '0');
+    };
+
+    apply(localStorage.getItem('filtersCollapsed') === '1');
+
+    btn.addEventListener('click', () => {
+      apply(panels.dataset.filters !== 'collapsed');
+    });
+  })();
+
+  // ---- Generic dropdown ----
+  (function () {
+    document.addEventListener('click', (e) => {
+      const toggle = e.target.closest('[data-dropdown-toggle]');
+      const item   = e.target.closest('[data-dropdown-item]');
+      const inside = e.target.closest('[data-dropdown]');
+
+      if (toggle) {
+        const dd = toggle.closest('[data-dropdown]');
+        const wasOpen = dd.hasAttribute('data-open');
+        document.querySelectorAll('[data-dropdown][data-open]').forEach(d => d.removeAttribute('data-open'));
+        if (!wasOpen) dd.setAttribute('data-open', '');
+        return;
+      }
+
+      if (item) {
+        const dd = item.closest('[data-dropdown]');
+        const label = dd.querySelector('[data-dropdown-label]');
+        const text = item.dataset.label || item.textContent.trim();
+        if (label) label.textContent = text;
+
+        // priority colour swap (data-priority-class on item)
+        if (item.dataset.priorityClass) {
+          const btn = dd.querySelector('[data-dropdown-toggle]');
+          // preserve layout classes, swap colour classes only
+          btn.className = item.dataset.priorityClass;
+        }
+        dd.removeAttribute('data-open');
+        return;
+      }
+
+      if (!inside) {
+        document.querySelectorAll('[data-dropdown][data-open]').forEach(d => d.removeAttribute('data-open'));
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('[data-dropdown][data-open]').forEach(d => d.removeAttribute('data-open'));
+      }
+    });
+  })();
+
+  // ---- Designer Jobs: dropdowns + add/delete row + live count ----
+  (function () {
+    const list = document.getElementById('designer-list');
+    if (!list) return;
+
+    const TEAM = [
+      { name: 'Jane Smith',   chip: 'bg-fuchsia-100 text-fuchsia-600', initials: 'JS' },
+      { name: 'Mike Johnson', chip: 'bg-indigo-100 text-indigo-600',   initials: 'MJ' },
+      { name: 'Emily Davis',  chip: 'bg-pink-100 text-pink-600',       initials: 'ED' },
+      { name: 'Alex Brown',   chip: 'bg-amber-100 text-amber-700',     initials: 'AB' },
+      { name: 'Sara Khan',    chip: 'bg-emerald-100 text-emerald-700', initials: 'SK' },
+    ];
+    const PRIORITY_BASE = 'flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-semibold';
+    const PRIORITY = {
+      High:   PRIORITY_BASE + ' bg-rose-50 text-rose-700 hover:bg-rose-100',
+      Medium: PRIORITY_BASE + ' bg-amber-50 text-amber-700 hover:bg-amber-100',
+      Low:    PRIORITY_BASE + ' bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+    };
+    const chev = '<svg data-chevron width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>';
+
+    const editIcon   = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+    const deleteIcon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
+    function assigneeMarkup(currentName) {
+      const items = TEAM.map(t =>
+        `<button data-dropdown-item data-label="${t.name}">
+           <span class="grid h-4 w-4 place-items-center rounded-full text-[9px] font-bold ${t.chip}">${t.initials}</span> ${t.name}
+         </button>`).join('');
+      const match = TEAM.find(t => currentName && currentName.includes(t.name));
+      const labelHTML = match
+        ? `<span class="grid h-4 w-4 place-items-center rounded-full text-[9px] font-bold ${match.chip}">${match.initials}</span> <span data-dropdown-label>${match.name}</span>`
+        : `<span class="grid h-4 w-4 place-items-center rounded-full bg-slate-100 text-[9px] font-bold text-slate-500">?</span> <span data-dropdown-label>Unassigned</span>`;
+      return `<div data-dropdown>
+        <button data-dropdown-toggle class="flex w-full items-center justify-between rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
+          <span class="inline-flex items-center gap-1.5 truncate">${labelHTML}</span>${chev}
+        </button>
+        <div data-dropdown-menu class="mt-1 w-44">${items}</div>
+      </div>`;
+    }
+
+    function priorityMarkup(currentPriority) {
+      const cls = PRIORITY[currentPriority] || PRIORITY.Medium;
+      const items = Object.entries(PRIORITY).map(([label, cls]) =>
+        `<button data-dropdown-item data-label="${label}" data-priority-class="${cls}">${label}</button>`
+      ).join('');
+      return `<div data-dropdown>
+        <button data-dropdown-toggle class="${cls}">
+          <span data-dropdown-label>${currentPriority || 'Medium'}</span>${chev}
+        </button>
+        <div data-dropdown-menu class="mt-1 w-28">${items}</div>
+      </div>`;
+    }
+
+    // 1) Convert existing rows: replace plain buttons with dropdown markup
+    list.querySelectorAll('li').forEach((row) => {
+      const buttons = row.querySelectorAll('.min-w-0.flex-1 > button');
+      if (buttons.length < 2) return;
+      const [assigneeBtn, priorityBtn] = buttons;
+      const currentName     = assigneeBtn.textContent.trim();
+      const currentPriority = priorityBtn.textContent.trim().split(/\s/)[0];
+
+      const wrap1 = document.createElement('div');
+      wrap1.innerHTML = assigneeMarkup(currentName);
+      assigneeBtn.replaceWith(wrap1.firstElementChild);
+
+      const wrap2 = document.createElement('div');
+      wrap2.innerHTML = priorityMarkup(currentPriority);
+      priorityBtn.replaceWith(wrap2.firstElementChild);
+    });
+
+    // 2) Counters + serial renumbering
+    const countEl = document.getElementById('task-count');
+    function refresh() {
+      const items = list.querySelectorAll('li');
+      items.forEach((li, idx) => {
+        const sn = li.querySelector('[data-serial]') || li.children[1];
+        if (sn) sn.textContent = idx + 1;
+      });
+      const selected = list.querySelectorAll('input[type="checkbox"]:checked').length;
+      countEl.textContent = `${selected} task${selected === 1 ? '' : 's'} selected`;
+    }
+
+    // Add data-serial to existing serial-number cells for safety
+    list.querySelectorAll('li').forEach(li => {
+      const second = li.children[1];
+      if (second && !second.hasAttribute('data-serial')) second.setAttribute('data-serial', '');
+    });
+
+    // 3) Add Row
+    let nextId = 7;
+    function newRow() {
+      const awId = `AW-2026-${String(nextId++).padStart(3, '0')}`;
+      const li = document.createElement('li');
+      li.className = 'flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5';
+      li.innerHTML = `
+        <input type="checkbox" class="mt-1 h-3.5 w-3.5 shrink-0 accent-brand-600">
+        <div data-serial class="grid w-8 shrink-0 place-items-center text-xs font-semibold text-slate-500">?</div>
+        <div class="shrink-0">
+          <div class="grid h-12 w-12 place-items-center rounded-md bg-slate-100 ring-1 ring-dashed ring-slate-300 text-[10px] font-bold text-slate-400">NEW</div>
+          <div class="mt-1 text-center text-[10px] text-slate-500">${awId}</div>
+        </div>
+        <div class="min-w-0 flex-1 space-y-1">
+          ${assigneeMarkup(null)}
+          ${priorityMarkup('Medium')}
+          <input type="text" placeholder="Enter instructions..." class="w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" />
+        </div>
+        <div class="flex shrink-0 flex-col gap-1">
+          <button class="grid h-7 w-7 place-items-center rounded-md text-brand-600 hover:bg-brand-50" aria-label="Edit">${editIcon}</button>
+          <button data-delete-row class="grid h-7 w-7 place-items-center rounded-md text-rose-500 hover:bg-rose-50" aria-label="Delete">${deleteIcon}</button>
+        </div>`;
+      list.appendChild(li);
+      refresh();
+      // focus instructions input for instant editing
+      const instr = li.querySelector('input[type="text"]');
+      if (instr) instr.focus();
+    }
+
+    document.getElementById('add-row-btn').addEventListener('click', newRow);
+
+    // 4) Delete row (any row, original or new). The original rows have aria-label="Delete".
+    list.addEventListener('click', (e) => {
+      const delBtn = e.target.closest('button[aria-label="Delete"]');
+      if (!delBtn) return;
+      delBtn.closest('li').remove();
+      refresh();
+    });
+
+    // 5) Live "X tasks selected" count
+    list.addEventListener('change', (e) => {
+      if (e.target.matches('input[type="checkbox"]')) refresh();
+    });
+
+    refresh(); // initial sync
+  })();
+
+  // ---- Drag-to-resize for Filters and AI Supervisor ----
+  (function () {
+    const panels = document.getElementById('panels');
+
+    // restore saved widths
+    const savedF = localStorage.getItem('w-col-filters');
+    const savedA = localStorage.getItem('w-col-ai');
+    if (savedF) panels.style.setProperty('--col-filters', savedF);
+    if (savedA) panels.style.setProperty('--col-ai', savedA);
+
+    function attach(handleId, varName, storeKey, min, max, invert) {
+      const handle = document.getElementById(handleId);
+      handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        handle.classList.add('dragging');
+        panels.classList.add('is-resizing');
+
+        const cs = getComputedStyle(panels);
+        const startVal = parseFloat(cs.getPropertyValue(varName)) || 0;
+        const startX = e.clientX;
+
+        const onMove = (ev) => {
+          let delta = ev.clientX - startX;
+          if (invert) delta = -delta;
+          const next = Math.max(min, Math.min(max, startVal + delta));
+          panels.style.setProperty(varName, next + 'px');
+        };
+        const onUp = () => {
+          handle.classList.remove('dragging');
+          panels.classList.remove('is-resizing');
+          handle.removeEventListener('pointermove', onMove);
+          handle.removeEventListener('pointerup', onUp);
+          handle.removeEventListener('pointercancel', onUp);
+          localStorage.setItem(storeKey, panels.style.getPropertyValue(varName));
+        };
+        handle.addEventListener('pointermove', onMove);
+        handle.addEventListener('pointerup', onUp);
+        handle.addEventListener('pointercancel', onUp);
+      });
+
+      // double-click to reset to default
+      handle.addEventListener('dblclick', () => {
+        panels.style.removeProperty(varName);
+        localStorage.removeItem(storeKey);
+      });
+    }
+
+    attach('resize-filters', '--col-filters', 'w-col-filters', 220, 480, false);
+    attach('resize-ai',      '--col-ai',      'w-col-ai',      320, 720, true);
+  })();
+
+  // tab switching (data-tabs="<scope>") — independent scopes for middle and right
+  document.querySelectorAll('[data-tabs]').forEach(scope => {
+    const buttons = scope.querySelectorAll('[role="tab"]');
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        // reset siblings
+        buttons.forEach(b => {
+          b.classList.remove('border-brand-500','text-brand-600','font-semibold');
+          b.classList.add('border-transparent','text-slate-500','font-medium');
+        });
+        btn.classList.remove('border-transparent','text-slate-500','font-medium');
+        btn.classList.add('border-brand-500','text-brand-600','font-semibold');
+
+        // toggle panels
+        const targetId = btn.dataset.target;
+        const root     = scope.closest('section, aside, div');
+        // panels are siblings of the nav; find in same panel container
+        // we look in the closest "flex-col" wrapper
+        const wrapper = scope.parentElement;
+        wrapper.querySelectorAll(':scope > [data-tab-panel]').forEach(p => {
+          p.classList.toggle('active', p.id === targetId);
+        });
+      });
+    });
+  });
+</script>
+</body>
+</html>
