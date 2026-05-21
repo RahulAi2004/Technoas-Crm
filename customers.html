@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Technocas CRM — Customers</title>
+  <!-- Auth guard -->
+  <script>
+    if (sessionStorage.getItem('tcAuth') !== '1') {
+      window.location.replace('index.html');
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#eef2ff',100:'#e0e7ff',500:'#4f46e5',600:'#4338ca',700:'#3730a3' },
+            ink:   { 900:'#0b0f1a',800:'#0d1220',700:'#111827' }
+          },
+          fontFamily: { sans: ['Inter','ui-sans-serif','system-ui','-apple-system','Segoe UI','Roboto','Helvetica','Arial','sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    .nice-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+    .nice-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 999px; }
+    .sidebar-scroll::-webkit-scrollbar { width: 6px; }
+    .sidebar-scroll::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 999px; }
+  </style>
+</head>
+<body class="h-screen overflow-hidden bg-slate-50 font-sans text-slate-800 antialiased">
+
+<div class="grid h-screen" style="grid-template-columns: 240px 1fr;">
+  <!-- =================== SIDEBAR =================== -->
+  <aside class="flex flex-col bg-ink-900 text-slate-300">
+    <a href="dashboard.html" class="flex h-16 items-center gap-2 px-5">
+      <div class="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600">
+        <span class="text-sm font-black text-white">T</span>
+      </div>
+      <span class="text-lg font-bold text-white">Technocas</span>
+    </a>
+
+    <nav class="sidebar-scroll flex-1 overflow-y-auto px-3 pb-6">
+      <ul class="space-y-1">
+        <li><a href="dashboard.html" class="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/></svg>
+            Inbox
+          </span>
+          <span class="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">12</span>
+        </a></li>
+      </ul>
+
+      <p class="mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">CRM 360</p>
+      <ul class="space-y-1">
+        <li><a href="customers.html" class="flex items-center gap-3 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Customers
+        </a></li>
+        <li><a href="#" data-coming="Customer 360" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+          Customer 360
+        </a></li>
+        <li><a href="#" data-coming="Orders" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          Orders
+        </a></li>
+        <li><a href="#" data-coming="Artwork Vault" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+          Artwork Vault
+        </a></li>
+        <li><a href="#" data-coming="Follow-Ups" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+          Follow-Ups
+        </a></li>
+        <li><a href="#" data-coming="Campaigns" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+          Campaigns
+        </a></li>
+        <li><a href="#" data-coming="Reports" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
+          Reports
+        </a></li>
+        <li><a href="#" data-coming="Receipts" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+          Receipts
+        </a></li>
+      </ul>
+
+      <p class="mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Channels</p>
+      <ul class="space-y-1">
+        <li><a href="dashboard.html" class="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <span class="grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-white">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24z"/></svg>
+            </span>
+            WhatsApp
+          </span>
+          <span class="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">8</span>
+        </a></li>
+        <li><a href="dashboard.html" class="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <span class="grid h-6 w-6 place-items-center rounded-lg bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600 text-white">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>
+            </span>
+            Instagram
+          </span>
+          <span class="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">3</span>
+        </a></li>
+        <li><a href="dashboard.html" class="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <span class="grid h-6 w-6 place-items-center rounded-full bg-blue-600 text-white">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.99 22 12z"/></svg>
+            </span>
+            Facebook
+          </span>
+          <span class="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">2</span>
+        </a></li>
+        <li><a href="dashboard.html" class="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <span class="grid h-6 w-6 place-items-center rounded-full bg-slate-700 text-white">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-10 5L2 7"/></svg>
+            </span>
+            Email
+          </span>
+          <span class="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">1</span>
+        </a></li>
+      </ul>
+
+      <p class="mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Settings</p>
+      <ul class="space-y-1">
+        <li><a href="#" data-coming="Team" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          Team
+        </a></li>
+        <li><a href="#" data-coming="Settings" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <!-- =================== MAIN =================== -->
+  <div class="flex h-screen flex-col overflow-hidden">
+    <!-- top bar -->
+    <header class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
+      <div class="flex items-center gap-3 text-slate-700">
+        <h1 class="text-2xl font-extrabold tracking-tight">Customers</h1>
+        <span class="rounded-lg bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-600">360</span>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="relative">
+          <span class="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+          <input id="search" type="search" placeholder="Search customers, orders, notes..." class="w-80 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-12 text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20" />
+          <kbd class="pointer-events-none absolute inset-y-0 right-2 my-auto grid h-6 place-items-center rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-500">⌘K</kbd>
+        </div>
+        <button class="relative grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100" aria-label="Notifications">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <span class="absolute -top-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white">6</span>
+        </button>
+        <div class="flex items-center gap-3 border-l border-slate-200 pl-4">
+          <img alt="Mike Johnson" src="https://i.pravatar.cc/40?img=12" class="h-9 w-9 rounded-full object-cover" />
+          <div class="text-xs leading-tight">
+            <div class="font-semibold">Mike Johnson</div>
+            <div class="text-slate-500">Account Manager</div>
+          </div>
+          <button id="logout-btn" class="ml-2 grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" aria-label="Log out" title="Log out">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content scroll area -->
+    <main class="nice-scroll flex-1 overflow-y-auto px-6 py-6">
+      <!-- Subtitle + action row -->
+      <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <p class="text-sm text-slate-500">Manage and grow your long-term customer relationships.</p>
+        <div class="flex items-center gap-2">
+          <button class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+            Import Customers
+          </button>
+          <button class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            Export
+          </button>
+          <button id="add-customer-btn" class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+            Add Customer
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-6">
+          <div class="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-500"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <select class="w-full bg-transparent text-sm outline-none"><option>All Customers</option><option>Active</option><option>At Risk</option><option>Churned</option></select>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold text-slate-500">Customer Type</label>
+            <select class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm"><option>All Types</option><option>School</option><option>Church</option><option>Brand</option><option>Sports</option></select>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold text-slate-500">Product Interest</label>
+            <select class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm"><option>All Products</option><option>Hoodies</option><option>T-Shirts</option><option>DTF Transfers</option><option>Jerseys</option></select>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold text-slate-500">Health Status</label>
+            <select class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm"><option>All Status</option><option>Excellent</option><option>Good</option><option>At Risk</option></select>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold text-slate-500">Revenue Tier</label>
+            <select class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm"><option>All Tiers</option><option>Gold</option><option>Silver</option><option>Bronze</option></select>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold text-slate-500">Assigned To</label>
+            <select class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm"><option>All Managers</option><option>Mike Johnson</option><option>Sarah Williams</option><option>David Lee</option><option>Emily Davis</option></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="text-sm">
+          <span id="result-count" class="font-semibold">124 customers found</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-50">
+            Sort by: Last Activity
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="flex overflow-hidden rounded-lg border border-slate-200">
+            <button class="grid h-8 w-8 place-items-center hover:bg-slate-50" aria-label="Grid view"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
+            <button class="grid h-8 w-8 place-items-center bg-brand-600 text-white" aria-label="List view"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg></button>
+          </div>
+          <span class="text-xs text-slate-500">1–12 of 124</span>
+          <button class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 hover:bg-slate-50" aria-label="Previous"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button>
+          <button class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 hover:bg-slate-50" aria-label="Next"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
+        </div>
+      </div>
+
+      <!-- Customers table -->
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th class="px-3 py-3 text-left"><input type="checkbox" class="accent-brand-600" /></th>
+              <th class="px-3 py-3 text-left">Customer</th>
+              <th class="px-3 py-3 text-left">Company</th>
+              <th class="px-3 py-3 text-left">Type</th>
+              <th class="px-3 py-3 text-left">Total Orders</th>
+              <th class="px-3 py-3 text-left">Lifetime Spend</th>
+              <th class="px-3 py-3 text-left">Last Order</th>
+              <th class="px-3 py-3 text-left">Last Activity</th>
+              <th class="px-3 py-3 text-left">Health</th>
+              <th class="px-3 py-3 text-left">Assigned To</th>
+              <th class="px-3 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="customers-body" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+
+      <!-- Pagination footer -->
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <span>Show</span>
+          <select class="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"><option>20</option><option>50</option><option>100</option></select>
+          <span>per page</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 hover:bg-slate-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button>
+          <button class="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-sm font-semibold text-white">1</button>
+          <button class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-sm font-semibold hover:bg-slate-50">2</button>
+          <button class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-sm font-semibold hover:bg-slate-50">3</button>
+          <button class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-sm font-semibold hover:bg-slate-50">4</button>
+          <button class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-sm font-semibold hover:bg-slate-50">5</button>
+          <span class="px-1 text-slate-400">…</span>
+          <button class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-sm font-semibold hover:bg-slate-50">7</button>
+          <button class="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 hover:bg-slate-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
+        </div>
+        <div class="flex items-center gap-1 text-xs text-slate-500">
+          <span>Go to</span>
+          <input type="number" min="1" max="7" value="1" class="w-12 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs" />
+          <span>of 7 pages</span>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+  // ---- Logout ----
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    sessionStorage.removeItem('tcAuth');
+    sessionStorage.removeItem('tcUser');
+    window.location.replace('index.html');
+  });
+
+  // ---- Toast ----
+  const toast = (() => {
+    const host = document.createElement('div');
+    host.className = 'fixed bottom-5 right-5 z-[200] flex flex-col items-end gap-2';
+    document.body.appendChild(host);
+    return (msg, kind = 'info') => {
+      const colors = { success:'bg-emerald-600 text-white', info:'bg-slate-800 text-white', error:'bg-rose-600 text-white' };
+      const t = document.createElement('div');
+      t.className = `rounded-lg ${colors[kind]||colors.info} px-3 py-2 text-sm font-semibold shadow-lg transition-all duration-200 translate-y-2 opacity-0`;
+      t.textContent = msg;
+      host.appendChild(t);
+      requestAnimationFrame(() => t.classList.remove('translate-y-2','opacity-0'));
+      setTimeout(() => { t.classList.add('translate-y-2','opacity-0'); setTimeout(() => t.remove(), 220); }, 2400);
+    };
+  })();
+
+  // Coming-soon placeholder links
+  document.querySelectorAll('[data-coming]').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      toast(`${a.dataset.coming} page is coming in the next iteration`, 'info');
+    });
+  });
+
+  // ---- Customers data ----
+  const CUSTOMERS = [
+    { id:'springfield-hs',   name:'Springfield High School', loc:'Springfield, IL',     company:'Springfield High School', tier:'Gold',   type:'School', orders:48, spend:28450, lastOrder:'May 2, 2024',  activityAgo:'2 hours ago', activityDaysAgo:'12 days ago', channel:'WhatsApp',  health:92, healthLabel:'Excellent', owner:'Mike Johnson',    role:'Account Manager', avatar:'bg-slate-900 text-white',   initials:'SH' },
+    { id:'southland-church', name:'Southland Church',        loc:'Dallas, TX',          company:'Southland Church',        tier:'Gold',   type:'Church', orders:36, spend:21390, lastOrder:'Apr 28, 2024', activityAgo:'1 day ago',    activityDaysAgo:'16 days ago', channel:'Email',     health:88, healthLabel:'Excellent', owner:'Sarah Williams',  role:'Account Manager', avatar:'bg-violet-600 text-white',  initials:'SL' },
+    { id:'urban-threads',    name:'Urban Threads Co.',       loc:'Los Angeles, CA',     company:'Urban Threads Co.',       tier:'Gold',   type:'Brand',  orders:26, spend:18760, lastOrder:'Apr 25, 2024', activityAgo:'2 days ago',   activityDaysAgo:'19 days ago', channel:'WhatsApp',  health:85, healthLabel:'Excellent', owner:'David Lee',       role:'Account Manager', avatar:'bg-emerald-700 text-white', initials:'UT' },
+    { id:'northview-fb',     name:'Northview Football',      loc:'Northview, GA',       company:'Northview HS',            tier:'Silver', type:'School', orders:19, spend:12340, lastOrder:'Apr 18, 2024', activityAgo:'3 days ago',   activityDaysAgo:'26 days ago', channel:'Instagram', health:72, healthLabel:'Good',      owner:'Emily Davis',     role:'Account Manager', avatar:'bg-orange-500 text-white',  initials:'NF' },
+    { id:'grind-fitness',    name:'Grind Fitness Apparel',   loc:'Miami, FL',           company:'Grind Fitness LLC',       tier:'Silver', type:'Brand',  orders:15, spend:9870,  lastOrder:'Apr 12, 2024', activityAgo:'5 days ago',   activityDaysAgo:'32 days ago', channel:'Email',     health:70, healthLabel:'Good',      owner:'Daniel Martinez', role:'Account Manager', avatar:'bg-amber-100 text-amber-700', initials:'G' },
+    { id:'camp-victory',     name:'Camp Victory',            loc:'Austin, TX',          company:'Camp Victory',            tier:'Silver', type:'Church', orders:14, spend:8430,  lastOrder:'Apr 12, 2024', activityAgo:'6 days ago',   activityDaysAgo:'34 days ago', channel:'WhatsApp',  health:66, healthLabel:'Good',      owner:'Sarah Williams',  role:'Account Manager', avatar:'bg-yellow-600 text-white',  initials:'CV' },
+    { id:'bold-streetwear',  name:'Bold Streetwear',         loc:'Chicago, IL',         company:'Bold Apparel Inc.',       tier:'Bronze', type:'Brand',  orders:8,  spend:5120,  lastOrder:'Mar 30, 2024', activityAgo:'7 days ago',   activityDaysAgo:'45 days ago', channel:'Email',     health:58, healthLabel:'At Risk',   owner:'David Lee',       role:'Account Manager', avatar:'bg-pink-500 text-white',    initials:'B' },
+    { id:'riverside-pn',     name:'Riverside Panthers',      loc:'Riverside, CA',       company:'Riverside HS',            tier:'Bronze', type:'School', orders:7,  spend:4210,  lastOrder:'Mar 20, 2024', activityAgo:'9 days ago',   activityDaysAgo:'55 days ago', channel:'Facebook',  health:42, healthLabel:'At Risk',   owner:'Emily Davis',     role:'Account Manager', avatar:'bg-rose-600 text-white',    initials:'RP' },
+    { id:'lakeside-acad',    name:'Lakeside Academy',        loc:'Boston, MA',          company:'Lakeside Academy',        tier:'Gold',   type:'School', orders:31, spend:19120, lastOrder:'Apr 19, 2024', activityAgo:'4 days ago',   activityDaysAgo:'25 days ago', channel:'WhatsApp',  health:84, healthLabel:'Excellent', owner:'Mike Johnson',    role:'Account Manager', avatar:'bg-sky-700 text-white',     initials:'LA' },
+    { id:'eagle-scouts-42',  name:'Eagle Scouts Troop 42',   loc:'Denver, CO',          company:'Troop 42',                tier:'Silver', type:'Church', orders:12, spend:6890,  lastOrder:'Apr 5, 2024',  activityAgo:'8 days ago',   activityDaysAgo:'39 days ago', channel:'Email',     health:74, healthLabel:'Good',      owner:'Sarah Williams',  role:'Account Manager', avatar:'bg-indigo-600 text-white',  initials:'ES' },
+    { id:'highland-boutique',name:'Highland Boutique',       loc:'Portland, OR',        company:'Highland Boutique',       tier:'Bronze', type:'Brand',  orders:6,  spend:3920,  lastOrder:'Mar 12, 2024', activityAgo:'12 days ago',  activityDaysAgo:'63 days ago', channel:'Instagram', health:48, healthLabel:'At Risk',   owner:'David Lee',       role:'Account Manager', avatar:'bg-teal-600 text-white',    initials:'HB' },
+    { id:'westpark-fc',      name:'Westpark FC',             loc:'Phoenix, AZ',         company:'Westpark Football Club',  tier:'Gold',   type:'Sports', orders:22, spend:15600, lastOrder:'Apr 22, 2024', activityAgo:'3 days ago',   activityDaysAgo:'22 days ago', channel:'WhatsApp',  health:81, healthLabel:'Excellent', owner:'Daniel Martinez', role:'Account Manager', avatar:'bg-emerald-600 text-white', initials:'WP' },
+  ];
+
+  const tierClass = (tier) => ({
+    Gold:   'bg-amber-100 text-amber-800',
+    Silver: 'bg-slate-200 text-slate-700',
+    Bronze: 'bg-orange-100 text-orange-700',
+  }[tier] || 'bg-slate-100 text-slate-600');
+
+  const typeClass = (type) => ({
+    School: 'bg-sky-100 text-sky-700',
+    Church: 'bg-violet-100 text-violet-700',
+    Brand:  'bg-rose-100 text-rose-700',
+    Sports: 'bg-emerald-100 text-emerald-700',
+  }[type] || 'bg-slate-100 text-slate-700');
+
+  const healthClass = (label) => ({
+    Excellent: 'text-emerald-600 bg-emerald-50',
+    Good:      'text-amber-700 bg-amber-50',
+    'At Risk': 'text-rose-600 bg-rose-50',
+  }[label] || 'text-slate-600 bg-slate-100');
+
+  const channelIconSVG = {
+    WhatsApp:  `<span class="grid h-4 w-4 place-items-center rounded-full bg-emerald-500 text-white"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24z"/></svg></span>`,
+    Instagram: `<span class="grid h-4 w-4 place-items-center rounded-md bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600 text-white"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/></svg></span>`,
+    Facebook:  `<span class="grid h-4 w-4 place-items-center rounded-full bg-blue-600 text-white"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.99 22 12z"/></svg></span>`,
+    Email:     `<span class="grid h-4 w-4 place-items-center rounded-full bg-slate-700 text-white"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-10 5L2 7"/></svg></span>`,
+  };
+
+  const fmt$ = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function rowHTML(c) {
+    return `<tr data-id="${c.id}" class="cursor-pointer hover:bg-slate-50">
+      <td class="px-3 py-3" onclick="event.stopPropagation()"><input type="checkbox" class="accent-brand-600" /></td>
+      <td class="px-3 py-3">
+        <div class="flex items-center gap-3">
+          <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full ${c.avatar} text-xs font-bold">${c.initials}</span>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <div class="truncate font-semibold">${c.name}</div>
+              <span class="rounded-md px-1.5 py-0.5 text-[10px] font-bold ${tierClass(c.tier)}">${c.tier}</span>
+            </div>
+            <div class="text-xs text-slate-500">${c.loc}</div>
+          </div>
+        </div>
+      </td>
+      <td class="px-3 py-3 text-sm text-slate-700">${c.company}</td>
+      <td class="px-3 py-3"><span class="rounded-md px-2 py-0.5 text-xs font-semibold ${typeClass(c.type)}">${c.type}</span></td>
+      <td class="px-3 py-3 text-sm font-semibold">${c.orders}</td>
+      <td class="px-3 py-3 text-sm font-semibold">${fmt$(c.spend)}</td>
+      <td class="px-3 py-3 text-sm">${c.lastOrder}<div class="text-xs text-slate-500">${c.activityDaysAgo}</div></td>
+      <td class="px-3 py-3">
+        <div class="flex items-center gap-1.5 text-xs"><span>${c.activityAgo}</span></div>
+        <div class="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">${channelIconSVG[c.channel]||''} ${c.channel}</div>
+      </td>
+      <td class="px-3 py-3">
+        <div class="text-base font-bold ${healthClass(c.healthLabel).split(' ')[0]}">${c.health}</div>
+        <span class="inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${healthClass(c.healthLabel)}">${c.healthLabel}</span>
+      </td>
+      <td class="px-3 py-3">
+        <div class="flex items-center gap-2">
+          <img alt="" src="https://i.pravatar.cc/24?u=${c.owner}" class="h-6 w-6 rounded-full" />
+          <div class="text-xs leading-tight"><div class="font-semibold">${c.owner}</div><div class="text-slate-500">${c.role}</div></div>
+        </div>
+      </td>
+      <td class="px-3 py-3 text-right" onclick="event.stopPropagation()">
+        <button class="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="More"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+      </td>
+    </tr>`;
+  }
+
+  const tbody = document.getElementById('customers-body');
+  function render(rows) {
+    tbody.innerHTML = rows.map(rowHTML).join('');
+    document.getElementById('result-count').textContent = `${rows.length} customer${rows.length===1?'':'s'} found`;
+  }
+  render(CUSTOMERS);
+
+  // Click row → Customer 360 (coming next)
+  tbody.addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (!tr) return;
+    toast(`Opening Customer 360 for ${tr.querySelector('.font-semibold').textContent.trim()} — coming in the next iteration`, 'info');
+    // Future: window.location.href = `customer-360.html?id=${tr.dataset.id}`;
+  });
+
+  // Search
+  document.getElementById('search').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    if (!q) return render(CUSTOMERS);
+    const filtered = CUSTOMERS.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      c.company.toLowerCase().includes(q) ||
+      c.loc.toLowerCase().includes(q) ||
+      c.owner.toLowerCase().includes(q)
+    );
+    render(filtered);
+  });
+
+  document.getElementById('add-customer-btn').addEventListener('click', () => {
+    toast('Add Customer flow — coming in the next iteration', 'info');
+  });
+</script>
+</body>
+</html>
