@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Technocas CRM — Customer 360</title>
+  <script>
+    if (sessionStorage.getItem('tcAuth') !== '1') {
+      window.location.replace('index.html');
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#eef2ff',100:'#e0e7ff',500:'#4f46e5',600:'#4338ca',700:'#3730a3' },
+            ink:   { 900:'#0b0f1a',800:'#0d1220',700:'#111827' }
+          },
+          fontFamily: { sans: ['Inter','ui-sans-serif','system-ui','-apple-system','Segoe UI','Roboto','Helvetica','Arial','sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    .nice-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+    .nice-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 999px; }
+    .sidebar-scroll::-webkit-scrollbar { width: 6px; }
+    .sidebar-scroll::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 999px; }
+    [data-tab-panel]:not(.active) { display: none !important; }
+  </style>
+</head>
+<body class="h-screen overflow-hidden bg-slate-50 font-sans text-slate-800 antialiased">
+
+<div class="grid h-screen" style="grid-template-columns: 240px 1fr;">
+  <!-- =================== SIDEBAR =================== -->
+  <aside class="flex flex-col bg-ink-900 text-slate-300">
+    <a href="dashboard.html" class="flex h-16 items-center gap-2 px-5">
+      <div class="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600">
+        <span class="text-sm font-black text-white">T</span>
+      </div>
+      <span class="text-lg font-bold text-white">Technocas</span>
+    </a>
+    <nav class="sidebar-scroll flex-1 overflow-y-auto px-3 pb-6">
+      <ul class="space-y-1">
+        <li><a href="dashboard.html" class="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
+          <span class="flex items-center gap-3 text-sm font-medium">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/></svg>
+            Inbox
+          </span>
+          <span class="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">12</span>
+        </a></li>
+      </ul>
+      <p class="mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">CRM 360</p>
+      <ul class="space-y-1">
+        <li><a href="customers.html" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          Customers
+        </a></li>
+        <li><a href="customer-360.html" class="flex items-center gap-3 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+          Customer 360
+        </a></li>
+        <li><a href="#" data-coming="Orders" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          Orders
+        </a></li>
+        <li><a href="#" data-coming="Artwork Vault" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+          Artwork Vault
+        </a></li>
+        <li><a href="#" data-coming="Follow-Ups" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          Follow-Ups
+        </a></li>
+        <li><a href="#" data-coming="Campaigns" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/></svg>
+          Campaigns
+        </a></li>
+        <li><a href="#" data-coming="Reports" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
+          Reports
+        </a></li>
+        <li><a href="#" data-coming="Receipts" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Receipts
+        </a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <!-- =================== MAIN =================== -->
+  <div class="flex h-screen flex-col overflow-hidden">
+    <!-- top bar -->
+    <header class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
+      <nav class="flex items-center gap-2 text-sm">
+        <a href="customers.html" class="text-slate-500 hover:text-slate-700">Customers</a>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="font-semibold text-brand-600">Customer 360</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-300"><path d="m9 18 6-6-6-6"/></svg>
+        <span id="crumb-name" class="font-semibold">Springfield High School</span>
+      </nav>
+      <div class="flex items-center gap-3">
+        <input id="search" type="search" placeholder="Search anything..." class="w-72 rounded-lg border border-slate-200 bg-slate-50 py-2 px-3 text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20" />
+        <button class="relative grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100" aria-label="Notifications">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <span class="absolute -top-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white">6</span>
+        </button>
+        <div class="flex items-center gap-3 border-l border-slate-200 pl-3">
+          <img alt="Mike Johnson" src="https://i.pravatar.cc/40?img=12" class="h-9 w-9 rounded-full" />
+          <div class="text-xs leading-tight">
+            <div class="font-semibold">Mike Johnson</div>
+            <div class="text-slate-500">Account Manager</div>
+          </div>
+          <button id="logout-btn" class="ml-2 grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600" aria-label="Log out" title="Log out">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="nice-scroll flex-1 overflow-y-auto px-6 py-5">
+      <!-- Customer header card -->
+      <section class="mb-5 rounded-2xl border border-slate-200 bg-white p-5">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="flex items-start gap-4">
+            <div class="relative">
+              <span id="cust-avatar" class="grid h-20 w-20 place-items-center rounded-full bg-slate-900 text-2xl font-bold text-white">SH</span>
+              <button class="absolute -bottom-1 -right-1 grid h-7 w-7 place-items-center rounded-full bg-brand-600 text-white shadow-md ring-2 ring-white" aria-label="Edit avatar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            </div>
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h1 id="cust-name" class="text-2xl font-extrabold tracking-tight">Springfield High School</h1>
+                <span id="cust-tier" class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">★ Gold Customer</span>
+              </div>
+              <div class="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-600">
+                <span class="inline-flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> +1 (217) 555-0198</span>
+                <span class="inline-flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-10 5L2 7"/></svg> info@springfieldhs.edu</span>
+                <span class="inline-flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Springfield, IL, USA</span>
+              </div>
+              <div class="mt-3 flex flex-wrap gap-1.5">
+                <span class="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">School</span>
+                <span class="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Repeat Customer</span>
+                <span class="rounded-md bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">DTF &amp; Apparel</span>
+                <span class="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Athletics</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right side stats -->
+          <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-3 md:grid-cols-5">
+            <div><div class="text-[11px] uppercase tracking-wide text-slate-400">Account Owner</div><div class="font-semibold">Mike Johnson</div></div>
+            <div><div class="text-[11px] uppercase tracking-wide text-slate-400">Customer Since</div><div class="font-semibold">May 10, 2024</div></div>
+            <div><div class="text-[11px] uppercase tracking-wide text-slate-400">Total Orders</div><div class="font-semibold">48</div></div>
+            <div><div class="text-[11px] uppercase tracking-wide text-slate-400">Lifetime Spend</div><div class="font-semibold text-emerald-600">$28,450.00</div></div>
+            <div><div class="text-[11px] uppercase tracking-wide text-slate-400">Last Order</div><div class="font-semibold">May 2, 2024</div></div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex shrink-0 items-center gap-2">
+            <button class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+              Send Message
+            </button>
+            <button class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              More Actions
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <button class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+              New Quote
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TABS -->
+      <nav class="mb-5 flex items-center gap-2 overflow-x-auto border-b border-slate-200 px-1" role="tablist" id="c360-tabs">
+        <button role="tab" data-target="tab-overview"      class="whitespace-nowrap border-b-2 border-brand-500 px-2 py-2.5 text-sm font-semibold text-brand-600">Overview</button>
+        <button role="tab" data-target="tab-conversations" class="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700">Conversations <span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">128</span></button>
+        <button role="tab" data-target="tab-orders"        class="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700">Orders <span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">48</span></button>
+        <button role="tab" data-target="tab-artwork"       class="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700">Artwork <span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">24</span></button>
+        <button role="tab" data-target="tab-notes"         class="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700">Notes <span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">14</span></button>
+        <button role="tab" data-target="tab-payments"      class="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700">Payments</button>
+        <button role="tab" data-target="tab-followups"     class="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700">Follow-Ups <span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">7</span></button>
+        <button role="tab" data-target="tab-files"         class="whitespace-nowrap border-b-2 border-transparent px-2 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700">Files <span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">36</span></button>
+      </nav>
+
+      <!-- ====================== TAB: OVERVIEW ====================== -->
+      <div data-tab-panel id="tab-overview" class="active">
+        <!-- Stat cards row -->
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+          <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2 text-xs text-slate-500"><span class="grid h-7 w-7 place-items-center rounded-lg bg-emerald-50 text-emerald-600">💰</span> Lifetime Revenue</div><div class="mt-2 text-xl font-extrabold">$28,450.00</div><div class="text-[11px] font-semibold text-emerald-600">↑18.6% vs last 12 months</div></div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2 text-xs text-slate-500"><span class="grid h-7 w-7 place-items-center rounded-lg bg-brand-50 text-brand-600">🛒</span> Total Orders</div><div class="mt-2 text-xl font-extrabold">48</div><div class="text-[11px] font-semibold text-emerald-600">12 vs last 12 months</div></div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2 text-xs text-slate-500"><span class="grid h-7 w-7 place-items-center rounded-lg bg-violet-50 text-violet-600">📈</span> Avg Order Value</div><div class="mt-2 text-xl font-extrabold">$592.71</div><div class="text-[11px] font-semibold text-emerald-600">↑6.4% vs last 12 months</div></div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2 text-xs text-slate-500"><span class="grid h-7 w-7 place-items-center rounded-lg bg-amber-50 text-amber-600">📅</span> Last Order</div><div class="mt-2 text-xl font-extrabold">May 2, 2024</div><div class="text-[11px] text-slate-500">12 days ago</div></div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2 text-xs text-slate-500"><span class="grid h-7 w-7 place-items-center rounded-lg bg-sky-50 text-sky-600">🔁</span> Repeat Frequency</div><div class="mt-2 text-xl font-extrabold">Every 45d</div><div class="text-[11px] text-slate-500">Regular Customer</div></div>
+          <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2 text-xs text-slate-500"><span class="grid h-7 w-7 place-items-center rounded-lg bg-rose-50 text-rose-600">❤</span> Customer Health</div><div class="mt-2 text-xl font-extrabold text-emerald-600">92 <span class="text-sm text-slate-400">/100</span></div><div class="text-[11px] font-semibold text-emerald-600">Excellent</div></div>
+        </div>
+
+        <!-- Revenue chart + Top products + Reorder prediction -->
+        <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div class="rounded-xl border border-slate-200 bg-white p-4 lg:col-span-1">
+            <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-bold">Revenue Trend</h3><button class="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold">Last 12 Months <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button></div>
+            <svg viewBox="0 0 320 160" class="w-full">
+              <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4f46e5" stop-opacity="0.35"/><stop offset="100%" stop-color="#4f46e5" stop-opacity="0"/></linearGradient></defs>
+              <polyline fill="url(#g1)" stroke="none" points="20,120 50,100 80,110 110,85 140,90 170,70 200,55 230,75 260,60 290,45 290,150 20,150"/>
+              <polyline fill="none" stroke="#4f46e5" stroke-width="2.5" points="20,120 50,100 80,110 110,85 140,90 170,70 200,55 230,75 260,60 290,45"/>
+              <g fill="#4f46e5"><circle cx="20" cy="120" r="3"/><circle cx="50" cy="100" r="3"/><circle cx="80" cy="110" r="3"/><circle cx="110" cy="85" r="3"/><circle cx="140" cy="90" r="3"/><circle cx="170" cy="70" r="3"/><circle cx="200" cy="55" r="3"/><circle cx="230" cy="75" r="3"/><circle cx="260" cy="60" r="3"/><circle cx="290" cy="45" r="3"/></g>
+            </svg>
+            <div class="mt-1 grid grid-cols-12 gap-1 text-center text-[9px] text-slate-400">
+              <span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 bg-white p-4 lg:col-span-1">
+            <h3 class="mb-3 text-sm font-bold">Top Products</h3>
+            <div class="flex items-center gap-4">
+              <svg viewBox="0 0 100 100" class="h-32 w-32 -rotate-90">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#e2e8f0" stroke-width="14"/>
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#4f46e5" stroke-width="14" stroke-dasharray="105.5 251" stroke-dashoffset="0"/>
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#22c55e" stroke-width="14" stroke-dasharray="62.7 251" stroke-dashoffset="-105.5"/>
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#f59e0b" stroke-width="14" stroke-dasharray="45.2 251" stroke-dashoffset="-168.2"/>
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#ec4899" stroke-width="14" stroke-dasharray="20.1 251" stroke-dashoffset="-213.4"/>
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#94a3b8" stroke-width="14" stroke-dasharray="17.6 251" stroke-dashoffset="-233.5"/>
+              </svg>
+              <ul class="flex-1 space-y-1.5 text-xs">
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-brand-500"></span>Hoodies</span><span class="font-semibold">42%</span></li>
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>T-Shirts</span><span class="font-semibold">25%</span></li>
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-amber-500"></span>DTF Transfers</span><span class="font-semibold">18%</span></li>
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-pink-500"></span>Crewnecks</span><span class="font-semibold">8%</span></li>
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-slate-400"></span>Other</span><span class="font-semibold">7%</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 bg-white p-4 lg:col-span-1">
+            <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-bold">Reorder Prediction</h3><button class="text-[11px] font-semibold text-brand-600 hover:text-brand-700">View all</button></div>
+            <ul class="space-y-2 text-sm">
+              <li class="flex items-center gap-3"><span class="grid h-10 w-10 place-items-center rounded-lg bg-slate-900 text-white text-[10px] font-bold">HOODIE</span><div class="flex-1"><div class="font-semibold">Graduation Hoodies</div><div class="text-[11px] text-slate-500">Likely reorder April 2025</div></div><span class="rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">High</span></li>
+              <li class="flex items-center gap-3"><span class="grid h-10 w-10 place-items-center rounded-lg bg-slate-800 text-white text-[10px] font-bold">TEE</span><div class="flex-1"><div class="font-semibold">Football Jerseys</div><div class="text-[11px] text-slate-500">Likely reorder Aug 2025</div></div><span class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Medium</span></li>
+              <li class="flex items-center gap-3"><span class="grid h-10 w-10 place-items-center rounded-lg bg-slate-700 text-white text-[10px] font-bold">CREW</span><div class="flex-1"><div class="font-semibold">Staff Crewnecks</div><div class="text-[11px] text-slate-500">Likely reorder Dec 2025</div></div><span class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Low</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Preferences + AI Summary + Recent Activity -->
+        <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div class="rounded-xl border border-slate-200 bg-white p-4 lg:col-span-2">
+            <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-bold">Preferences</h3><a class="text-[11px] font-semibold text-brand-600">View all preferences →</a></div>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div>
+                <div class="mb-2 text-xs font-semibold text-slate-500">Communication</div>
+                <ul class="space-y-1.5 text-xs">
+                  <li class="flex items-center justify-between gap-2"><span class="inline-flex items-center gap-1.5"><span class="grid h-4 w-4 place-items-center rounded-full bg-emerald-500 text-white text-[8px]">W</span>WhatsApp</span><span class="w-20"><span class="block h-1.5 rounded-full bg-slate-100"><span class="block h-1.5 w-[70%] rounded-full bg-emerald-500"></span></span></span><span class="text-slate-500 w-7 text-right">70%</span></li>
+                  <li class="flex items-center justify-between gap-2"><span class="inline-flex items-center gap-1.5"><span class="grid h-4 w-4 place-items-center rounded-full bg-slate-700 text-white text-[8px]">E</span>Email</span><span class="w-20"><span class="block h-1.5 rounded-full bg-slate-100"><span class="block h-1.5 w-[20%] rounded-full bg-slate-500"></span></span></span><span class="text-slate-500 w-7 text-right">20%</span></li>
+                  <li class="flex items-center justify-between gap-2"><span class="inline-flex items-center gap-1.5"><span class="grid h-4 w-4 place-items-center rounded-full bg-blue-500 text-white text-[8px]">P</span>Phone</span><span class="w-20"><span class="block h-1.5 rounded-full bg-slate-100"><span class="block h-1.5 w-[10%] rounded-full bg-blue-500"></span></span></span><span class="text-slate-500 w-7 text-right">10%</span></li>
+                </ul>
+              </div>
+              <div>
+                <div class="mb-2 text-xs font-semibold text-slate-500">Payment</div>
+                <ul class="space-y-1.5 text-xs">
+                  <li class="flex items-center justify-between gap-2"><span class="inline-flex items-center gap-1.5"><span class="grid h-4 w-4 place-items-center rounded-full bg-violet-600 text-white text-[8px]">Z</span>Zelle</span><span class="text-slate-500">60%</span></li>
+                  <li class="flex items-center justify-between gap-2"><span class="inline-flex items-center gap-1.5"><span class="grid h-4 w-4 place-items-center rounded-full bg-slate-700 text-white text-[8px]">B</span>Bank Transfer</span><span class="text-slate-500">30%</span></li>
+                  <li class="flex items-center justify-between gap-2"><span class="inline-flex items-center gap-1.5"><span class="grid h-4 w-4 place-items-center rounded-full bg-blue-500 text-white text-[8px]">C</span>Credit Card</span><span class="text-slate-500">10%</span></li>
+                </ul>
+              </div>
+              <div>
+                <div class="mb-2 text-xs font-semibold text-slate-500">Quick Notes (Pinned)</div>
+                <ul class="space-y-1.5 text-xs text-slate-700">
+                  <li>📌 Prefers oversized back print</li>
+                  <li>📌 Orders before major school events</li>
+                  <li>📌 Needs rush turnaround during season</li>
+                  <li>📌 Pays via Zelle after invoice</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="mb-2 flex items-center justify-between"><h3 class="inline-flex items-center gap-1.5 text-sm font-bold"><span class="grid h-5 w-5 place-items-center rounded-md bg-violet-100 text-violet-600">✨</span>AI Summary</h3><button class="text-[11px] font-semibold text-brand-600">View all</button></div>
+            <p class="text-xs leading-relaxed text-slate-600">Springfield High School is a high-value repeat customer. They typically place bulk orders for athletic events and school functions. Preferred products are hoodies and t-shirts with oversized back prints. They respond fastest on WhatsApp and prefer Zelle payments.</p>
+            <button class="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              Ask AI anything
+            </button>
+          </div>
+        </div>
+
+        <!-- Recent activity -->
+        <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div class="mb-3 flex items-center justify-between"><h3 class="text-sm font-bold">Recent Activity</h3><a class="text-[11px] font-semibold text-brand-600">View all activity →</a></div>
+          <ul class="space-y-3 text-sm">
+            <li class="flex gap-3"><span class="grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-emerald-700">✓</span><div><div class="font-semibold">Order #ORD-1042 Completed</div><div class="text-xs text-slate-500">May 2, 2024 · $2,450.00</div></div></li>
+            <li class="flex gap-3"><span class="grid h-8 w-8 place-items-center rounded-full bg-brand-50 text-brand-600">💬</span><div><div class="font-semibold">New conversation on WhatsApp</div><div class="text-xs text-slate-500">Apr 29, 2024</div></div></li>
+            <li class="flex gap-3"><span class="grid h-8 w-8 place-items-center rounded-full bg-violet-100 text-violet-600">🎨</span><div><div class="font-semibold">Artwork approved — Graduation Hoodie Design</div><div class="text-xs text-slate-500">Apr 30, 2024</div></div></li>
+            <li class="flex gap-3"><span class="grid h-8 w-8 place-items-center rounded-full bg-amber-100 text-amber-600">💰</span><div><div class="font-semibold">Payment received via Zelle</div><div class="text-xs text-slate-500">Apr 29, 2024 · $2,450.00</div></div></li>
+            <li class="flex gap-3"><span class="grid h-8 w-8 place-items-center rounded-full bg-sky-100 text-sky-600">📝</span><div><div class="font-semibold">Quote #Q-1024 sent</div><div class="text-xs text-slate-500">Apr 28, 2024 · $1,890.00</div></div></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ====================== TAB: ORDERS ====================== -->
+      <div data-tab-panel id="tab-orders">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
+          <div>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Total Orders</div><div class="text-lg font-extrabold">48</div></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Completed</div><div class="text-lg font-extrabold text-emerald-600">42</div><div class="text-[10px] text-slate-500">87.5% of total</div></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Total Spend</div><div class="text-lg font-extrabold">$28,450</div></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Avg Order</div><div class="text-lg font-extrabold">$592.71</div></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Open Orders</div><div class="text-lg font-extrabold text-brand-600">2</div><div class="text-[10px] text-slate-500">$1,890.00</div></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Cancelled</div><div class="text-lg font-extrabold text-rose-600">4</div><div class="text-[10px] text-slate-500">$890.00</div></div>
+            </div>
+            <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr><th class="px-3 py-2 text-left">Order #</th><th class="px-3 py-2 text-left">Date</th><th class="px-3 py-2 text-left">Products</th><th class="px-3 py-2 text-left">Qty</th><th class="px-3 py-2 text-left">Amount</th><th class="px-3 py-2 text-left">Status</th><th class="px-3 py-2 text-left">Payment</th><th class="px-3 py-2 text-left">Delivery</th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr><td class="px-3 py-2.5 font-semibold text-brand-600">#ORD-1042</td><td class="px-3 py-2.5">May 2, 2024<div class="text-[10px] text-slate-400">12d ago</div></td><td class="px-3 py-2.5"><div class="font-medium">Graduation Hoodies 2025</div><div class="text-[10px] text-slate-500">Puff Print · Navy</div></td><td class="px-3 py-2.5">50 pcs</td><td class="px-3 py-2.5">$3,450.00</td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Completed</span></td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Paid</span><div class="text-[10px] text-slate-500">via Zelle</div></td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Delivered</span><div class="text-[10px] text-slate-500">May 8</div></td></tr>
+                  <tr><td class="px-3 py-2.5 font-semibold text-brand-600">#ORD-0981</td><td class="px-3 py-2.5">Apr 28, 2024<div class="text-[10px] text-slate-400">16d ago</div></td><td class="px-3 py-2.5"><div class="font-medium">Football Jerseys</div><div class="text-[10px] text-slate-500">Sublimated · Full Color</div></td><td class="px-3 py-2.5">36 pcs</td><td class="px-3 py-2.5">$4,120.00</td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Completed</span></td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Paid</span><div class="text-[10px] text-slate-500">via Zelle</div></td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Delivered</span><div class="text-[10px] text-slate-500">May 5</div></td></tr>
+                  <tr><td class="px-3 py-2.5 font-semibold text-brand-600">#ORD-0930</td><td class="px-3 py-2.5">Apr 15, 2024</td><td class="px-3 py-2.5"><div class="font-medium">Staff Crewnecks</div><div class="text-[10px] text-slate-500">Embroidery · Navy</div></td><td class="px-3 py-2.5">24 pcs</td><td class="px-3 py-2.5">$1,890.00</td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Completed</span></td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Paid</span><div class="text-[10px] text-slate-500">Bank Transfer</div></td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Delivered</span></td></tr>
+                  <tr><td class="px-3 py-2.5 font-semibold text-brand-600">#ORD-0872</td><td class="px-3 py-2.5">Mar 30, 2024</td><td class="px-3 py-2.5"><div class="font-medium">DTF Gang Sheet</div><div class="text-[10px] text-slate-500">12" × 22" · Full Color</div></td><td class="px-3 py-2.5">3 sheets</td><td class="px-3 py-2.5">$420.00</td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Completed</span></td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Paid</span></td><td class="px-3 py-2.5"><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Delivered</span></td></tr>
+                  <tr><td class="px-3 py-2.5 font-semibold text-brand-600">#ORD-0742</td><td class="px-3 py-2.5">Feb 20, 2024</td><td class="px-3 py-2.5"><div class="font-medium">Practice Hoodies</div><div class="text-[10px] text-slate-500">Puff Print · Gray</div></td><td class="px-3 py-2.5">20 pcs</td><td class="px-3 py-2.5">$1,480.00</td><td class="px-3 py-2.5"><span class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Processing</span></td><td class="px-3 py-2.5"><span class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Partial</span><div class="text-[10px] text-slate-500">$740/$1,480</div></td><td class="px-3 py-2.5"><span class="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">In Production</span></td></tr>
+                  <tr><td class="px-3 py-2.5 font-semibold text-brand-600">#ORD-0612</td><td class="px-3 py-2.5">Jan 18, 2024</td><td class="px-3 py-2.5"><div class="font-medium">DTF Gang Sheet</div><div class="text-[10px] text-slate-500">11" × 17" · Full Color</div></td><td class="px-3 py-2.5">2 sheets</td><td class="px-3 py-2.5">$320.00</td><td class="px-3 py-2.5"><span class="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">Cancelled</span></td><td class="px-3 py-2.5"><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">Refunded</span></td><td class="px-3 py-2.5">—</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <aside class="space-y-3">
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-2 text-xs font-semibold text-slate-500">Most Ordered Product</div>
+              <div class="flex items-center gap-2"><span class="grid h-10 w-10 place-items-center rounded-lg bg-slate-900 text-white text-[10px] font-bold">HOODIE</span><div><div class="text-sm font-semibold">Graduation Hoodies</div><div class="text-[10px] text-slate-500">16 orders</div></div></div>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-2 text-xs font-semibold text-slate-500">Highest Order Value</div>
+              <div class="flex items-center gap-2"><span class="grid h-10 w-10 place-items-center rounded-lg bg-slate-800 text-white text-[10px] font-bold">TEE</span><div><div class="text-sm font-semibold text-emerald-600">$4,120.00</div><div class="text-[10px] text-slate-500">Football Jerseys</div></div></div>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-2 text-xs font-semibold text-slate-500">Average Reorder Time</div>
+              <div class="text-sm font-semibold">42 days</div>
+              <div class="text-[10px] text-slate-500">Based on last 6 orders</div>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-2 flex items-center justify-between"><span class="text-xs font-semibold text-slate-500">Reorder Prediction</span><span class="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">High</span></div>
+              <div class="text-sm font-bold">Likely to reorder in</div>
+              <div class="text-xl font-extrabold text-emerald-600">14 days</div>
+              <button class="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100">+ Create Reorder Quote</button>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ====================== TAB: NOTES ====================== -->
+      <div data-tab-panel id="tab-notes">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
+          <div>
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-base font-bold">Notes</h3>
+                <p class="text-xs text-slate-500">All important notes and information about this customer.</p>
+              </div>
+              <button class="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">+ New Note</button>
+            </div>
+            <div class="mb-3 flex flex-wrap gap-1.5 text-xs">
+              <button class="rounded-md bg-brand-50 px-2 py-0.5 font-semibold text-brand-700">All Notes (14)</button>
+              <button class="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">Internal (6)</button>
+              <button class="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">Design (3)</button>
+              <button class="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">Payment (2)</button>
+              <button class="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">Shipping (1)</button>
+              <button class="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">Complaint (1)</button>
+              <button class="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">General (1)</button>
+            </div>
+            <ul class="space-y-2">
+              <li class="rounded-xl border border-slate-200 bg-white p-3"><div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-violet-600">📝</span><div class="flex-1"><div class="flex items-center gap-2"><h4 class="font-semibold">Oversized back print preference</h4><span class="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Design</span><span class="text-[10px] text-rose-600">📌 Pinned</span></div><p class="text-xs text-slate-600">Customer prefers oversized back prints on all hoodies. Usually 12"–13" wide.</p><div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400"><span>Mike Johnson</span>·<span>Apr 28, 2024 · 10:25 AM</span></div></div></div></li>
+              <li class="rounded-xl border border-slate-200 bg-white p-3"><div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 text-amber-600">💰</span><div class="flex-1"><div class="flex items-center gap-2"><h4 class="font-semibold">Prefers Zelle payment</h4><span class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Payment</span><span class="text-[10px] text-rose-600">📌 Pinned</span></div><p class="text-xs text-slate-600">Always prefers payment via Zelle. Send payment request to timary.zoiae@springfieldhs.edu</p><div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400"><span>Sarah Williams</span>·<span>Apr 25, 2024 · 02:15 PM</span></div></div></div></li>
+              <li class="rounded-xl border border-slate-200 bg-white p-3"><div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-emerald-100 text-emerald-600">🚚</span><div class="flex-1"><div class="flex items-center gap-2"><h4 class="font-semibold">Rush delivery before event</h4><span class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Shipping</span></div><p class="text-xs text-slate-600">Needs all orders before major school events. Usually 2-3 weeks in advance.</p><div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400"><span>Mike Johnson</span>·<span>Apr 20, 2024 · 11:40 AM</span></div></div></div></li>
+              <li class="rounded-xl border border-slate-200 bg-white p-3"><div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-sky-100 text-sky-600">ℹ</span><div class="flex-1"><div class="flex items-center gap-2"><h4 class="font-semibold">Homecoming 2024 details</h4><span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">General</span></div><p class="text-xs text-slate-600">Homecoming on Oct 4, 2024. Expect orders for hoodies, tees and crewnecks.</p><div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400"><span>Timary Zoiaor</span>·<span>Apr 15, 2024 · 09:30 AM</span></div></div></div></li>
+              <li class="rounded-xl border border-slate-200 bg-white p-3"><div class="flex items-start gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-rose-100 text-rose-600">⚠</span><div class="flex-1"><div class="flex items-center gap-2"><h4 class="font-semibold">Late approval caused delay</h4><span class="rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">Complaint</span></div><p class="text-xs text-slate-600">Artwork approval was delayed from customer side. Need earlier follow up next time.</p><div class="mt-1 flex items-center gap-2 text-[10px] text-slate-400"><span>Sarah Williams</span>·<span>Mar 30, 2024 · 04:22 PM</span></div></div></div></li>
+            </ul>
+          </div>
+          <aside class="space-y-3">
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-2 text-xs font-bold">Pinned Notes (2)</div>
+              <ul class="space-y-2 text-xs">
+                <li class="rounded-md bg-violet-50 p-2"><div class="font-semibold">Oversized back print preference</div><div class="text-slate-600">Customer prefers oversized back prints on all hoodies...</div><div class="mt-1 text-[10px] text-slate-400">Apr 28, 2024 by Mike Johnson</div></li>
+                <li class="rounded-md bg-amber-50 p-2"><div class="font-semibold">Prefers Zelle payment</div><div class="text-slate-600">Always prefers payment via Zelle. Send payment...</div><div class="mt-1 text-[10px] text-slate-400">Apr 25, 2024 by Sarah Williams</div></li>
+              </ul>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-2 text-xs font-bold">Note Categories</div>
+              <ul class="space-y-1 text-xs">
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-violet-500"></span>Internal</span><span class="font-semibold">6</span></li>
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-sky-500"></span>Design</span><span class="font-semibold">3</span></li>
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Payment</span><span class="font-semibold">2</span></li>
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Shipping</span><span class="font-semibold">1</span></li>
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-rose-500"></span>Complaint</span><span class="font-semibold">1</span></li>
+                <li class="flex items-center justify-between"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-slate-400"></span>General</span><span class="font-semibold">1</span></li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ====================== TAB: PAYMENTS ====================== -->
+      <div data-tab-panel id="tab-payments">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
+          <div>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Total Paid</div><div class="text-lg font-extrabold">$25,910.00</div><div class="text-[10px] text-emerald-600 font-semibold">91.1% of lifetime spend</div></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Outstanding</div><div class="text-lg font-extrabold text-amber-600">$2,540.00</div><div class="text-[10px] text-rose-600 font-semibold">2 invoices due</div></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Total Invoices</div><div class="text-lg font-extrabold">18</div></div>
+              <div class="rounded-xl border border-slate-200 bg-white p-3"><div class="text-[11px] text-slate-500">Avg Payment Time</div><div class="text-lg font-extrabold">3.6 days</div></div>
+            </div>
+            <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr><th class="px-3 py-2 text-left">Date</th><th class="px-3 py-2 text-left">Type</th><th class="px-3 py-2 text-left">Invoice / Order</th><th class="px-3 py-2 text-left">Description</th><th class="px-3 py-2 text-left">Method</th><th class="px-3 py-2 text-left">Amount</th><th class="px-3 py-2 text-left">Status</th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr><td class="px-3 py-2.5">May 2, 2024</td><td><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Payment</span></td><td class="font-semibold text-brand-600">INV-1018<div class="text-[10px] text-slate-400">#ORD-1042</div></td><td>Payment for Graduation Hoodies 2025</td><td><span class="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Zelle</span></td><td class="font-semibold">$3,450.00</td><td><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Completed</span></td></tr>
+                  <tr><td class="px-3 py-2.5">Apr 25, 2024</td><td><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Payment</span></td><td>INV-1015<div class="text-[10px] text-slate-400">#ORD-0981</div></td><td>Payment for Football Jerseys</td><td><span class="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Zelle</span></td><td class="font-semibold">$4,120.00</td><td><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Completed</span></td></tr>
+                  <tr><td class="px-3 py-2.5">Apr 20, 2024</td><td><span class="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">Invoice</span></td><td class="font-semibold text-brand-600">INV-1013<div class="text-[10px] text-slate-400">#ORD-0930</div></td><td>Staff Crewnecks Order</td><td><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">Bank Transfer</span></td><td class="font-semibold">$1,890.00</td><td><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Paid</span></td></tr>
+                  <tr><td class="px-3 py-2.5">Apr 15, 2024</td><td><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Payment</span></td><td>INV-1010<div class="text-[10px] text-slate-400">#ORD-0872</div></td><td>Payment for DTF Gang Sheet</td><td><span class="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Zelle</span></td><td class="font-semibold">$420.00</td><td><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Completed</span></td></tr>
+                  <tr><td class="px-3 py-2.5">Mar 30, 2024</td><td><span class="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">Invoice</span></td><td class="font-semibold text-brand-600">INV-1008<div class="text-[10px] text-slate-400">#ORD-0811</div></td><td>Homecoming T-Shirts</td><td><span class="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Zelle</span></td><td class="font-semibold">$2,160.00</td><td><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Paid</span></td></tr>
+                  <tr><td class="px-3 py-2.5">Feb 20, 2024</td><td><span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Payment</span></td><td>INV-1001<div class="text-[10px] text-slate-400">#ORD-0612</div></td><td>Refund for Cancelled Order</td><td><span class="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Zelle</span></td><td class="font-semibold text-rose-600">-$320.00</td><td><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">Refunded</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <aside class="space-y-3">
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-1 text-xs font-semibold text-slate-500">Account Balance</div>
+              <div class="text-2xl font-extrabold text-amber-600">$2,540.00</div>
+              <div class="text-[10px] text-slate-500">2 invoices pending</div>
+              <button class="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">View Outstanding Invoices →</button>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-2 flex items-center justify-between"><span class="text-xs font-bold">Payment Methods</span><span class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Preferred</span></div>
+              <ul class="space-y-2 text-xs">
+                <li class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-violet-100 text-violet-600 font-bold">Z</span><div class="flex-1"><div class="font-semibold">Zelle <span class="ml-1 rounded bg-emerald-50 px-1.5 py-0 text-[9px] font-semibold text-emerald-700">Primary</span></div><div class="text-[10px] text-slate-500">timary.zoiae@springfieldhs.edu</div></div></li>
+                <li class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-slate-100 text-slate-700 font-bold">B</span><div class="flex-1"><div class="font-semibold">Bank Transfer</div><div class="text-[10px] text-slate-500">Chase Business · 4582</div></div></li>
+                <li class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-blue-100 text-blue-700 font-bold">C</span><div class="flex-1"><div class="font-semibold">Credit Card</div><div class="text-[10px] text-slate-500">Visa · 2245 · Exp 08/26</div></div></li>
+              </ul>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white p-3">
+              <div class="mb-1 text-xs font-bold">Payment Insights</div>
+              <div class="text-[10px] text-slate-500">Payments on time</div>
+              <div class="text-lg font-extrabold text-emerald-600">94% <span class="text-[10px] font-semibold">↑12% vs last 12 mo</span></div>
+              <div class="mt-2 text-[10px] text-slate-500">Most used method: <strong>Zelle</strong> (78%)</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ====================== STUB TABS ====================== -->
+      <div data-tab-panel id="tab-conversations">
+        <div class="rounded-xl border border-slate-200 bg-white p-8 text-center">
+          <div class="text-3xl">💬</div>
+          <h3 class="mt-2 text-lg font-bold">Conversations tab</h3>
+          <p class="mt-1 text-sm text-slate-500">Full conversation list and chat thread — coming in the next iteration. For now, click <a href="dashboard.html" class="font-semibold text-brand-600">Inbox</a> in the sidebar to chat with this customer.</p>
+        </div>
+      </div>
+      <div data-tab-panel id="tab-artwork">
+        <div class="rounded-xl border border-slate-200 bg-white p-8 text-center">
+          <div class="text-3xl">🎨</div>
+          <h3 class="mt-2 text-lg font-bold">Artwork tab</h3>
+          <p class="mt-1 text-sm text-slate-500">24 artworks linked to this customer (logos, mockups, gang sheets) — full gallery + preview coming next.</p>
+        </div>
+      </div>
+      <div data-tab-panel id="tab-followups">
+        <div class="rounded-xl border border-slate-200 bg-white p-8 text-center">
+          <div class="text-3xl">⏰</div>
+          <h3 class="mt-2 text-lg font-bold">Follow-Ups tab</h3>
+          <p class="mt-1 text-sm text-slate-500">7 scheduled follow-ups — calendar + reminders view coming next.</p>
+        </div>
+      </div>
+      <div data-tab-panel id="tab-files">
+        <div class="rounded-xl border border-slate-200 bg-white p-8 text-center">
+          <div class="text-3xl">📁</div>
+          <h3 class="mt-2 text-lg font-bold">Files tab</h3>
+          <p class="mt-1 text-sm text-slate-500">36 files — full document/asset manager coming next.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+  // ---- Toast ----
+  const toast = (() => {
+    const host = document.createElement('div');
+    host.className = 'fixed bottom-5 right-5 z-[200] flex flex-col items-end gap-2';
+    document.body.appendChild(host);
+    return (msg, kind='info') => {
+      const colors = { success:'bg-emerald-600 text-white', info:'bg-slate-800 text-white', error:'bg-rose-600 text-white' };
+      const t = document.createElement('div');
+      t.className = `rounded-lg ${colors[kind]||colors.info} px-3 py-2 text-sm font-semibold shadow-lg transition-all duration-200 translate-y-2 opacity-0`;
+      t.textContent = msg;
+      host.appendChild(t);
+      requestAnimationFrame(() => t.classList.remove('translate-y-2','opacity-0'));
+      setTimeout(() => { t.classList.add('translate-y-2','opacity-0'); setTimeout(() => t.remove(), 220); }, 2400);
+    };
+  })();
+
+  document.querySelectorAll('[data-coming]').forEach(a => {
+    a.addEventListener('click', (e) => { e.preventDefault(); toast(`${a.dataset.coming} page is coming in the next iteration`, 'info'); });
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    sessionStorage.removeItem('tcAuth');
+    sessionStorage.removeItem('tcUser');
+    window.location.replace('index.html');
+  });
+
+  // ---- Customer data (basic — used to update header when navigated from customers.html) ----
+  const CUSTOMERS = {
+    'springfield-hs':   { name:'Springfield High School', initials:'SH', avatar:'bg-slate-900 text-white' },
+    'southland-church': { name:'Southland Church',        initials:'SL', avatar:'bg-violet-600 text-white' },
+    'urban-threads':    { name:'Urban Threads Co.',       initials:'UT', avatar:'bg-emerald-700 text-white' },
+    'northview-fb':     { name:'Northview Football',      initials:'NF', avatar:'bg-orange-500 text-white' },
+    'grind-fitness':    { name:'Grind Fitness Apparel',   initials:'G',  avatar:'bg-amber-100 text-amber-700' },
+    'camp-victory':     { name:'Camp Victory',            initials:'CV', avatar:'bg-yellow-600 text-white' },
+    'bold-streetwear':  { name:'Bold Streetwear',         initials:'B',  avatar:'bg-pink-500 text-white' },
+    'riverside-pn':     { name:'Riverside Panthers',      initials:'RP', avatar:'bg-rose-600 text-white' },
+    'lakeside-acad':    { name:'Lakeside Academy',        initials:'LA', avatar:'bg-sky-700 text-white' },
+    'eagle-scouts-42':  { name:'Eagle Scouts Troop 42',   initials:'ES', avatar:'bg-indigo-600 text-white' },
+    'highland-boutique':{ name:'Highland Boutique',       initials:'HB', avatar:'bg-teal-600 text-white' },
+    'westpark-fc':      { name:'Westpark FC',             initials:'WP', avatar:'bg-emerald-600 text-white' },
+  };
+
+  const id = new URLSearchParams(location.search).get('id');
+  if (id && CUSTOMERS[id]) {
+    const c = CUSTOMERS[id];
+    document.getElementById('cust-name').textContent = c.name;
+    document.getElementById('crumb-name').textContent = c.name;
+    const av = document.getElementById('cust-avatar');
+    av.className = `grid h-20 w-20 place-items-center rounded-full ${c.avatar} text-2xl font-bold`;
+    av.textContent = c.initials;
+    document.title = `Technocas CRM — ${c.name}`;
+  }
+
+  // ---- Tabs ----
+  const tabs = document.querySelectorAll('#c360-tabs button[role="tab"]');
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabs.forEach(b => {
+        b.classList.remove('border-brand-500','text-brand-600','font-semibold');
+        b.classList.add('border-transparent','text-slate-500','font-medium');
+      });
+      btn.classList.add('border-brand-500','text-brand-600','font-semibold');
+      btn.classList.remove('border-transparent','text-slate-500','font-medium');
+      document.querySelectorAll('[data-tab-panel]').forEach(p => p.classList.toggle('active', p.id === btn.dataset.target));
+    });
+  });
+</script>
+</body>
+</html>

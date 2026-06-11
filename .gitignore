@@ -1,3 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.vercel
+
+# SQLite (backend)
+server/data.db
+server/data.db-journal
+server/data.db-wal
+server/data.db-shm
+
+# Secrets / local DB store
+.env
+server/.env
+server/data.json
+server/data.json.bak
+server/data.json.tmp
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
@@ -8,7 +28,3 @@ desktop.ini
 # Logs / temp
 *.log
 *.tmp
-
-# Build / deploy
-.vercel
-node_modules/

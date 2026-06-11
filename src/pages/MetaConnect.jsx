@@ -1,0 +1,167 @@
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import SidebarCrm from '../components/SidebarCrm.jsx'
+import TopBarUser from '../components/TopBarUser.jsx'
+import BackButton from '../components/BackButton.jsx'
+import { useToast } from '../components/ToastContext.jsx'
+import { api } from '../lib/api.js'
+
+export default function MetaConnect() {
+  const toast = useToast()
+  const navigate = useNavigate()
+  const [status, setStatus] = useState(null)
+  const [appId, setAppId] = useState('')
+  const [appSecret, setAppSecret] = useState('')
+  const [token, setToken] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const refresh = () => api.get('/api/meta/status').then(setStatus).catch(() => setStatus({ connected: false }))
+  useEffect(() => { refresh() }, [])
+
+  const connect = async (e) => {
+    e.preventDefault()
+    if (!appId.trim() || !appSecret.trim() || !token.trim()) {
+      toast('App ID, App Secret aur Access Token — teeno zaroori hain', 'error'); return
+    }
+    setBusy(true); setResult(null)
+    try {
+      const r = await api.post('/api/meta/connect-app', {
+        appId: appId.trim(), appSecret: appSecret.trim(), token: token.trim(),
+      })
+      const sync = await api.post('/api/meta/sync').catch(() => ({}))
+      setResult({ ok: true, page: r.page, instagram: r.instagram, synced: sync?.newMessages, warning: r.warning, neverExpires: r.neverExpires })
+      toast(r.neverExpires ? `Connected: ${r.page?.name || 'Page'} — permanent ✅` : `Connected, but token is temporary ⚠`, r.neverExpires ? 'success' : 'info')
+      setToken(''); setAppSecret('')
+      refresh()
+    } catch (ex) {
+      setResult({ ok: false, error: ex.message })
+      toast(ex.message || 'Connect failed', 'error')
+    } finally { setBusy(false) }
+  }
+
+  const disconnect = async () => {
+    if (!confirm('Disconnect Meta? App credentials and token will be removed.')) return
+    await api.post('/api/meta/disconnect')
+    toast('Meta disconnected', 'info')
+    setResult(null)
+    refresh()
+  }
+
+  const field = 'w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-mono outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20'
+
+  return (
+    <div className="h-screen overflow-hidden grid" style={{ gridTemplateColumns: '240px 1fr' }}>
+      <SidebarCrm active="connect-meta" />
+      <div className="flex h-screen flex-col overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
+          <div className="flex items-center gap-3">
+            <BackButton />
+            <nav className="flex items-center gap-2 text-sm">
+              <Link to="/settings" className="text-slate-500 hover:text-slate-700">Settings</Link>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-300"><path d="m9 18 6-6-6-6"/></svg>
+              <span className="font-semibold">Connect Meta</span>
+            </nav>
+          </div>
+          <div className="flex items-center gap-3"><TopBarUser /></div>
+        </header>
+
+        <main className="nice-scroll flex-1 overflow-y-auto px-6 py-6">
+          <div className="mx-auto max-w-3xl">
+            <div className="flex items-center gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-xl font-bold">f</div>
+              <div>
+                <h1 className="text-2xl font-extrabold tracking-tight">Connect Meta</h1>
+                <p className="text-sm text-slate-500">Facebook Messenger &amp; Instagram DMs — ek baar connect karo, token kabhi expire nahi hoga.</p>
+              </div>
+            </div>
+
+            {/* Connected state */}
+            {status?.connected ? (
+              <section className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">● Connected</span>
+                      {status.tokenExpires === 0
+                        ? <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-700">♾ Never expires</span>
+                        : status.tokenExpires
+                          ? <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${status.tokenExpires < Date.now() ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {status.tokenExpires < Date.now() ? '⚠ Token EXPIRED — reconnect' : `⏳ Expires ${new Date(status.tokenExpires).toLocaleString()}`}
+                            </span>
+                          : <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">Lifetime unknown</span>}
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-lg bg-white p-3"><div className="text-[11px] text-slate-500">Page</div><div className="text-sm font-semibold">{status.pageName || '—'}</div></div>
+                      <div className="rounded-lg bg-white p-3"><div className="text-[11px] text-slate-500">Page ID</div><div className="font-mono text-sm">{status.pageId || '—'}</div></div>
+                      <div className="rounded-lg bg-white p-3"><div className="text-[11px] text-slate-500">Instagram</div><div className="text-sm font-semibold">{status.instagram?.username ? `@${status.instagram.username}` : '— (not linked)'}</div></div>
+                    </div>
+                  </div>
+                  <button onClick={disconnect} className="shrink-0 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50">Disconnect</button>
+                </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <button onClick={() => navigate('/inbox')} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Open Inbox →</button>
+                  <button onClick={async () => { const r = await api.post('/api/meta/sync').catch(() => null); toast(r ? `Synced (${r.newMessages ?? 0} new)` : 'Sync failed', r ? 'success' : 'error') }} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Sync now</button>
+                </div>
+              </section>
+            ) : (
+              <>
+                {/* Form */}
+                <form onSubmit={connect} className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">1 · App ID</label>
+                    <input value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="e.g. 1234567890123456" className={field} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">2 · App Secret</label>
+                    <input type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="App Secret (Settings → Basic → Show)" className={field} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">3 · Access Token (fresh User token)</label>
+                    <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAT... (Graph API Explorer se naya User token)" className={field} />
+                  </div>
+                  <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+                    {busy ? 'Connecting…' : 'Connect & Sync'}
+                  </button>
+                  {result && !result.ok && (
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{result.error}</div>
+                  )}
+                  <p className="text-[11px] text-slate-500">App ID, App Secret aur token sirf aapke server (DB) pe store hote hain. Connect ke baad app inse khud permanent Page token bana leta hai aur zarurat padne par auto-refresh karta hai.</p>
+                </form>
+
+                {/* Help */}
+                <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5 text-sm">
+                  <h2 className="font-bold">Ye teen cheezein kahan se layein?</h2>
+                  <ol className="mt-2 list-decimal space-y-2 pl-5 text-slate-600">
+                    <li><strong>App ID + App Secret:</strong> <a className="text-brand-600 underline" href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer">developers.facebook.com/apps</a> → apni app → <em>Settings → Basic</em>. App Secret ke aage <em>Show</em> dabao.</li>
+                    <li><strong>Access Token:</strong> <a className="text-brand-600 underline" href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noreferrer">Graph API Explorer</a> → app select karo → <em>User Token</em> rakho (Page token nahi) → permissions add karo:
+                      <code className="mt-1 block break-words rounded bg-white px-2 py-1 font-mono text-[11px]">pages_show_list, pages_messaging, pages_read_engagement, instagram_basic, instagram_manage_messages</code>
+                      → <em>Generate Access Token</em> → copy.</li>
+                  </ol>
+                  <p className="mt-3 text-[12px] text-amber-700">⚠ Token abhi-abhi (fresh) banao — expired token kaam nahi karega. Ek baar valid token de diya, phir app khud permanent bana leta hai.</p>
+                </section>
+              </>
+            )}
+
+            {/* Permanent-token guide — always visible (the usual reason chats stop syncing) */}
+            <section className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 text-sm">
+              <h2 className="flex items-center gap-2 font-bold text-indigo-800">♾ Token jo KABHI expire na ho (recommended)</h2>
+              <p className="mt-1 text-slate-600">
+                Graph API Explorer ka token kuch ghanton mein expire ho jaata hai — isliye sync ruk jaata hai aur naye chats aana band ho jaate hain.
+                Hamesha chalne ke liye ek <strong>System User token</strong> banao (ye never-expire hota hai):
+              </p>
+              <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-slate-600">
+                <li><a className="text-brand-600 underline" href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer">business.facebook.com → Business Settings → System Users</a></li>
+                <li><strong>Add</strong> → naam do (e.g. "CRM") → role <em>Admin</em></li>
+                <li><strong>Add Assets</strong> → apni Page (Decoinks) + Instagram select karo, full control do</li>
+                <li><strong>Generate New Token</strong> → app select karo → <strong>Token expiration: Never</strong> → permissions: <code className="rounded bg-white px-1 text-[11px]">pages_messaging, pages_read_engagement, pages_show_list, instagram_basic, instagram_manage_messages</code></li>
+                <li>Token copy karke upar <strong>Access Token</strong> field mein paste karo (App ID + App Secret ke saath) → Connect</li>
+              </ol>
+              <p className="mt-2 text-[12px] text-indigo-700">Connect ke baad ye page batayega token "♾ Never expires" hai ya nahi — taaki aapko pakka pata chale.</p>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
+  )
+}
