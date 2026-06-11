@@ -1,0 +1,21 @@
+# Technocas CRM — production deploy (frontend + backend)
+# DB (decoinks-postgres :5436) and Qdrant (:6333) already run on the host;
+# the backend connects to them via the values in server/.env.
+services:
+  backend:
+    build: ./server
+    container_name: technocas_backend
+    env_file: ./server/.env
+    # lets the container reach host-published ports via host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    container_name: technocas_frontend
+    ports:
+      - "8190:80"          # open http://<server-ip>:8190
+    depends_on:
+      - backend
+    restart: unless-stopped
