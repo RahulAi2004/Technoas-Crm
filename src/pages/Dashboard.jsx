@@ -43,6 +43,7 @@ export default function Dashboard() {
   // Filter FORM (date/category/etc.) is independent from the conversation list.
   // Hidden by default so the list gets full height and shows many at once.
   const [showFilterForm, setShowFilterForm] = useState(() => localStorage.getItem('showFilterForm') === '1')
+  const [inboxMenuOpen, setInboxMenuOpen] = useState(false)
   useEffect(() => localStorage.setItem('sidebarCollapsed', sbCollapsed ? '1' : '0'), [sbCollapsed])
   useEffect(() => localStorage.setItem('filtersCollapsed', filtersCollapsed ? '1' : '0'), [filtersCollapsed])
   useEffect(() => localStorage.setItem('aiOpen', aiOpen ? '1' : '0'), [aiOpen])
@@ -101,18 +102,40 @@ export default function Dashboard() {
   // Search + view filter (all / unassigned / mentions / bookmarks)
   const [search, setSearch] = useState('')
   const [view, setView] = useState('all')
+  const [sortDir, setSortDir] = useState('latest') // 'latest' | 'oldest'
+  const emptyFilters = { channel: '', agent: '', status: '', tag: '', from: '', to: '' }
+  const [filters, setFilters] = useState(emptyFilters)
+  const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
+  const clearFilters = () => setFilters(emptyFilters)
+  const activeFilterCount = Object.values(filters).filter(Boolean).length
+
   const myName = currentUser()?.name
   const unassignedCount = conversations.filter((c) => !c.assigned_to).length
   const mentionCount = conversations.filter((c) => (c.listPreview || '').includes('@')).length
   const bookmarkCount = conversations.filter((c) => c.bookmarked).length
+
+  // Filter option lists, derived from the (backend-loaded) conversations
+  const channelOptions = [...new Set(conversations.map((c) => c.channel).filter(Boolean))].sort()
+  const agentOptions = [...new Set(conversations.map((c) => c.assigned_to).filter(Boolean))].sort()
+  const statusOptions = [...new Set(conversations.map((c) => c.status).filter(Boolean))].sort()
+  const tagOptions = [...new Set(conversations.flatMap((c) => Array.isArray(c.tags) ? c.tags : []).filter(Boolean))].sort()
+
   const visibleConvs = conversations.filter((c) => {
     if (view === 'unassigned' && c.assigned_to) return false
     if (view === 'bookmarks' && !c.bookmarked) return false
     if (view === 'mentions' && !(c.listPreview || '').includes('@')) return false
-    if (!search) return true
-    const q = search.toLowerCase()
-    return (c.name || '').toLowerCase().includes(q) || (c.listPreview || '').toLowerCase().includes(q)
-  })
+    if (filters.channel && c.channel !== filters.channel) return false
+    if (filters.agent && c.assigned_to !== filters.agent) return false
+    if (filters.status && c.status !== filters.status) return false
+    if (filters.tag && !(Array.isArray(c.tags) && c.tags.includes(filters.tag))) return false
+    if (filters.from && convTs(c) < Date.parse(filters.from)) return false
+    if (filters.to && convTs(c) > Date.parse(filters.to) + 86399999) return false
+    if (search) {
+      const q = search.toLowerCase()
+      if (!((c.name || '').toLowerCase().includes(q) || (c.listPreview || '').toLowerCase().includes(q))) return false
+    }
+    return true
+  }).sort((a, b) => sortDir === 'latest' ? convTs(b) - convTs(a) : convTs(a) - convTs(b))
 
   // Optimistic conversation patch + persist
   const patchConv = (id, patch) => {
@@ -413,11 +436,24 @@ export default function Dashboard() {
           {/* ===== Filters / List ===== */}
           <div className="flex flex-col overflow-hidden border-r border-slate-200 bg-white">
             <div id="filters-header" className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-              <button className="fp-only-expanded inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="14" x="3" y="5" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
-                All Inboxes
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg>
-              </button>
+              <div className="fp-only-expanded relative">
+                <button onClick={() => setInboxMenuOpen((x) => !x)} className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="14" x="3" y="5" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+                  {filters.channel || 'All Inboxes'}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transition: 'transform .2s ease', transform: inboxMenuOpen ? 'rotate(180deg)' : 'none' }}><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                {inboxMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setInboxMenuOpen(false)}></div>
+                    <div className="absolute left-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                      <button onClick={() => { setFilter('channel', ''); setInboxMenuOpen(false) }} className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-slate-50 ${!filters.channel ? 'font-semibold text-brand-600' : 'text-slate-700'}`}>All Inboxes<span className="text-[11px] text-slate-400">{conversations.length}</span></button>
+                      {channelOptions.map((ch) => (
+                        <button key={ch} onClick={() => { setFilter('channel', ch); setInboxMenuOpen(false) }} className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-slate-50 ${filters.channel === ch ? 'font-semibold text-brand-600' : 'text-slate-700'}`}>{ch}<span className="text-[11px] text-slate-400">{conversations.filter((c) => c.channel === ch).length}</span></button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <button className="fp-only-collapsed grid h-9 w-9 place-items-center rounded-lg bg-slate-50 hover:bg-slate-100" aria-label="All Inboxes" title="All Inboxes"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="14" x="3" y="5" rx="2"/><circle cx="12" cy="12" r="2"/></svg></button>
               <div className="flex items-center gap-1">
                 <button className="fp-only-expanded grid h-8 w-8 place-items-center rounded-lg hover:bg-slate-100"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>
@@ -432,26 +468,53 @@ export default function Dashboard() {
             <div className="fp-only-expanded flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-2">
               <span className="text-xs font-semibold text-slate-500">{visibleConvs.length} conversations</span>
               <div className="flex items-center gap-1.5">
-                <button onClick={() => setShowFilterForm((x) => !x)} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${showFilterForm ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'}`}>
+                <button onClick={() => setShowFilterForm((x) => !x)} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${showFilterForm || activeFilterCount ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'}`}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                   Filters
+                  {activeFilterCount > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white">{activeFilterCount}</span>}
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transition: 'transform .2s ease', transform: showFilterForm ? 'rotate(180deg)' : 'none' }}><path d="m6 9 6 6 6-6"/></svg>
                 </button>
-                <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Latest <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg></button>
+                <button onClick={() => setSortDir((d) => d === 'latest' ? 'oldest' : 'latest')} title="Toggle sort order" className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{sortDir === 'latest' ? 'Latest' : 'Oldest'} <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transition: 'transform .2s ease', transform: sortDir === 'oldest' ? 'rotate(180deg)' : 'none' }}><path d="m6 9 6 6 6-6"/></svg></button>
               </div>
             </div>
 
             {/* Collapsible filter form — hidden by default */}
             {showFilterForm && (
               <div id="filters-body" className="border-b border-slate-200 p-4">
-                <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-bold">Filters</h3><button onClick={() => setShowFilterForm(false)} className="text-xs font-semibold text-brand-600 hover:text-brand-700">Hide</button></div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-bold">Filters{activeFilterCount > 0 && <span className="ml-1.5 text-xs font-semibold text-slate-400">({activeFilterCount} active)</span>}</h3>
+                  <div className="flex items-center gap-3">
+                    {activeFilterCount > 0 && <button onClick={clearFilters} className="text-xs font-semibold text-rose-600 hover:text-rose-700">Clear all</button>}
+                    <button onClick={() => setShowFilterForm(false)} className="text-xs font-semibold text-brand-600 hover:text-brand-700">Hide</button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="col-span-2"><label className="mb-1 block font-semibold text-slate-600">Date Range</label><button className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><span>May 1 – May 31, 2024</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg></button></div>
-                  <div className="col-span-2"><label className="mb-1 block font-semibold text-slate-600">Category</label><select className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Categories</option></select></div>
-                  <div><label className="mb-1 block font-semibold text-slate-600">Agent</label><select className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Agents</option></select></div>
-                  <div><label className="mb-1 block font-semibold text-slate-600">Lead Status</label><select className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Status</option></select></div>
-                  <div><label className="mb-1 block font-semibold text-slate-600">Channel</label><select className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Channels</option></select></div>
-                  <div><label className="mb-1 block font-semibold text-slate-600">Tags</label><select className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"><option>All Tags</option></select></div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">From</label><input type="date" value={filters.from} onChange={(e) => setFilter('from', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">To</label><input type="date" value={filters.to} onChange={(e) => setFilter('to', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">Channel</label>
+                    <select value={filters.channel} onChange={(e) => setFilter('channel', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <option value="">All Channels</option>
+                      {channelOptions.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
+                    </select>
+                  </div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">Agent</label>
+                    <select value={filters.agent} onChange={(e) => setFilter('agent', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <option value="">All Agents</option>
+                      {agentOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">Lead Status</label>
+                    <select value={filters.status} onChange={(e) => setFilter('status', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <option value="">All Status</option>
+                      {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">Tags</label>
+                    <select value={filters.tag} onChange={(e) => setFilter('tag', e.target.value)} disabled={!tagOptions.length} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 disabled:opacity-50">
+                      <option value="">{tagOptions.length ? 'All Tags' : 'No tags'}</option>
+                      {tagOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
                 </div>
               </div>
             )}
@@ -575,7 +638,7 @@ export default function Dashboard() {
             </div>
 
             <nav className="flex items-center gap-8 border-b border-slate-200 px-5">
-              {[['conversation','Conversation'],['customer','Customer Info'],['history','History']].map(([id, lbl]) => (
+              {[['conversation','Conversation'],['customer','Customer Info'],['timestamps','Timestamps'],['history','History']].map(([id, lbl]) => (
                 <button key={id} onClick={() => setMidTab(id)} className={`whitespace-nowrap border-b-2 py-3 text-sm ${midTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
               ))}
             </nav>
@@ -669,6 +732,8 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+
+            {midTab === 'timestamps' && <TimestampsTab conv={conv} />}
             </>)}
           </div>
 
@@ -694,17 +759,19 @@ export default function Dashboard() {
             </div>
             {ai.error && <div className="border-b border-rose-100 bg-rose-50 px-5 py-2 text-xs text-rose-700">{ai.error}</div>}
 
-            <nav className="flex items-center gap-5 border-b border-slate-200 px-5 text-sm">
-              {[['responses','Responses'],['actions','Actions'],['designer','Designer Jobs'],['intent','Intent & Insights']].map(([id, lbl]) => (
-                <button key={id} onClick={() => setAiTab(id)} className={`whitespace-nowrap border-b-2 py-3 ${aiTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
+            <nav className="nice-scroll flex items-center gap-5 overflow-x-auto border-b border-slate-200 px-5 text-sm">
+              {[['responses','Responses'],['translate','Translation'],['summary','Summary'],['actions','Actions'],['designer','Designer Jobs'],['intent','Intent & Insights']].map(([id, lbl]) => (
+                <button key={id} onClick={() => setAiTab(id)} className={`shrink-0 whitespace-nowrap border-b-2 py-3 ${aiTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
               ))}
             </nav>
 
             <div className="nice-scroll flex-1 overflow-y-auto px-5 py-4">
-              {aiTab === 'responses' && <ResponsesTab onSendReply={(text) => sendMessage(text, 'reply')} lastIncoming={[...messages].reverse().find((m) => m.dir === 'in')?.text || ''} ai={ai} onAnalyze={analyze} />}
+              {aiTab === 'responses' && <ResponsesTab onSendReply={(text) => sendMessage(text, 'reply')} conv={conv} msgCount={messages.length} />}
+              {aiTab === 'translate' && <TranslationTab onSendReply={(text) => sendMessage(text, 'reply')} lastIncoming={[...messages].reverse().find((m) => m.dir === 'in')?.text || ''} />}
+              {aiTab === 'summary' && <SummaryTab conv={conv} msgCount={messages.length} />}
               {aiTab === 'actions' && <ActionsTab ai={ai} onAnalyze={analyze} />}
               {aiTab === 'designer' && <DesignerTab />}
-              {aiTab === 'intent' && <IntentTab ai={ai} onAnalyze={analyze} />}
+              {aiTab === 'intent' && <IntentTab ai={ai} onAnalyze={analyze} conv={conv} />}
             </div>
           </aside>
         </section>
@@ -825,77 +892,391 @@ const TONE = {
 const scoreTone = (n) => n >= 80 ? TONE.emerald : n >= 60 ? TONE.amber : TONE.rose
 const sentimentTone = (label) => label === 'Positive' ? TONE.emerald : label === 'Negative' ? TONE.rose : TONE.amber
 
-function ResponsesTab({ onSendReply, lastIncoming, ai, onAnalyze }) {
-  const toast = useToast()
-  const a = ai?.analysis
-  const [reply, setReply] = useState('')          // what's shown in the box
-  const [orig, setOrig] = useState('')            // the customer-language version (to send)
-  const [showingEn, setShowingEn] = useState(false)
-  const [transBusy, setTransBusy] = useState(false)
-  const lang = (typeof localStorage !== 'undefined' && localStorage.getItem('translateLang')) || 'es'
-  useEffect(() => { setReply(a?.recommendedReply || ''); setOrig(a?.recommendedReply || ''); setShowingEn(false) }, [a?.recommendedReply])
+// Quick-send asset panels (Communication / Payment / Document). Edit the msg
+// values to your real links/QRs — checking items + "Send to Chat" delivers them.
+const COMM_ITEMS = [
+  { label: 'Send Website Address',      msg: '🌐 Our website: https://decoinks.com' },
+  { label: 'Send Email Address',        msg: '📧 Email us: info@decoinks.com' },
+  { label: 'Send Pinterest Account',    msg: '📌 Pinterest: https://pinterest.com/decoinks' },
+  { label: 'Send WhatsApp Catalog',     msg: '🛍️ Our catalog: https://wa.me/c/decoinks' },
+  { label: 'Send Google Maps Location', msg: '📍 Find us: https://maps.google.com/?q=Decoinks' },
+  { label: 'Our Brochure (PDF)',        msg: '📄 Our brochure: https://decoinks.com/brochure.pdf' },
+]
+const PAY_ITEMS = [
+  { label: 'Zelle QR Code',          msg: '💳 Pay via Zelle: info@decoinks.com' },
+  { label: 'Cash App QR Code',       msg: '💵 Cash App: $decoinks' },
+  { label: 'PayPal QR Code',         msg: '🅿️ PayPal: https://paypal.me/decoinks' },
+  { label: 'PayPal Invoice (Cards)', msg: '🧾 We will send a secure PayPal invoice link (cards accepted).' },
+]
+const DOC_ITEMS = [
+  { label: 'Preview Quote',   msg: '🧾 Here is your quote.' },
+  { label: 'Preview Invoice', msg: '🧾 Here is your invoice.' },
+]
 
-  const toggleReplyLang = async () => {
-    if (showingEn) { setReply(orig); setShowingEn(false); return }   // back to customer language
+function SendPanel({ title, items, onSendReply }) {
+  const toast = useToast()
+  const [checked, setChecked] = useState({})
+  const send = () => {
+    const msgs = items.filter((_, i) => checked[i]).map((x) => x.msg)
+    if (!msgs.length) { toast('Pehle kuch select karo', 'info'); return }
+    onSendReply(msgs.join('\n'))
+    toast(`${msgs.length} item${msgs.length > 1 ? 's' : ''} sent to chat`, 'success')
+    setChecked({})
+  }
+  return (
+    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="text-sm font-bold">{title}</div>
+      <div className="mt-2 space-y-1.5">
+        {items.map((x, i) => (
+          <label key={i} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={!!checked[i]} onChange={() => setChecked((c) => ({ ...c, [i]: !c[i] }))} className="accent-brand-600" />
+            <span>{x.label}</span>
+          </label>
+        ))}
+      </div>
+      <button onClick={send} className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100">💬 Send to Chat</button>
+    </div>
+  )
+}
+
+function TranslationTab({ onSendReply, lastIncoming }) {
+  const toast = useToast()
+  const [data, setData] = useState(null)   // { detectedLanguage, explanation, replyEn, replyNative }
+  const [loading, setLoading] = useState(false)
+  const [replyEn, setReplyEn] = useState('')
+  const [native, setNative] = useState('')
+  const [transBusy, setTransBusy] = useState(false)
+
+  // Auto-run whenever the last customer message changes (new message → updates itself, no button).
+  useEffect(() => {
+    let cancelled = false
+    setData(null); setReplyEn(''); setNative('')
+    if (!lastIncoming.trim()) return
+    setLoading(true)
+    api.post('/api/ai/translate-assist', { text: lastIncoming })
+      .then((r) => { if (!cancelled) { setData(r); setReplyEn(r.replyEn || ''); setNative(r.replyNative || '') } })
+      .catch((ex) => { if (!cancelled) toast(ex.message || 'Translate failed', 'error') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [lastIncoming])
+
+  const isEnglish = !data || /english/i.test(data.detectedLanguage || '')
+
+  const updateNative = async () => {
+    if (isEnglish || !replyEn.trim()) return
     setTransBusy(true)
-    try {
-      const cur = reply
-      const r = await api.post('/api/translate', { text: cur, from: lang, to: 'en' })
-      setOrig(cur)                  // remember the version we'll actually send
-      setReply(r.translated)
-      setShowingEn(true)
-    } catch (ex) { toast(ex.message || 'Translate failed', 'error') }
+    try { const r = await api.post('/api/translate', { text: replyEn, from: 'English', to: data.detectedLanguage }); setNative(r.translated) }
+    catch (ex) { toast(ex.message || 'Translate failed', 'error') }
     finally { setTransBusy(false) }
   }
-  const sendReply = () => {
-    const text = (showingEn ? orig : reply).trim()
-    if (text) { onSendReply(text); toast('AI reply sent to chat', 'success') }
+  const send = () => {
+    const text = (isEnglish ? replyEn : native).trim()
+    if (text) { onSendReply(text); toast(`Sent${isEnglish ? '' : ' in ' + data.detectedLanguage}`, 'success') }
+  }
+
+  if (!lastIncoming.trim()) {
+    return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Is chat mein abhi koi customer message nahi aaya.</div>
+  }
+  if (loading || !data) {
+    return <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center text-sm text-violet-700">🌐 Translating last message…</div>
   }
   return (
     <>
-      <TranslationHelper onSendReply={onSendReply} lastIncoming={lastIncoming} />
-      {!a ? (
-        <AnalyzePrompt onAnalyze={onAnalyze} loading={ai?.loading} />
-      ) : (
-        <>
-          {a.agentScore && (
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="text-sm font-bold">Agent Professionalism Score</div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className={`text-3xl font-extrabold ${scoreTone(a.agentScore.score).text}`}>{a.agentScore.score}</span>
-                <span className="text-sm text-slate-500">/100</span>
-                {a.agentScore.label && <span className={`ml-2 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${scoreTone(a.agentScore.score).soft}`}>{a.agentScore.label}</span>}
-              </div>
-            </div>
-          )}
-          {Array.isArray(a.insights) && a.insights.length > 0 && (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-              <div className="text-sm font-bold">AI Interpretation</div>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                {a.insights.map((x, i) => <li key={i}>{x}</li>)}
-              </ul>
-            </div>
-          )}
-          {a.recommendedReply && (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-bold">AI Recommended Reply (Editable)</div>
-                <button onClick={toggleReplyLang} disabled={transBusy} title="Translate to understand; sends in customer's language"
-                  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold ${showingEn ? 'bg-violet-600 text-white' : 'border border-violet-200 text-violet-700 hover:bg-violet-50'}`}>
-                  🌐 {transBusy ? '…' : showingEn ? `Back to ${lang.toUpperCase()}` : 'English'}
-                </button>
-              </div>
-              <textarea value={reply} onChange={(e) => { setReply(e.target.value); if (!showingEn) setOrig(e.target.value) }} rows={5}
-                className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white" />
-              {showingEn && <div className="mt-1 text-[11px] text-amber-700">👁 English preview — Send karoge to customer ko <b>{lang.toUpperCase()}</b> version jaayega.</div>}
-              <div className="mt-3 flex items-center gap-2">
-                <button onClick={sendReply} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">▶ Send</button>
-                <button onClick={() => { navigator.clipboard?.writeText(showingEn ? orig : reply); toast('Copied', 'success') }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50">Copy</button>
-              </div>
-            </div>
-          )}
-        </>
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex items-center justify-between"><div className="text-sm font-bold">Customer's last message</div><span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{data.detectedLanguage}</span></div>
+        <p className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-2.5 text-sm text-slate-700">{lastIncoming}</p>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="text-sm font-bold">💡 What they mean (simple English)</div>
+        <p className="mt-2 text-sm text-slate-700">{data.explanation}</p>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="text-sm font-bold">Suggested reply (English — editable)</div>
+        <textarea value={replyEn} onChange={(e) => setReplyEn(e.target.value)} onBlur={updateNative} rows={4}
+          className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white" />
+        {!isEnglish && <button onClick={updateNative} disabled={transBusy} className="mt-2 rounded-md border border-violet-200 px-2.5 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">{transBusy ? 'Translating…' : `↻ Update ${data.detectedLanguage} translation`}</button>}
+      </div>
+
+      {!isEnglish && (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+          <div className="text-sm font-bold text-emerald-800">Reply in {data.detectedLanguage} (ye send hoga)</div>
+          <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-2.5 text-sm text-slate-800">{native || '—'}</p>
+        </div>
       )}
+
+      <div className="mt-4 flex items-center gap-2">
+        <button onClick={send} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">▶ Send {isEnglish ? '(English)' : `(${data.detectedLanguage})`}</button>
+        <button onClick={() => { navigator.clipboard?.writeText(isEnglish ? replyEn : native); toast('Copied', 'success') }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Copy</button>
+      </div>
+    </>
+  )
+}
+
+// Parse a chat time string ("8:31 AM") → minutes since midnight.
+function parseClock(t) {
+  const m = String(t || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i)
+  if (!m) return null
+  let h = parseInt(m[1], 10); const min = parseInt(m[2], 10); const ap = m[3]?.toUpperCase()
+  if (ap === 'PM' && h !== 12) h += 12
+  if (ap === 'AM' && h === 12) h = 0
+  return h * 60 + min
+}
+function fmtDur(min) {
+  if (min == null) return '—'
+  if (min < 1) return '<1 min'
+  if (min < 60) return `${Math.round(min)} min`
+  const h = Math.floor(min / 60); const m = Math.round(min % 60)
+  return m ? `${h}h ${m}m` : `${h}h`
+}
+
+// Timestamps tab — exact time of each message + response times + averages (both directions).
+function TimestampsTab({ conv }) {
+  const msgs = (conv?.messages || []).filter((m) => m.dir === 'in' || m.dir === 'out')
+  // Annotate each message with the wait since the previous message of the OPPOSITE direction.
+  let prev = null
+  const rows = msgs.map((m) => {
+    const clock = parseClock(m.time)
+    let resp = null
+    if (prev && prev.dir !== m.dir && prev.clock != null && clock != null) {
+      let d = clock - prev.clock; if (d < 0) d += 1440   // crossed midnight → assume next day
+      resp = { minutes: d, responder: m.dir }
+    }
+    const row = { ...m, clock, resp }
+    prev = row
+    return row
+  })
+  const agentTimes = rows.filter((r) => r.resp && r.resp.responder === 'out').map((r) => r.resp.minutes)
+  const custTimes = rows.filter((r) => r.resp && r.resp.responder === 'in').map((r) => r.resp.minutes)
+  const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null)
+  const avgAgent = avg(agentTimes)
+  const avgCust = avg(custTimes)
+
+  if (!rows.length) {
+    return <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5"><div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Is chat mein abhi koi message nahi.</div></div>
+  }
+
+  return (
+    <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      {/* Averages */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-600">Avg agent reply time</div>
+          <div className="mt-1 text-2xl font-extrabold text-violet-700">{fmtDur(avgAgent)}</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">Customer → Agent · {agentTimes.length} replies</div>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Avg customer reply time</div>
+          <div className="mt-1 text-2xl font-extrabold text-emerald-700">{fmtDur(avgCust)}</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">Agent → Customer · {custTimes.length} replies</div>
+        </div>
+      </div>
+
+      {/* Detailed timeline */}
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="mb-3 text-sm font-bold">Message timeline ({rows.length} messages)</div>
+        <ol className="space-y-3">
+          {rows.map((r, i) => {
+            const isAgent = r.dir === 'out'
+            return (
+              <li key={i} className="flex gap-3">
+                <div className="flex flex-col items-center">
+                  <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[10px] font-bold ${isAgent ? 'bg-brand-100 text-brand-700' : 'bg-slate-200 text-slate-600'}`}>{isAgent ? (r.agent ? r.agent.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() : 'AG') : (conv.initials || 'C')}</span>
+                  {i < rows.length - 1 && <span className="mt-1 w-px flex-1 bg-slate-200"></span>}
+                </div>
+                <div className="min-w-0 flex-1 pb-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-semibold ${isAgent ? 'text-brand-700' : 'text-slate-700'}`}>{isAgent ? (r.agent || 'Agent') : (conv.name || 'Customer')}</span>
+                    <span className="text-[11px] font-medium text-slate-400">{r.time || '—'}</span>
+                    {r.resp && (
+                      <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${isAgent ? 'bg-violet-50 text-violet-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        ⏱ replied in {fmtDur(r.resp.minutes)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-slate-600">{r.text || '[attachment]'}</p>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      </div>
+
+      <p className="mt-3 text-[11px] text-slate-400">Note: times reflect each message's clock time (as shown in chat). Response time is the gap between a message and the previous message from the other side. Cross-day gaps are approximate.</p>
+    </div>
+  )
+}
+
+// Conversation summary for an agent taking over. Generated on a button, SAVED to the
+// DB, and updated INCREMENTALLY (only new messages are sent to AI, not the whole chat).
+function SummaryTab({ conv, msgCount }) {
+  const toast = useToast()
+  const [info, setInfo] = useState(null)    // { cached, summary, newCount, stale, summaryAt, ... }
+  const [loading, setLoading] = useState(false)  // loading cache (cheap, no AI)
+  const [working, setWorking] = useState(false)  // generating/updating (AI call)
+  const [error, setError] = useState(null)
+  const cid = conv?.id
+
+  // Cheap GET: pulls the saved summary from memory + reports new-message count. No AI cost.
+  useEffect(() => {
+    let cancelled = false
+    setInfo(null); setError(null)
+    if (!cid) return
+    setLoading(true)
+    api.get(`/api/ai/summary/${encodeURIComponent(cid)}`)
+      .then((r) => { if (!cancelled) { if (r.empty) setError('Is chat mein abhi koi message nahi.'); else setInfo(r) } })
+      .catch((ex) => { if (!cancelled) setError(ex.message || 'Summary failed') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [cid, msgCount])
+
+  // The only AI call — full first time, incremental afterwards. Result is persisted server-side.
+  const generate = () => {
+    if (!cid) return
+    setWorking(true)
+    api.post(`/api/ai/summary/${encodeURIComponent(cid)}`, {})
+      .then((r) => { setInfo({ cached: true, stale: false, newCount: 0, summary: r.summary, summaryAt: r.summaryAt }); toast(r.mode === 'incremental' ? 'Summary updated with new messages' : 'Summary saved', 'success') })
+      .catch((ex) => toast(ex.message || 'Failed', 'error'))
+      .finally(() => setWorking(false))
+  }
+
+  if (!cid) return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Koi conversation select karo.</div>
+  if (loading && !info) return <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center text-sm text-violet-700">📝 Loading summary…</div>
+  if (error) return <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-6 text-center text-sm text-amber-700">{error}</div>
+
+  const s = info?.summary
+  const savedAt = info?.summaryAt ? new Date(info.summaryAt).toLocaleString() : null
+
+  // No saved summary yet → first-time generate prompt.
+  if (!s) {
+    return (
+      <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center">
+        <div className="text-2xl">📝</div>
+        <p className="mt-1 text-sm font-semibold text-slate-700">No summary yet</p>
+        <p className="mt-0.5 text-xs text-slate-500">Poori chat (start → last) ki ek detailed summary banao. Save ho jayegi — agli baar memory se aayegi.</p>
+        <button onClick={generate} disabled={working} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{working ? 'Generating…' : '📝 Generate summary'}</button>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {/* New-messages banner: incremental update only adds the new part */}
+      {info.stale && info.newCount > 0 && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <span className="text-xs font-semibold text-amber-800">{info.newCount} new message{info.newCount > 1 ? 's' : ''} since this summary.</span>
+          <button onClick={generate} disabled={working} className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50">{working ? 'Updating…' : '↻ Update summary'}</button>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-bold">📝 Conversation summary</div>
+          {!info.stale && <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Up to date</span>}
+        </div>
+        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{s.overview}</p>
+      </div>
+
+      {Array.isArray(s.keyPoints) && s.keyPoints.length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="text-sm font-bold">Key points</div>
+          <ul className="mt-2 space-y-1.5">
+            {s.keyPoints.map((k, i) => (
+              <li key={i} className="flex gap-2 text-sm text-slate-700"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500"></span><span>{k}</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Current status</div>
+          <p className="mt-1 text-sm font-medium text-slate-800">{s.status || '—'}</p>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Next step</div>
+          <p className="mt-1 text-sm font-medium text-emerald-900">{s.nextStep || '—'}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between">
+        {savedAt ? <span className="text-[11px] text-slate-400">Saved {savedAt}</span> : <span></span>}
+        <button onClick={generate} disabled={working} className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">{working ? '…' : '↻ Regenerate'}</button>
+      </div>
+    </>
+  )
+}
+
+// AI Recommended Reply — answers the customer messages that arrived AFTER the agent's
+// last reply (the unanswered ones). Re-generates automatically when new customer
+// messages arrive; cheap/no-op when the agent has already replied to the latest.
+function ResponsesTab({ onSendReply, conv, msgCount }) {
+  const toast = useToast()
+  const cid = conv?.id
+  const [reply, setReply] = useState('')
+  const [info, setInfo] = useState(null)   // { pending, pendingCount, pendingMessages, detectedLanguage, reply, empty }
+  const [loading, setLoading] = useState(false)
+
+  const generate = (force = false) => {
+    if (!cid) return
+    setLoading(true)
+    api.post(`/api/ai/recommend-reply/${encodeURIComponent(cid)}`, { force })
+      .then((r) => {
+        setInfo(r)
+        if (typeof r.reply === 'string') setReply(r.reply)
+      })
+      .catch((ex) => toast(ex.message || 'Failed', 'error'))
+      .finally(() => setLoading(false))
+  }
+
+  // Auto: on conversation change AND whenever the message list changes (new customer
+  // message → fresh reply; agent's own send → server returns "no pending", no AI call).
+  useEffect(() => { setReply(''); setInfo(null); if (cid) generate(false) }, [cid, msgCount])
+
+  return (
+    <>
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-bold">✨ AI Recommended Reply</div>
+          <button onClick={() => generate(true)} disabled={loading || !cid} className="rounded-md border border-violet-200 px-2.5 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">{loading ? '…' : '↻ Regenerate'}</button>
+        </div>
+
+        {!cid ? (
+          <p className="mt-3 text-sm text-slate-500">Koi conversation select karo.</p>
+        ) : loading && !reply ? (
+          <p className="mt-3 text-sm text-violet-700">✨ Generating reply for unanswered messages…</p>
+        ) : info?.empty ? (
+          <p className="mt-3 text-sm text-slate-500">Is chat mein abhi koi message nahi.</p>
+        ) : info && info.pending === false && !reply ? (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-sm text-emerald-800">
+            ✅ Aap latest customer message ka reply de chuke ho — koi pending message nahi.
+            <button onClick={() => generate(true)} className="ml-2 font-semibold text-violet-700 underline hover:text-violet-800">Generate anyway</button>
+          </div>
+        ) : (
+          <>
+            {info?.pendingCount > 0 && Array.isArray(info.pendingMessages) && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                <div className="text-[11px] font-semibold text-amber-700">Replying to {info.pendingCount} unanswered customer message{info.pendingCount > 1 ? 's' : ''}{info.detectedLanguage ? ` · ${info.detectedLanguage}` : ''}:</div>
+                <ul className="mt-1 space-y-0.5">
+                  {info.pendingMessages.map((t, i) => <li key={i} className="truncate text-xs text-slate-700">• {t}</li>)}
+                </ul>
+              </div>
+            )}
+            <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={5}
+              className="mt-3 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white" />
+            <div className="mt-3 flex items-center gap-2">
+              <button onClick={() => { if (reply.trim()) { onSendReply(reply); toast('Reply sent to chat', 'success') } }} disabled={!reply.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">▶ Send</button>
+              <button onClick={() => { navigator.clipboard?.writeText(reply); toast('Copied', 'success') }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50">Copy</button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Always-visible quick-send panels (match the design) */}
+      <SendPanel title="Communication Actions" items={COMM_ITEMS} onSendReply={onSendReply} />
+      <SendPanel title="Payment Methods" items={PAY_ITEMS} onSendReply={onSendReply} />
+      <SendPanel title="Document" items={DOC_ITEMS} onSendReply={onSendReply} />
     </>
   )
 }
@@ -910,7 +1291,25 @@ function ActionsTab({ ai, onAnalyze }) {
   const pCls = (p) => p === 'High' ? 'text-emerald-600' : p === 'Medium' ? 'text-amber-600' : 'text-slate-500'
   return (
     <>
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
+      {a.agentScore && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="text-sm font-bold">Agent Professionalism Score</div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className={`text-3xl font-extrabold ${scoreTone(a.agentScore.score).text}`}>{a.agentScore.score}</span>
+            <span className="text-sm text-slate-500">/100</span>
+            {a.agentScore.label && <span className={`ml-2 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${scoreTone(a.agentScore.score).soft}`}>{a.agentScore.label}</span>}
+          </div>
+        </div>
+      )}
+      {Array.isArray(a.insights) && a.insights.length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="text-sm font-bold">AI Interpretation</div>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+            {a.insights.map((x, i) => <li key={i}>{x}</li>)}
+          </ul>
+        </div>
+      )}
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
         <div className="text-sm font-bold">AI Suggested Actions</div>
         {actions.length === 0 ? <p className="mt-2 text-xs text-slate-500">No actions suggested.</p> : (
           <ul className="mt-3 space-y-3 text-sm">
@@ -1024,13 +1423,24 @@ function DesignerTab() {
   )
 }
 
-function IntentTab({ ai, onAnalyze }) {
+const metricRatingCls = (r) => r === 'Needs Improve' ? 'text-rose-600' : (r === 'Pending' || !r) ? 'text-slate-400' : 'text-emerald-600'
+
+function IntentTab({ ai, onAnalyze, conv }) {
   const a = ai?.analysis
   if (!a) return <AnalyzePrompt onAnalyze={onAnalyze} loading={ai?.loading} />
   const intent = a.intent || {}
   const ci = a.customerInsights || {}
   const sent = a.sentiment || {}
+  const am = a.agentMetrics || {}
   const tone = sentimentTone(sent.label)
+  const objections = Array.isArray(a.objections) ? a.objections : []
+  const convProb = a.leadPrediction?.conversionProbability
+  const METRICS = [
+    ['First Response Time', am.firstResponseTime], ['Avg Response Time', am.avgResponseTime],
+    ['Resolution Rate', am.resolutionRate], ['Conversation Control', am.conversationControl],
+    ['Information Collection', am.informationCollection], ['CTA Effectiveness', am.ctaEffectiveness],
+    ['Objection Handling', am.objectionHandling], ['Follow-up Discipline', am.followupDiscipline],
+  ].filter(([, v]) => v && (v.value || v.rating))
   const rows = [
     ['Product Interest', ci.productInterest], ['Design Theme', ci.designTheme],
     ['Buyer Type', ci.buyerType], ['Buying Signals', ci.buyingSignals],
@@ -1040,7 +1450,22 @@ function IntentTab({ ai, onAnalyze }) {
   ].filter((r) => r[1])
   return (
     <>
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
+      {METRICS.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <h4 className="mb-3 flex items-center gap-1.5 text-sm font-bold"><span className="text-violet-600">📊</span> Agent Performance Matrices</h4>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {METRICS.map(([label, m], i) => (
+              <div key={i} className="rounded-lg bg-slate-50 p-2.5">
+                <div className="text-[10px] text-slate-500">{label}</div>
+                <div className="text-base font-bold">{m.value || '—'}</div>
+                <div className={`text-[11px] font-semibold ${metricRatingCls(m.rating)}`}>{m.rating || '—'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-bold">Detected Intent</h4>
           {intent.confidence != null && <div className="text-right"><div className="text-[10px] uppercase tracking-wide text-slate-400">Confidence</div><div className="text-sm font-bold text-emerald-600">{intent.confidence}%</div></div>}
@@ -1048,6 +1473,7 @@ function IntentTab({ ai, onAnalyze }) {
         {intent.primary && <div className="mt-3"><div className="text-xs text-slate-500">Primary Intent</div><div className="mt-1"><span className="inline-flex rounded-md bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-700">{intent.primary}</span></div></div>}
         {intent.summary && <div className="mt-3 text-sm"><div className="text-xs text-slate-500">Intent Summary</div><p className="mt-1 text-slate-700">{intent.summary}</p></div>}
       </div>
+
       {rows.length > 0 && (
         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm">
           <h4 className="mb-3 text-sm font-bold">Customer Insights</h4>
@@ -1058,11 +1484,38 @@ function IntentTab({ ai, onAnalyze }) {
           </dl>
         </div>
       )}
+
       {sent.label && (
         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between"><h4 className="text-sm font-bold">Sentiment Analysis</h4><span className={`text-xs font-semibold ${tone.text}`}>{sent.label}{sent.score != null ? ` · ${sent.score}%` : ''}</span></div>
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${sent.score ?? 50}%` }}></div></div>
         </div>
+      )}
+
+      {(objections.length > 0 || convProb != null) && (
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {objections.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 className="mb-2 text-sm font-bold">Objections / Concerns</h4>
+              <ul className="space-y-1.5 text-xs">
+                {objections.map((o, i) => <li key={i} className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" /> {o}</li>)}
+              </ul>
+            </div>
+          )}
+          {convProb != null && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 className="mb-2 text-sm font-bold">Lead Prediction</h4>
+              <div className="text-xs text-slate-500">Conversion Probability</div>
+              <div className="text-2xl font-extrabold text-emerald-600">{convProb}%</div>
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-emerald-500" style={{ width: `${convProb}%` }} /></div>
+              <div className="mt-1 flex justify-between text-[10px] text-slate-400"><span>Low</span><span>High</span></div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {conv?.listTime && (
+        <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-500"><span>📅</span> Last Activity · {conv.listTime}</div>
       )}
     </>
   )

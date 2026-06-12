@@ -7,7 +7,7 @@ import { ManyChatClient } from './manychat.js'
 import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, aiModels, embed, chatJSON, chatText } from './ai.js'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
 const JWT_SECRET = process.env.JWT_SECRET || 'technocas-dev-secret-change-in-prod'
@@ -214,7 +214,7 @@ app.get('/api/conversations/:id/messages', authRequired, (req, res) => {
 app.post('/api/conversations/:id/messages', authRequired, (req, res) => {
   const { dir, text, time } = req.body || {}
   if (!dir || !text) return res.status(400).json({ error: 'dir and text required' })
-  const msg = insert('messages', {
+  const msg = saveMessage({
     conversation_id: req.params.id,
     dir,
     text,
@@ -306,7 +306,7 @@ app.post('/api/manychat/send', authRequired, async (req, res) => {
   try {
     const result = await manychat().sendText(subscriberId, text, { messageTag })
     // Save a copy locally as an outgoing message
-    insert('messages', {
+    saveMessage({
       conversation_id: `mc:${subscriberId}`,
       dir: 'out',
       text,
@@ -378,7 +378,7 @@ app.post('/api/webhooks/manychat', async (req, res) => {
   }
 
   if (text) {
-    insert('messages', {
+    saveMessage({
       conversation_id: convId,
       dir: 'in',
       text,
@@ -642,7 +642,7 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
   try {
     const result = await meta().sendText(recipientId, text)
     const mid = result?.message_id
-    const msg = insert('messages', {
+    const msg = saveMessage({
       id: mid || undefined,            // use Meta's mid so the echo webhook upserts (no dupes)
       conversation_id: conv?.id || `${channel === 'Instagram' ? 'ig' : 'fb'}:${recipientId}`,
       dir: 'out',
@@ -787,7 +787,7 @@ async function syncMetaConversations() {
           const exists = findById('messages', m.id)
           const fromId = String(m.from?.id || '')
           const dir = (fromId === pageId || fromId === igId) ? 'out' : 'in'
-          const stored = insert('messages', {
+          const stored = saveMessage({
             id: m.id,
             conversation_id: convId,
             dir,
@@ -875,7 +875,7 @@ app.post('/api/webhooks/meta', async (req, res) => {
         ensureLeadForConversation(conv)  // auto lead-capture
       }
 
-      const stored = insert('messages', {
+      const stored = saveMessage({
         id: msg.mid || undefined,      // dedupe by Meta message id
         conversation_id: conv.id,
         dir: isEcho ? 'out' : 'in',
@@ -962,6 +962,52 @@ app.get('/api/ai/status', authRequired, (req, res) => {
   res.json({ configured: aiConfigured(), models: aiModels(), qdrant: qdrantConfigured() })
 })
 
+// ============================================================
+// Message memory in Qdrant — every message is embedded + stored so it's
+// semantically searchable and can power conversation memory / RAG.
+// ============================================================
+const MSG_COLLECTION = 'crm_messages'
+let msgCollectionReady = false
+async function ensureMsgCollection(q) {
+  if (msgCollectionReady) return
+  await q.ensureCollection(MSG_COLLECTION, { size: 1536 })   // text-embedding-3-small
+  try { await q.createPayloadIndex(MSG_COLLECTION, 'conversation_id', 'keyword') } catch { /* already indexed */ }
+  msgCollectionReady = true
+}
+// Stable UUID from a message id, so re-ingesting the same message updates (no dupes).
+function pointId(id) {
+  const h = createHash('md5').update(String(id)).digest('hex')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`
+}
+// Fire-and-forget: embed one message → upsert into Qdrant. Never blocks the caller.
+function ingestMessage(msg) {
+  if (!msg || !msg.text || !msg.text.trim() || msg.text === '[attachment]') return
+  if (!aiConfigured() || !qdrantConfigured()) return
+  ;(async () => {
+    try {
+      const q = new QdrantClient()
+      await ensureMsgCollection(q)
+      const [vec] = await embed(msg.text)
+      await q.upsert(MSG_COLLECTION, [{
+        id: pointId(msg.id),
+        vector: vec,
+        payload: {
+          message_id: String(msg.id),
+          conversation_id: msg.conversation_id,
+          dir: msg.dir, via: msg.via || '', time: msg.time || '',
+          text: msg.text, created_at: msg.created_at || '',
+        },
+      }])
+    } catch { /* best effort — message is already saved in Postgres */ }
+  })()
+}
+// Save a message to Postgres AND push it to Qdrant (used by every insert path).
+function saveMessage(row) {
+  const m = insert('messages', row)
+  ingestMessage(m)
+  return m
+}
+
 // Pull relevant Knowledge Base snippets from Qdrant for a query (RAG).
 async function ragContext(query) {
   if (!qdrantConfigured()) return ''
@@ -982,9 +1028,21 @@ Analyze the conversation and respond with ONLY a JSON object in EXACTLY this sha
  "suggestedActions": [ { "title": string, "reason": string, "priority": "High"|"Medium"|"Low" } ],
  "recommendedReply": string,
  "customerInsights": { "productInterest": string, "designTheme": string, "buyerType": string, "buyingSignals": string, "urgency": string, "budgetSensitivity": string, "decisionMaker": string, "engagement": string, "repeatCustomer": string },
- "agentScore": { "score": number, "label": string }
+ "agentScore": { "score": number, "label": string },
+ "agentMetrics": {
+   "firstResponseTime":   { "value": string, "rating": "Excellent"|"Good"|"Needs Improve"|"Pending" },
+   "avgResponseTime":     { "value": string, "rating": "Excellent"|"Good"|"Needs Improve"|"Pending" },
+   "resolutionRate":      { "value": string, "rating": "Excellent"|"Good"|"Needs Improve"|"Pending" },
+   "conversationControl": { "value": string, "rating": "Excellent"|"Good"|"Needs Improve"|"Pending" },
+   "informationCollection":{ "value": string, "rating": "Excellent"|"Good"|"Needs Improve"|"Pending" },
+   "ctaEffectiveness":    { "value": string, "rating": "Excellent"|"Good"|"Needs Improve"|"Pending" },
+   "objectionHandling":   { "value": string, "rating": "Excellent"|"Good"|"Needs Improve"|"Pending" },
+   "followupDiscipline":  { "value": string, "rating": "Excellent"|"Good"|"Needs Improve"|"Pending" }
+ },
+ "objections": string[],
+ "leadPrediction": { "conversionProbability": number }
 }
-Numbers 0-100. Be concise, practical and specific to this conversation. The recommendedReply must be a ready-to-send message in the customer's language.`
+Numbers 0-100. agentMetrics values are short (e.g. "1m 42s", "92%", "High", "Good"). objections = concerns/blockers slowing the deal. leadPrediction.conversionProbability 0-100. Be concise, practical and specific to this conversation. The recommendedReply must be a ready-to-send message in the customer's language.`
 
 app.get('/api/ai/analyze/:id', authRequired, async (req, res) => {
   if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY in server/.env' })
@@ -1021,6 +1079,165 @@ app.post('/api/ai/ingest', authRequired, async (req, res) => {
       payload: { text, title: title || '', category, language, author, access_level, doc_id: id, token_count: Math.round(text.length / 4) },
     }])
     res.json({ ok: true, id })
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
+  }
+})
+
+// Backfill: embed ALL existing messages into Qdrant (one-time / on demand).
+app.post('/api/ai/ingest-messages', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured' })
+  if (!qdrantConfigured()) return res.status(400).json({ error: 'Qdrant not configured' })
+  const all = getAll('messages').filter((m) => m.text && m.text.trim() && m.text !== '[attachment]')
+  try {
+    const q = new QdrantClient()
+    await ensureMsgCollection(q)
+    let done = 0
+    const BATCH = 100
+    for (let i = 0; i < all.length; i += BATCH) {
+      const slice = all.slice(i, i + BATCH)
+      const vecs = await embed(slice.map((m) => m.text))
+      const points = slice.map((m, j) => ({
+        id: pointId(m.id),
+        vector: vecs[j],
+        payload: {
+          message_id: String(m.id), conversation_id: m.conversation_id,
+          dir: m.dir, via: m.via || '', time: m.time || '',
+          text: m.text, created_at: m.created_at || '',
+        },
+      }))
+      await q.upsert(MSG_COLLECTION, points)
+      done += slice.length
+    }
+    res.json({ ok: true, total: all.length, ingested: done, collection: MSG_COLLECTION })
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
+  }
+})
+
+// Translation assist: understand the last customer message + suggest a reply.
+app.post('/api/ai/translate-assist', authRequired, async (req, res) => {
+  const { text } = req.body || {}
+  if (!text || !text.trim()) return res.status(400).json({ error: 'text required' })
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  const sys = `You help a customer-support agent at a custom apparel print shop. The customer's last message may be in broken English, Spanish, or another language. Respond with ONLY a JSON object:
+{
+ "detectedLanguage": string,        // e.g. "English", "Spanish"
+ "explanation": string,             // what the customer means, in SIMPLE clear English (1-3 sentences)
+ "replyEn": string,                 // a helpful, professional suggested reply IN ENGLISH
+ "replyNative": string              // replyEn translated into the customer's language; if the customer's language is English, return ""
+}`
+  try {
+    const out = await chatJSON(sys, text.trim())
+    res.json(out)
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
+  }
+})
+
+// Conversation summary — generated on demand, CACHED on the conversation doc, and
+// updated INCREMENTALLY: only the NEW messages (since the saved summary) are sent
+// to the model, which merges them into the existing detailed summary.
+// Messages in the SAME order the chat shows them (array/insertion order). The bulk
+// import gave historical messages near-identical created_at, so sorting by it would
+// scramble order — array order is the source of truth the agent actually sees.
+const sortedConvMsgs = (cid) => getAll('messages').filter((m) => m.conversation_id === cid)
+const fmtMsg = (m) => `${m.dir === 'in' ? 'Customer' : m.dir === 'out' ? 'Agent' : 'System'}: ${m.text}`
+
+const SUMMARY_FULL = `Summarize this customer conversation for an agent who is taking over, so they instantly understand what happened WITHOUT reading the whole chat. Be detailed and specific. Respond with ONLY a JSON object:
+{
+ "overview": string,        // 3-5 sentence plain-English overview from first to last message
+ "keyPoints": string[],     // detailed bullet facts: what the customer wants, products, quantities, sizes, colors, prices/quotes, decisions, dates
+ "status": string,          // current stage (e.g. "Awaiting quote approval")
+ "nextStep": string         // what the agent should do next
+}`
+const SUMMARY_UPDATE = `You maintain a running, DETAILED summary of a customer-support conversation so an agent taking over understands everything WITHOUT reading the whole chat. You are given the EXISTING summary (JSON) and ONLY the NEW messages since it was written. Merge the new messages into the summary: keep all still-relevant key points, ADD the new information, and update status and nextStep. Do not drop earlier facts that still matter. Respond with ONLY a JSON object: { "overview": string, "keyPoints": string[], "status": string, "nextStep": string }`
+
+// GET → return the CACHED summary (does NOT call the model). Reports how many new messages exist.
+app.get('/api/ai/summary/:id', authRequired, (req, res) => {
+  const conv = findById('conversations', req.params.id)
+  if (!conv) return res.status(404).json({ error: 'conversation not found' })
+  const total = sortedConvMsgs(req.params.id).length
+  if (!total) return res.json({ empty: true })
+  const covered = conv.summary_count || 0
+  res.json({
+    ok: true,
+    cached: !!conv.summary,
+    summary: conv.summary || null,
+    summaryAt: conv.summary_at || null,
+    coveredCount: covered,
+    totalCount: total,
+    newCount: Math.max(0, total - covered),
+    stale: !!conv.summary && total > covered,
+  })
+})
+
+// POST → generate (first time, full) or update (incremental — only new messages) + SAVE to the conversation.
+app.post('/api/ai/summary/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  const conv = findById('conversations', req.params.id)
+  if (!conv) return res.status(404).json({ error: 'conversation not found' })
+  const msgs = sortedConvMsgs(req.params.id)
+  if (!msgs.length) return res.json({ empty: true })
+
+  const covered = conv.summary_count || 0
+  const hasCache = !!conv.summary
+  try {
+    let summary, mode
+    if (hasCache && msgs.length <= covered) {
+      summary = conv.summary; mode = 'unchanged'                 // nothing new
+    } else if (hasCache && covered > 0) {
+      const fresh = msgs.slice(covered).map(fmtMsg).join('\n')   // only the NEW messages
+      summary = await chatJSON(SUMMARY_UPDATE, `EXISTING SUMMARY:\n${JSON.stringify(conv.summary)}\n\nNEW MESSAGES:\n${fresh}`)
+      mode = 'incremental'
+    } else {
+      summary = await chatJSON(SUMMARY_FULL, msgs.map(fmtMsg).join('\n'))  // first time, full
+      mode = 'full'
+    }
+    const summaryAt = new Date().toISOString()
+    update('conversations', conv.id, { summary, summary_count: msgs.length, summary_at: summaryAt })
+    res.json({ ok: true, mode, summary, coveredCount: msgs.length, totalCount: msgs.length, newCount: 0, summaryAt })
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
+  }
+})
+
+// AI Recommended Reply — replies to the customer messages that arrived AFTER the
+// agent's last reply (the UNANSWERED ones). Cheap when nothing is pending (no AI call).
+app.post('/api/ai/recommend-reply/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  const conv = findById('conversations', req.params.id)
+  if (!conv) return res.status(404).json({ error: 'conversation not found' })
+  const msgs = sortedConvMsgs(req.params.id)
+  if (!msgs.length) return res.json({ empty: true })
+
+  // Index of the agent's last outgoing message; customer messages after it are "pending".
+  let lastOut = -1
+  for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].dir === 'out') { lastOut = i; break } }
+  const pendingMsgs = msgs.slice(lastOut + 1).filter((m) => m.dir === 'in')
+  const force = !!req.body?.force
+
+  // Nothing new to answer and not forced → tell the UI, skip the AI call.
+  if (!pendingMsgs.length && !force) return res.json({ ok: true, pending: false, pendingCount: 0 })
+
+  // What to reply to: the unanswered messages (or, if forced with none pending, the last customer message).
+  const targets = pendingMsgs.length ? pendingMsgs : msgs.filter((m) => m.dir === 'in').slice(-1)
+  if (!targets.length) return res.json({ ok: true, pending: false, pendingCount: 0 })
+  const targetText = targets.map((m) => m.text).join('\n')
+
+  try {
+    const kb = await ragContext(targetText)
+    const sys = `You are an AI sales assistant for a custom apparel print shop (hoodies, t-shirts, jerseys, DTF transfers, embroidery). Write the agent's NEXT reply. Focus ONLY on answering the customer's UNANSWERED message(s) (the ones that came after the agent's last reply). Use the full conversation only as context. Be professional, helpful and concise, and reply in the customer's language. Respond with ONLY a JSON object: { "detectedLanguage": string, "reply": string }`
+    const user = `${kb ? `Knowledge base (use if relevant):\n${kb}\n\n` : ''}Customer: ${conv.name} · Channel: ${conv.channel}\n\nFull conversation:\n${msgs.map(fmtMsg).join('\n')}\n\nUNANSWERED customer message(s) to reply to:\n${targetText}`
+    const out = await chatJSON(sys, user)
+    res.json({
+      ok: true,
+      pending: pendingMsgs.length > 0,
+      pendingCount: pendingMsgs.length,
+      pendingMessages: pendingMsgs.map((m) => m.text),
+      detectedLanguage: out.detectedLanguage || '',
+      reply: out.reply || '',
+    })
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
   }
