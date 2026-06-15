@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import SidebarCrm from '../components/SidebarCrm.jsx'
 import TopBarUser from '../components/TopBarUser.jsx'
 import { useToast } from '../components/ToastContext.jsx'
@@ -14,6 +15,8 @@ export default function Integrations() {
 
   // ---- Meta (Messenger + Instagram) ----
   const [meta, setMeta] = useState(null)
+  const [metaAppId, setMetaAppId] = useState('')
+  const [metaAppSecret, setMetaAppSecret] = useState('')
   const [metaToken, setMetaToken] = useState('')
   const [metaBusy, setMetaBusy] = useState(false)
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
@@ -27,12 +30,17 @@ export default function Integrations() {
 
   const connectMeta = async (e) => {
     e.preventDefault()
-    if (!metaToken.trim()) return
+    if (!metaAppId.trim() || !metaAppSecret.trim() || !metaToken.trim()) {
+      toast('App ID, App Secret aur Access Token — teeno zaroori hain', 'error'); return
+    }
     setMetaBusy(true)
     try {
-      const r = await api.post('/api/meta/connect', { pageToken: metaToken.trim() })
-      toast(`Meta connected: ${r.page?.name || 'Page'}`, 'success')
-      setMetaToken('')
+      const r = await api.post('/api/meta/connect-app', {
+        appId: metaAppId.trim(), appSecret: metaAppSecret.trim(), token: metaToken.trim(),
+      })
+      await api.post('/api/meta/sync').catch(() => ({}))
+      toast(r.neverExpires ? `Connected: ${r.page?.name || 'Page'} — permanent ✅` : `Connected: ${r.page?.name || 'Page'} (token temporary ⚠)`, r.neverExpires ? 'success' : 'info')
+      setMetaToken(''); setMetaAppSecret('')
       refresh()
     } catch (ex) {
       toast(ex.message || 'Failed to connect Meta', 'error')
@@ -131,19 +139,40 @@ export default function Integrations() {
 
             {!meta?.connected && (
               <form onSubmit={connectMeta} className="mt-4 space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">1 · App ID</label>
+                    <input
+                      value={metaAppId}
+                      onChange={(e) => setMetaAppId(e.target.value)}
+                      placeholder="e.g. 1234567890123456"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-mono outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">2 · App Secret</label>
+                    <input
+                      type="password"
+                      value={metaAppSecret}
+                      onChange={(e) => setMetaAppSecret(e.target.value)}
+                      placeholder="App Secret (Settings → Basic → Show)"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-mono outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20"
+                    />
+                  </div>
+                </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-600">Page Access Token</label>
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">3 · Access Token (Page / System User)</label>
                   <input
                     type="password"
                     value={metaToken}
                     onChange={(e) => setMetaToken(e.target.value)}
-                    placeholder="EAAT... (paste your Page Access Token here)"
+                    placeholder="EAAT... (production page access token)"
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-mono outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20"
                   />
-                  <p className="mt-1 text-[11px] text-slate-500">From Meta App dashboard → Messenger/Instagram → Generate Page Token. Stored securely on your server, never shown again.</p>
+                  <p className="mt-1 text-[11px] text-slate-500">App ID + Secret + Token sirf aapke server (DB) pe store hote hain. Connect ke baad app khud permanent Page token bana leta hai aur zarurat par auto-refresh karta hai. Detailed never-expire guide: <Link to="/connect-meta" className="font-semibold text-brand-600 hover:underline">Connect Meta page</Link>.</p>
                 </div>
                 <button type="submit" disabled={metaBusy} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
-                  {metaBusy ? 'Verifying...' : 'Connect Meta'}
+                  {metaBusy ? 'Connecting & syncing…' : 'Connect & Sync'}
                 </button>
               </form>
             )}

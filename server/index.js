@@ -1227,8 +1227,15 @@ app.post('/api/ai/recommend-reply/:id', authRequired, async (req, res) => {
 
   try {
     const kb = await ragContext(targetText)
-    const sys = `You are an AI sales assistant for a custom apparel print shop (hoodies, t-shirts, jerseys, DTF transfers, embroidery). Write the agent's NEXT reply. Focus ONLY on answering the customer's UNANSWERED message(s) (the ones that came after the agent's last reply). Use the full conversation only as context. Be professional, helpful and concise, and reply in the customer's language. Respond with ONLY a JSON object: { "detectedLanguage": string, "reply": string }`
-    const user = `${kb ? `Knowledge base (use if relevant):\n${kb}\n\n` : ''}Customer: ${conv.name} · Channel: ${conv.channel}\n\nFull conversation:\n${msgs.map(fmtMsg).join('\n')}\n\nUNANSWERED customer message(s) to reply to:\n${targetText}`
+    const sys = `You are an AI sales assistant for a custom apparel print shop (hoodies, t-shirts, jerseys, DTF transfers, embroidery). Write the agent's NEXT reply.
+
+LANGUAGE RULE (critical): Detect the language of the UNANSWERED customer message(s) ONLY — ignore the language of earlier messages. Write your reply in EXACTLY that language. If the unanswered message(s) are in English, reply in English. If they are in Spanish, reply in Spanish. If the language is unclear, mixed, or just an emoji/number, default to English. NEVER reply in a different language than the customer's latest unanswered message(s).
+
+COVERAGE RULE: The customer may have sent SEVERAL unanswered messages or questions. Address ALL of them in a single reply — do not answer only the last one. Cover every question/request they raised.
+
+Be professional, helpful and concise. Use the full conversation only as background context.
+Respond with ONLY a JSON object: { "detectedLanguage": string, "reply": string }`
+    const user = `${kb ? `Knowledge base (use if relevant):\n${kb}\n\n` : ''}Customer: ${conv.name} · Channel: ${conv.channel}\n\nFull conversation (BACKGROUND CONTEXT ONLY — do not copy its language):\n${msgs.map(fmtMsg).join('\n')}\n\n>>> UNANSWERED customer message(s) you must reply to (detect THEIR language, answer ALL of them):\n${targetText}`
     const out = await chatJSON(sys, user)
     res.json({
       ok: true,
@@ -1238,6 +1245,36 @@ app.post('/api/ai/recommend-reply/:id', authRequired, async (req, res) => {
       detectedLanguage: out.detectedLanguage || '',
       reply: out.reply || '',
     })
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
+  }
+})
+
+// Designer Jobs — AI extracts the design/artwork tasks from the conversation,
+// then persists them on the conversation doc (designer_jobs). The frontend can
+// edit/add/remove and save via PATCH /api/conversations/:id.
+app.post('/api/ai/designer-jobs/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  const conv = findById('conversations', req.params.id)
+  if (!conv) return res.status(404).json({ error: 'conversation not found' })
+  const msgs = sortedConvMsgs(req.params.id)
+  if (!msgs.length) return res.json({ empty: true })
+  const sys = `You are an assistant for a custom apparel print shop (hoodies, t-shirts, jerseys, DTF transfers, embroidery). From the conversation, extract the concrete DESIGN / ARTWORK tasks the design team must produce — e.g. logo placement, text on front/back, mockups, color variations, size labels, embroidery, DTF transfers. Only include real design work the customer actually requested or that is clearly implied. If there is no design work yet, return an empty array. Respond with ONLY a JSON object:
+{ "jobs": [ { "title": string, "instructions": string, "priority": "High"|"Medium"|"Low" } ] }`
+  try {
+    const out = await chatJSON(sys, msgs.map(fmtMsg).join('\n'))
+    const yr = new Date().getFullYear()
+    const jobs = (Array.isArray(out.jobs) ? out.jobs : []).map((j, i) => ({
+      id: i + 1,
+      code: `AW-${yr}-${String(i + 1).padStart(3, '0')}`,
+      title: j.title || '',
+      instructions: j.instructions || '',
+      priority: ['High', 'Medium', 'Low'].includes(j.priority) ? j.priority : 'Medium',
+      assignee: '',
+      checked: true,
+    }))
+    update('conversations', conv.id, { designer_jobs: jobs })
+    res.json({ ok: true, jobs })
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
   }

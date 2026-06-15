@@ -45,10 +45,20 @@ export class MetaClient {
   }
 
   // List the Pages this (user) token manages, with their permanent Page tokens.
-  getAccounts() {
-    return this.request('/me/accounts', {
-      query: { fields: 'id,name,access_token,instagram_business_account{id,username,name}' },
-    })
+  // The instagram_business_account field needs the instagram_basic permission; if
+  // the token lacks it, Graph throws "(#100) nonexisting field" — so we retry
+  // without IG and connect the Page anyway (Messenger works; IG stays unlinked).
+  async getAccounts() {
+    try {
+      return await this.request('/me/accounts', {
+        query: { fields: 'id,name,access_token,instagram_business_account{id,username,name}' },
+      })
+    } catch (e) {
+      if (e.code === 100 || /instagram_business_account/i.test(e.message || '')) {
+        return this.request('/me/accounts', { query: { fields: 'id,name,access_token' } })
+      }
+      throw e
+    }
   }
 
   async request(path, { method = 'GET', query, body } = {}) {
@@ -79,10 +89,18 @@ export class MetaClient {
   }
 
   // Page + linked Instagram account info. Used to verify the token on connect.
-  getPageInfo() {
-    return this.request('/me', {
-      query: { fields: 'id,name,instagram_business_account{id,username,name,profile_picture_url}' },
-    })
+  // IG field needs instagram_basic; retry without it so a Page token still verifies.
+  async getPageInfo() {
+    try {
+      return await this.request('/me', {
+        query: { fields: 'id,name,instagram_business_account{id,username,name,profile_picture_url}' },
+      })
+    } catch (e) {
+      if (e.code === 100 || /instagram_business_account/i.test(e.message || '')) {
+        return this.request('/me', { query: { fields: 'id,name' } })
+      }
+      throw e
+    }
   }
 
   // Pull conversations (with recent messages embedded) for a platform.

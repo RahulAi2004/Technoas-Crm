@@ -770,7 +770,7 @@ export default function Dashboard() {
               {aiTab === 'translate' && <TranslationTab onSendReply={(text) => sendMessage(text, 'reply')} lastIncoming={[...messages].reverse().find((m) => m.dir === 'in')?.text || ''} />}
               {aiTab === 'summary' && <SummaryTab conv={conv} msgCount={messages.length} />}
               {aiTab === 'actions' && <ActionsTab ai={ai} onAnalyze={analyze} />}
-              {aiTab === 'designer' && <DesignerTab />}
+              {aiTab === 'designer' && <DesignerTab conv={conv} />}
               {aiTab === 'intent' && <IntentTab ai={ai} onAnalyze={analyze} conv={conv} />}
             </div>
           </aside>
@@ -1053,13 +1053,26 @@ function TimestampsTab({ conv }) {
   const avgAgent = avg(agentTimes)
   const avgCust = avg(custTimes)
 
+  // Message counts (agent vs customer)
+  const agentMsgs = rows.filter((r) => r.dir === 'out').length
+  const custMsgs = rows.filter((r) => r.dir === 'in').length
+
+  // First response time: customer's first message → agent's first reply after it
+  const firstInIdx = rows.findIndex((r) => r.dir === 'in')
+  const firstOut = firstInIdx >= 0 ? rows.find((r, i) => i > firstInIdx && r.dir === 'out') : null
+  let firstResponse = null
+  if (firstOut && rows[firstInIdx].clock != null && firstOut.clock != null) {
+    firstResponse = firstOut.clock - rows[firstInIdx].clock
+    if (firstResponse < 0) firstResponse += 1440
+  }
+
   if (!rows.length) {
     return <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5"><div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Is chat mein abhi koi message nahi.</div></div>
   }
 
   return (
     <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5">
-      {/* Averages */}
+      {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-600">Avg agent reply time</div>
@@ -1071,39 +1084,55 @@ function TimestampsTab({ conv }) {
           <div className="mt-1 text-2xl font-extrabold text-emerald-700">{fmtDur(avgCust)}</div>
           <div className="mt-0.5 text-[11px] text-slate-500">Agent → Customer · {custTimes.length} replies</div>
         </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">First response time</div>
+          <div className="mt-1 text-2xl font-extrabold text-amber-700">{fmtDur(firstResponse)}</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">Customer's 1st message → Agent's 1st reply</div>
+        </div>
+        <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-sky-600">Total messages</div>
+          <div className="mt-1 text-2xl font-extrabold text-sky-700">{rows.length}</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">🧑‍💼 Agent {agentMsgs} · 👤 Customer {custMsgs}</div>
+        </div>
       </div>
 
-      {/* Detailed timeline */}
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 text-sm font-bold">Message timeline ({rows.length} messages)</div>
-        <ol className="space-y-3">
-          {rows.map((r, i) => {
-            const isAgent = r.dir === 'out'
-            return (
-              <li key={i} className="flex gap-3">
-                <div className="flex flex-col items-center">
-                  <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[10px] font-bold ${isAgent ? 'bg-brand-100 text-brand-700' : 'bg-slate-200 text-slate-600'}`}>{isAgent ? (r.agent ? r.agent.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase() : 'AG') : (conv.initials || 'C')}</span>
-                  {i < rows.length - 1 && <span className="mt-1 w-px flex-1 bg-slate-200"></span>}
-                </div>
-                <div className="min-w-0 flex-1 pb-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-semibold ${isAgent ? 'text-brand-700' : 'text-slate-700'}`}>{isAgent ? (r.agent || 'Agent') : (conv.name || 'Customer')}</span>
-                    <span className="text-[11px] font-medium text-slate-400">{r.time || '—'}</span>
-                    {r.resp && (
-                      <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${isAgent ? 'bg-violet-50 text-violet-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                        ⏱ replied in {fmtDur(r.resp.minutes)}
+      {/* Detailed timeline as a table */}
+      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 px-4 py-3 text-sm font-bold">Message timeline ({rows.length} messages)</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-2 font-semibold">Role</th>
+                <th className="px-4 py-2 font-semibold">Time</th>
+                <th className="px-4 py-2 font-semibold">Reply after</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map((r, i) => {
+                const isAgent = r.dir === 'out'
+                return (
+                  <tr key={i} className="align-top hover:bg-slate-50/60">
+                    <td className="px-4 py-2.5">
+                      <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold ${isAgent ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-700'}`}>
+                        {isAgent ? '🧑‍💼 Agent' : '👤 Customer'}
                       </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 truncate text-xs text-slate-600">{r.text || '[attachment]'}</p>
-                </div>
-              </li>
-            )
-          })}
-        </ol>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 font-medium text-slate-700">{r.time || '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5">
+                      {r.resp
+                        ? <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${isAgent ? 'bg-violet-50 text-violet-700' : 'bg-emerald-50 text-emerald-700'}`}>⏱ {fmtDur(r.resp.minutes)}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <p className="mt-3 text-[11px] text-slate-400">Note: times reflect each message's clock time (as shown in chat). Response time is the gap between a message and the previous message from the other side. Cross-day gaps are approximate.</p>
+      <p className="mt-3 text-[11px] text-slate-400">Note: "Time" is each message's clock time (as shown in chat). "Reply after" = gap since the previous message from the other side. Cross-day gaps are approximate.</p>
     </div>
   )
 }
@@ -1340,36 +1369,56 @@ function ActionsTab({ ai, onAnalyze }) {
   )
 }
 
-function DesignerTab() {
+function DesignerTab({ conv }) {
   const toast = useToast()
-  const TEAM = [
-    { name:'Jane Smith', initials:'JS', chip:'bg-fuchsia-100 text-fuchsia-600' },
-    { name:'Mike Johnson', initials:'MJ', chip:'bg-indigo-100 text-indigo-600' },
-    { name:'Emily Davis', initials:'ED', chip:'bg-pink-100 text-pink-600' },
-    { name:'Alex Brown', initials:'AB', chip:'bg-amber-100 text-amber-700' },
-  ]
   const PRIORITY_CLS = {
     High:   'bg-rose-50 text-rose-700 hover:bg-rose-100',
     Medium: 'bg-amber-50 text-amber-700 hover:bg-amber-100',
     Low:    'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
   }
-  const initialRows = [
-    { id:1, code:'AW-2026-001', assignee:'Jane Smith', priority:'High', instructions:'Create front design with school logo on left chest and event text on right chest.', checked:true },
-    { id:2, code:'AW-2026-002', assignee:'Mike Johnson', priority:'High', instructions:'Add "Springfield High School Event 2024" in large text on the back.', checked:true },
-    { id:3, code:'AW-2026-003', assignee:'Emily Davis', priority:'Medium', instructions:'Add mascot logo on left sleeve.', checked:false },
-    { id:4, code:'AW-2026-004', assignee:'Alex Brown', priority:'Low', instructions:'Design size label for S to 2XL.', checked:true },
-    { id:5, code:'AW-2026-005', assignee:'Jane Smith', priority:'Medium', instructions:'Generate hoodie mockups in black and white colors.', checked:false },
-    { id:6, code:'AW-2026-006', assignee:'Mike Johnson', priority:'Low', instructions:'Prepare color variations for navy, grey and maroon.', checked:true },
-  ]
-  const [rows, setRows] = useState(initialRows)
-  const [nextId, setNextId] = useState(7)
-  const selectedCount = rows.filter((r) => r.checked).length
-  const update = (id, patch) => setRows((xs) => xs.map((r) => (r.id === id ? { ...r, ...patch } : r)))
-  const remove = (id) => setRows((xs) => xs.filter((r) => r.id !== id))
-  const addRow = () => {
-    setRows((xs) => [...xs, { id: nextId, code: `AW-2026-${String(nextId).padStart(3, '0')}`, assignee:'', priority:'Medium', instructions:'', checked:false }])
-    setNextId((n) => n + 1)
+  const cid = conv?.id
+  const [rows, setRows] = useState([])
+  const [team, setTeam] = useState([])       // real team member names
+  const [extracting, setExtracting] = useState(false)
+  const nextRef = useRef(1)
+
+  // Load saved jobs for this conversation + the real team list.
+  useEffect(() => {
+    const jobs = Array.isArray(conv?.designer_jobs) ? conv.designer_jobs : []
+    setRows(jobs)
+    nextRef.current = jobs.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
+  }, [cid, conv?.designer_jobs])
+  useEffect(() => {
+    api.get('/api/users').then((us) => setTeam((us || []).map((u) => u.name).filter(Boolean))).catch(() => {})
+  }, [])
+
+  // Persist the whole jobs array on the conversation (survives reload, shared with team).
+  const persist = (newRows) => {
+    setRows(newRows)
+    if (cid) api.patch(`/api/conversations/${encodeURIComponent(cid)}`, { designer_jobs: newRows }).catch(() => {})
   }
+  const update = (id, patch) => persist(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+  const remove = (id) => persist(rows.filter((r) => r.id !== id))
+  const addRow = () => {
+    const id = nextRef.current++
+    const yr = new Date().getFullYear()
+    persist([...rows, { id, code: `AW-${yr}-${String(id).padStart(3, '0')}`, assignee: '', priority: 'Medium', instructions: '', checked: false }])
+  }
+  const extract = async () => {
+    if (!cid) return
+    setExtracting(true)
+    try {
+      const r = await api.post(`/api/ai/designer-jobs/${encodeURIComponent(cid)}`, {})
+      if (r.empty) { toast('Is chat mein abhi koi message nahi', 'info'); return }
+      const jobs = r.jobs || []
+      nextRef.current = jobs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1
+      setRows(jobs)   // server already saved them
+      toast(jobs.length ? `${jobs.length} design task${jobs.length > 1 ? 's' : ''} extracted` : 'Koi design task nahi mila', 'success')
+    } catch (ex) { toast(ex.message || 'Failed', 'error') }
+    finally { setExtracting(false) }
+  }
+
+  const selectedCount = rows.filter((r) => r.checked).length
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -1377,27 +1426,36 @@ function DesignerTab() {
           <h4 className="flex items-center gap-2 text-sm font-bold"><span className="text-violet-600">✨</span> Designer Jobs</h4>
           <p className="mt-0.5 text-xs text-slate-500">All artworks and tasks extracted from this conversation.</p>
         </div>
+        <button onClick={extract} disabled={extracting || !cid} className="shrink-0 rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{extracting ? 'Extracting…' : '✨ Extract from chat'}</button>
       </div>
+      {rows.length === 0 && (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-xs text-slate-500">
+          Abhi koi designer job nahi. <b>"✨ Extract from chat"</b> dabao — AI is chat se design tasks nikal dega, ya neeche se manually add karo.
+        </div>
+      )}
       <ul className="space-y-2">
         {rows.map((row, idx) => {
-          const team = TEAM.find(t => t.name === row.assignee)
           return (
             <li key={row.id} className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
               <input type="checkbox" checked={row.checked} onChange={(e) => update(row.id, { checked: e.target.checked })} className="mt-1 h-3.5 w-3.5 shrink-0 accent-brand-600" />
               <div className="grid w-8 shrink-0 place-items-center text-xs font-semibold text-slate-500">{idx + 1}</div>
               <div className="shrink-0">
-                <div className="grid h-12 w-12 place-items-center rounded-md bg-slate-900 ring-1 ring-slate-200 text-[10px] font-bold text-white">{row.code.split('-').pop()}</div>
+                <div className="grid h-12 w-12 place-items-center rounded-md bg-slate-900 ring-1 ring-slate-200 text-[10px] font-bold text-white">{(row.code || '').split('-').pop()}</div>
                 <div className="mt-1 text-center text-[10px] text-slate-500">{row.code}</div>
               </div>
               <div className="min-w-0 flex-1 space-y-1">
+                {row.title && <div className="text-xs font-semibold text-slate-700">{row.title}</div>}
                 <select value={row.assignee} onChange={(e) => update(row.id, { assignee: e.target.value })} className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-white px-2 py-1 text-xs">
                   <option value="">Unassigned</option>
-                  {TEAM.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+                  {team.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
                 <select value={row.priority} onChange={(e) => update(row.id, { priority: e.target.value })} className={`flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-semibold ${PRIORITY_CLS[row.priority]}`}>
                   <option>High</option><option>Medium</option><option>Low</option>
                 </select>
-                <input type="text" value={row.instructions} onChange={(e) => update(row.id, { instructions: e.target.value })} placeholder="Enter instructions..." className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" />
+                <input type="text" value={row.instructions}
+                  onChange={(e) => setRows((xs) => xs.map((r) => (r.id === row.id ? { ...r, instructions: e.target.value } : r)))}
+                  onBlur={() => persist(rows)}
+                  placeholder="Enter instructions..." className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" />
               </div>
               <div className="flex shrink-0 flex-col gap-1">
                 <button className="grid h-7 w-7 place-items-center rounded-md text-brand-600 hover:bg-brand-50" aria-label="Edit">✎</button>
