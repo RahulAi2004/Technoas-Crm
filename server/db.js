@@ -19,9 +19,9 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  connectionTimeoutMillis: 5000,  // fail fast if the remote server is unreachable (frees the pool)
-  query_timeout: 8000,            // don't let a single query hang forever
-  statement_timeout: 8000,
+  connectionTimeoutMillis: 15000, // fail if the remote server is unreachable (frees the pool)
+  query_timeout: 90000,           // boot loadAll() pulls ALL rows (24k+ messages) — needs headroom
+  statement_timeout: 90000,
   idleTimeoutMillis: 30000,
   max: 12,
 })

@@ -1,0 +1,309 @@
+{
+  "generatedFrom": {
+    "conversations": 166,
+    "messages": 8311,
+    "uniqueMessages": 6162
+  },
+  "faqs": [
+    {
+      "category": "General",
+      "question": "What services do you offer?",
+      "reply": "Hi there! We offer a variety of custom apparel services including printing on hoodies, t-shirts, jerseys, DTF transfers, embroidery, and custom designs. If you have a specific project in mind, feel free to share, and we'll be happy to assist you!"
+    },
+    {
+      "category": "General",
+      "question": "Do you have a catalog or website to view your designs?",
+      "reply": "Yes! You can view our designs and services on our website at decoinks.com. We have a wide range of options available for you to explore."
+    },
+    {
+      "category": "General",
+      "question": "What is your email address?",
+      "reply": "You can reach us at support@decoinks.com for any inquiries or assistance you may need. We're here to help!"
+    },
+    {
+      "category": "General",
+      "question": "What are your operation hours?",
+      "reply": "Our support team operates 24/7 to assist you with any questions or concerns. Feel free to reach out anytime!"
+    },
+    {
+      "category": "General",
+      "question": "How can I get in touch with you for further assistance?",
+      "reply": "You can contact us via email at support@decoinks.com or through our website's contact form. We're always here to help you with your needs!"
+    },
+    {
+      "category": "Orders & Payment",
+      "question": "How can I place an order?",
+      "reply": "To place an order, please visit decoinks.com, select the products you want, and follow the checkout process. If you need help at any step, just let us know!"
+    },
+    {
+      "category": "Orders & Payment",
+      "question": "What payment methods do you accept?",
+      "reply": "We accept various payment methods including PayPal, Zelle, bank transfer, Venmo, CashApp, and Apple Pay. You can choose whichever option is most convenient for you!"
+    },
+    {
+      "category": "Orders & Payment",
+      "question": "How do I make a payment?",
+      "reply": "Once you complete your order on our website, you can securely enter your payment details during the checkout process. If you prefer a different method, let us know, and we can provide the necessary details."
+    },
+    {
+      "category": "Orders & Payment",
+      "question": "Can I order in bulk?",
+      "reply": "Absolutely! We offer bulk discounts on larger orders. Please let us know the quantity and details of your order, and we'll provide you with the best pricing options."
+    },
+    {
+      "category": "Orders & Payment",
+      "question": "How do I order in bulk?",
+      "reply": "To order in bulk, simply share the details of your desired products, including quantities, sizes, and designs. We'll prepare a special quote for you based on your requirements."
+    },
+    {
+      "category": "Orders & Payment",
+      "question": "How do I upload my designs?",
+      "reply": "You can upload your designs directly on our website during the order process. If you have any issues, feel free to reach out, and we'll assist you!"
+    },
+    {
+      "category": "Pricing",
+      "question": "What is the minimum order quantity?",
+      "reply": "For custom t-shirts, our minimum order is 5 pieces. However, for DTF transfers, there is no strict minimum order, and we usually print gang sheets to keep costs efficient."
+    },
+    {
+      "category": "Pricing",
+      "question": "How much are the DTF transfers?",
+      "reply": "Our DTF transfer pricing is as follows: 22-inch (60 cm) film is $5.00 per foot, 16-inch (45 cm) film is $4.00 per foot, and 12-inch (33 cm) film is $3.00 per foot. Charges are based on the exact gang sheet length, so you only pay for what you need!"
+    },
+    {
+      "category": "Pricing",
+      "question": "What is the price for t-shirts?",
+      "reply": "For custom t-shirts, our prices typically range from $8 to $12 per shirt, depending on the final sizes, print placement, and garment style. Let me know your specific requirements, and I can provide a more accurate quote!"
+    },
+    {
+      "category": "Pricing",
+      "question": "What is the total price for my order?",
+      "reply": "To provide you with the total price for your order, I would need to know the specific quantities, sizes, and designs you are looking to order. Once I have that information, I can calculate the exact total for you!"
+    },
+    {
+      "category": "Pricing",
+      "question": "How much for 10 T-shirts and 10 hats with a logo?",
+      "reply": "Currently, we focus on DTF printed apparel and do not offer hats. However, for 10 custom t-shirts, the price would depend on the sizes and designs. Please share those details, and I can give you a precise quote!"
+    },
+    {
+      "category": "Delivery & Shipping",
+      "question": "How long does delivery take?",
+      "reply": "Shipping usually takes around 4–5 business days after dispatch, depending on your location. If you need it sooner, we can arrange express shipping for an additional cost!"
+    },
+    {
+      "category": "Delivery & Shipping",
+      "question": "Where do you ship to?",
+      "reply": "We ship to various locations, including the USA. If you provide your shipping address, I can confirm if we can deliver to your area!"
+    },
+    {
+      "category": "Delivery & Shipping",
+      "question": "What are the shipping times?",
+      "reply": "Standard shipping times are typically 4–5 business days after dispatch. If you require faster delivery, we can offer express options as well!"
+    },
+    {
+      "category": "Delivery & Shipping",
+      "question": "How much is the shipping cost?",
+      "reply": "Shipping costs vary based on the order size and destination. Once I have your shipping address and order details, I can provide an accurate shipping cost!"
+    },
+    {
+      "category": "Returns",
+      "question": "Can I return my order?",
+      "reply": "We strive for customer satisfaction, and if there are any issues with your order, we will work to resolve them. However, we generally do not accept returns on custom printed items unless there is a defect or error on our part."
+    },
+    {
+      "category": "Returns",
+      "question": "Can I receive 1 of the shirts as a tester for quality check and design?",
+      "reply": "While we don’t offer physical samples for single designs, we can provide a high-quality digital mockup for your approval before production. If you want to test quality, we can also start with a smaller test batch before the full order!"
+    },
+    {
+      "category": "Design & Artwork",
+      "question": "Can I send my own design?",
+      "reply": "Absolutely! You can send us your design files, and we’ll ensure they are optimized for print. Just let us know the details, and we’ll get started!"
+    },
+    {
+      "category": "Design & Artwork",
+      "question": "Do you create artwork as well or do I need to provide it?",
+      "reply": "We offer free design services, so you don’t need to provide your own artwork! Our design team can help create or modify designs based on your ideas."
+    },
+    {
+      "category": "Design & Artwork",
+      "question": "Can you help with getting my artwork into solid reality?",
+      "reply": "Absolutely! Our design team is here to help you bring your artwork to life. We can create mockups for you to review before production, ensuring everything meets your expectations. Just send us your design files, and we'll get started! 😊"
+    },
+    {
+      "category": "Design & Artwork",
+      "question": "Can you add a logo to my design?",
+      "reply": "Yes, we can definitely add a logo to your design! Please send us the logo file along with your design details, and we’ll make sure it’s properly optimized for print. Looking forward to helping you with this! 👍"
+    },
+    {
+      "category": "Design & Artwork",
+      "question": "Can you show me a mock-up of my order?",
+      "reply": "Of course! We provide free design/mockup previews before production so you can see exactly how your order will look. Just share your design files with us, and we’ll prepare the mockup for you! 😊"
+    },
+    {
+      "category": "Products & Materials",
+      "question": "What sizes do you offer?",
+      "reply": "We offer a range of sizes for our custom apparel, typically from Small (S) to 3XL. If you have specific size requirements, please let us know, and we can accommodate your needs! 👍"
+    },
+    {
+      "category": "Products & Materials",
+      "question": "Do you offer custom options?",
+      "reply": "Yes, we offer a variety of custom options for our apparel, including different colors, styles, and printing methods. Just let us know what you have in mind, and we’ll work with you to create something special! 😊"
+    },
+    {
+      "category": "Products & Materials",
+      "question": "What materials do you use for printing and t-shirts?",
+      "reply": "We use high-quality materials for our t-shirts and printing. Our standard t-shirts are made from soft, medium-weight cotton blends, and we utilize DTF printing for vibrant and durable designs. If you have specific material preferences, feel free to ask! 👍"
+    },
+    {
+      "category": "Products & Materials",
+      "question": "What kind of transfers do you have?",
+      "reply": "We specialize in DTF (Direct to Film) transfers, which are known for their vibrant colors and durability. We can create custom transfers based on your designs. If you need help with the design or sizing, just let us know! 😊"
+    },
+    {
+      "category": "Products & Materials",
+      "question": "Do you offer DTF transfers and T-shirts?",
+      "reply": "Yes, we offer both DTF transfers and custom printed t-shirts! You can choose to order transfers for your own printing or have us print the designs directly on t-shirts for you. Just let us know what you need! 👍"
+    },
+    {
+      "category": "General",
+      "question": "What is your location?",
+      "reply": "We are located in Corona, CA, USA. If you have any questions about our services or need assistance, feel free to reach out! 😊"
+    },
+    {
+      "category": "General",
+      "question": "Can I see a sample of the design?",
+      "reply": "While we currently do not offer physical samples for single designs, we can provide you with a high-quality digital mockup/preview so you can see exactly how it will look before production. Just send us your design, and we’ll prepare that for you! 👍"
+    },
+    {
+      "category": "General",
+      "question": "Can I share my design on social media?",
+      "reply": "Yes, you can absolutely share your design on social media! We love seeing our customers showcase their creations. If you’d like, you can tag us, and we might share your post as well! 😊"
+    },
+    {
+      "category": "General",
+      "question": "What is the status of my order?",
+      "reply": "Your order is currently in progress! We are in the artwork preview confirmation stage, preparing your design for approval. Once you confirm the preview, we’ll move it into production. If you need any updates or have questions, feel free to ask! 👍"
+    },
+    {
+      "category": "General",
+      "question": "Can you provide updates on my order?",
+      "reply": "Hi! 😊 Your order is currently in the final stages of processing. We are preparing your design for approval before printing. Once you confirm the preview, we’ll move it into production and ship it out. If you need any updates or have questions, feel free to ask!"
+    },
+    {
+      "category": "Pricing",
+      "question": "What is the cost for a specific quantity of shirts?",
+      "reply": "For your order of shirts, the cost typically ranges from $8 to $12 per shirt, depending on sizes, print placement, and garment style. If you provide the specific quantity and details, I can give you an exact quote!"
+    },
+    {
+      "category": "Pricing",
+      "question": "How much for 20 shirts if I have a logo already?",
+      "reply": "For 20 shirts with your logo, the price will depend on the sizes and print placement. Generally, we can work within the range of $8 to $12 per shirt. Please share the sizes and any specific details, and I’ll provide a precise quote for you!"
+    },
+    {
+      "category": "Pricing",
+      "question": "How much would it cost for my designs?",
+      "reply": "The cost for your designs will depend on the complexity and the number of shirts you want to print. Typically, we charge between $8 and $12 per shirt for custom designs. If you share your design details and quantities, I can give you a more accurate estimate!"
+    },
+    {
+      "category": "Delivery & Shipping",
+      "question": "How long will it take to receive my order?",
+      "reply": "Shipping usually takes around 4–5 business days after dispatch. If you need it sooner, we can arrange express shipping for a small additional cost. Let me know if you have a specific deadline!"
+    },
+    {
+      "category": "Delivery & Shipping",
+      "question": "When will my order arrive?",
+      "reply": "Your order will typically arrive within 4–5 business days after it has been dispatched. If you need a more precise timeline, please provide your shipping address, and I can give you an estimated delivery date!"
+    },
+    {
+      "category": "Delivery & Shipping",
+      "question": "How soon would I get them?",
+      "reply": "Once your order is confirmed and in production, you can expect it to ship out within [bracketed] days. After that, shipping usually takes 4–5 business days. If you need it faster, we can explore express shipping options!"
+    },
+    {
+      "category": "Returns",
+      "question": "What if I have more designs than originally planned?",
+      "reply": "No problem at all! We can accommodate additional designs. Just let us know the details of the new designs and quantities, and we’ll adjust your order accordingly!"
+    },
+    {
+      "category": "Returns",
+      "question": "Can I get a refund for the order?",
+      "reply": "Yes, we can process refunds based on our policies. If you have any concerns about your order, please reach out, and we’ll assist you in resolving the issue."
+    },
+    {
+      "category": "Design & Artwork",
+      "question": "Can you change the color on an image if I send it?",
+      "reply": "Yes, we can help with color adjustments on your image. Please send us the file, and let us know the specific changes you’d like to make!"
+    },
+    {
+      "category": "Design & Artwork",
+      "question": "Can I see a proof of what it's going to look like?",
+      "reply": "Absolutely! We provide free design/mockup previews before production so you can see exactly how your design will look. Just send over your artwork, and we’ll create a mockup for you!"
+    },
+    {
+      "category": "Design & Artwork",
+      "question": "Can you correct the spelling on the word?",
+      "reply": "Yes, we can correct spelling errors in your design. Please send us the updated text or file, and we’ll make the necessary adjustments before proceeding with production!"
+    },
+    {
+      "category": "Products & Materials",
+      "question": "What types of printing do you offer?",
+      "reply": "Hi there! We offer a variety of printing options including DTF (Direct to Film) transfers, screen printing, and embroidery. Each method has its unique benefits, and we can help you choose the best one based on your project needs. Let us know what you're looking for, and we’ll guide you accordingly! 😊"
+    },
+    {
+      "category": "Products & Materials",
+      "question": "Do you offer sublimation or custom embroidery?",
+      "reply": "Yes, we do offer custom embroidery services! However, we currently do not provide sublimation printing. If you're interested in embroidery or need help with designs, feel free to reach out, and we can assist you with that! 👍"
+    },
+    {
+      "category": "General",
+      "question": "Do you have any authentic blank tees?",
+      "reply": "Absolutely! We offer a selection of authentic blank tees that are perfect for printing. If you have specific styles or brands in mind, let us know, and we can help you find the right options for your project! 😊"
+    },
+    {
+      "category": "General",
+      "question": "Do you offer bulk discounts?",
+      "reply": "Yes, we do offer bulk discounts! The more you order, the more you save. For example, we provide a 10% discount on orders of 1,000+ inches and a 20% discount on 2,000+ inches of DTF transfers. If you have a specific quantity in mind, I can give you a detailed quote! 👍"
+    },
+    {
+      "category": "General",
+      "question": "Can you confirm the order details?",
+      "reply": "Of course! Please provide me with the specifics of your order, including the design files, sizes, quantities, and any special requests. Once I have that information, I can confirm all the details for you! 😊"
+    },
+    {
+      "category": "General",
+      "question": "What is your recommendation?",
+      "reply": "I recommend starting with a clean, medium-weight tee for your designs, especially if you're looking to make a strong first impression. If you have a specific design or theme in mind, we can help you choose the best colors and styles to match! Just let us know what you're thinking! 👍"
+    },
+    {
+      "category": "General",
+      "question": "What can you guys do?",
+      "reply": "We can provide a full range of custom apparel services including DTF transfers, screen printing, embroidery, and custom designs. Our team is here to support you from design to production, ensuring you get high-quality products that meet your needs! Let us know how we can assist you! 😊"
+    },
+    {
+      "category": "General",
+      "question": "What is your website?",
+      "reply": "Our website is decoinks.com. You can find all our services, pricing, and more information about our products there. Feel free to browse and reach out if you have any questions! 😊"
+    },
+    {
+      "category": "General",
+      "question": "Do you produce other types of products?",
+      "reply": "Currently, we focus on custom apparel such as t-shirts, hoodies, jerseys, and DTF transfers. We do not offer other products like mugs or bags at this time. If you need custom apparel, we’re here to help! 👍"
+    },
+    {
+      "category": "General",
+      "question": "Can we schedule a screenshare to discuss further?",
+      "reply": "While we currently do not offer screenshare sessions, we’re more than happy to discuss your project via email or chat. Just let us know your questions or details, and we’ll provide all the information you need! 😊"
+    },
+    {
+      "category": "General",
+      "question": "How does this work?",
+      "reply": "Once you provide us with your design files, sizes, and quantities, we’ll prepare a mockup for your approval. After you confirm, we’ll move into production and ship your order. It’s a straightforward process, and we’re here to guide you every step of the way! 👍"
+    },
+    {
+      "category": "General",
+      "question": "Can you provide company information for my records?",
+      "reply": "Sure! Decoinks is a registered LLC located in Corona, CA. We specialize in custom apparel printing and have a dedicated team ready to assist you. If you need any specific information or documentation, just let us know! 😊"
+    }
+  ]
+}

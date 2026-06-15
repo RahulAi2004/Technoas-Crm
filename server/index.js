@@ -737,6 +737,22 @@ app.post('/api/leads/backfill', authRequired, async (req, res) => {
   res.json({ ok: true, created, totalLeads: getAll('leads').length })
 })
 
+// Normalize Meta attachments → [{ type:'image'|'video'|'file', url, name }].
+// Conversations API: attachments.data[{ image_data:{url,preview_url}, video_data, file_url }]
+// Webhook: attachments[{ type, payload:{ url } }]
+function metaAttachments(att) {
+  const list = Array.isArray(att) ? att : (att?.data || [])
+  return list.map((a) => {
+    if (a.payload || a.type) {            // webhook shape
+      return a.payload?.url ? { type: a.type || 'file', url: a.payload.url, name: '' } : null
+    }
+    const url = a.image_data?.url || a.image_data?.preview_url || a.video_data?.url || a.file_url || null
+    const type = a.video_data ? 'video' : a.image_data ? 'image' : 'file'
+    return url ? { type, url, name: a.name || '' } : null
+  }).filter(Boolean)
+}
+const attachPreview = (atts) => atts?.length ? (atts[0].type === 'image' ? '📷 Photo' : atts[0].type === 'video' ? '🎥 Video' : '📎 Attachment') : ''
+
 let metaSyncRunning = false
 async function syncMetaConversations() {
   const token = getSetting('meta_page_token')
@@ -787,17 +803,19 @@ async function syncMetaConversations() {
           const exists = findById('messages', m.id)
           const fromId = String(m.from?.id || '')
           const dir = (fromId === pageId || fromId === igId) ? 'out' : 'in'
+          const atts = metaAttachments(m.attachments)
           const stored = saveMessage({
             id: m.id,
             conversation_id: convId,
             dir,
-            text: m.message || '[attachment]',
+            text: m.message || '',
+            attachments: atts,
             time: fmtTimeFromISO(m.created_time),
             via: 'meta',
           })
           if (!exists) {
             added = true; newMessages++
-            lastText = stored.text; lastTime = stored.time
+            lastText = stored.text || attachPreview(atts); lastTime = stored.time
             broadcast({ type: 'message', conversationId: convId, message: stored })
           }
         }
@@ -858,8 +876,9 @@ app.post('/api/webhooks/meta', async (req, res) => {
       // Meta inbox), the other party is the recipient.
       const senderId = isEcho ? ev.recipient?.id : ev.sender?.id
       if (!senderId) continue
-      const text = msg.text || (msg.attachments?.length ? '[attachment]' : '')
-      if (!text && !msg.attachments) continue
+      const atts = metaAttachments(msg.attachments)
+      const text = msg.text || ''
+      if (!text && !atts.length) continue
 
       let conv = findById('conversations', `${channel === 'Instagram' ? 'ig' : 'fb'}:${senderId}`)
       if (!conv) {
@@ -880,10 +899,11 @@ app.post('/api/webhooks/meta', async (req, res) => {
         conversation_id: conv.id,
         dir: isEcho ? 'out' : 'in',
         text,
+        attachments: atts,
         time: nowTime(),
         via: 'meta',
       })
-      const patch = { list_preview: text, list_time: nowTime(), last_ts: Date.now() }
+      const patch = { list_preview: text || attachPreview(atts), list_time: nowTime(), last_ts: Date.now() }
       if (!isEcho) patch.unread = (conv.unread || 0) + 1
       const updated = update('conversations', conv.id, patch)
       broadcast({ type: 'message', conversationId: conv.id, message: stored })

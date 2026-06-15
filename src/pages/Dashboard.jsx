@@ -25,6 +25,25 @@ const channelIcon = (channel) => {
   return null
 }
 
+// Render image/video/file attachments inside a chat bubble.
+function MsgAttachments({ items }) {
+  if (!Array.isArray(items) || !items.length) return null
+  return (
+    <div className="mb-1.5 space-y-1.5">
+      {items.map((a, i) => {
+        if (!a?.url) return null
+        if (a.type === 'image') return (
+          <a key={i} href={a.url} target="_blank" rel="noreferrer" className="block">
+            <img src={a.url} alt={a.name || 'image'} loading="lazy" className="max-h-64 max-w-full rounded-lg object-cover" />
+          </a>
+        )
+        if (a.type === 'video') return <video key={i} src={a.url} controls className="max-h-64 max-w-full rounded-lg" />
+        return <a key={i} href={a.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-brand-600 underline">📎 {a.name || 'Attachment'}</a>
+      })}
+    </div>
+  )
+}
+
 const nowTime = () => {
   const d = new Date()
   let h = d.getHours(); const m = d.getMinutes(); const ampm = h >= 12 ? 'PM' : 'AM'
@@ -638,7 +657,7 @@ export default function Dashboard() {
             </div>
 
             <nav className="flex items-center gap-8 border-b border-slate-200 px-5">
-              {[['conversation','Conversation'],['customer','Customer Info'],['timestamps','Timestamps'],['history','History']].map(([id, lbl]) => (
+              {[['conversation','Conversation'],['customer','Customer Info'],['history','History']].map(([id, lbl]) => (
                 <button key={id} onClick={() => setMidTab(id)} className={`whitespace-nowrap border-b-2 py-3 text-sm ${midTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
               ))}
             </nav>
@@ -652,7 +671,7 @@ export default function Dashboard() {
                     if (m.dir === 'in') return (
                       <div key={i} className="mt-4 flex items-start gap-2">
                         <span className={`mt-1 grid h-8 w-8 place-items-center rounded-full ${conv.avatarBg} text-xs font-bold`}>{conv.initials}</span>
-                        <div className="max-w-md rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100">{m.text}<div className="mt-1 text-[10px] text-slate-400">{m.time}</div></div>
+                        <div className="max-w-md rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 text-[10px] text-slate-400">{m.time}</div></div>
                       </div>
                     )
                     if (m.dir === 'note') return (
@@ -672,7 +691,7 @@ export default function Dashboard() {
                           </div>
                         )}
                         <div className="flex items-start justify-end gap-2">
-                          <div className="max-w-md rounded-2xl rounded-tr-md bg-brand-50 px-4 py-2.5 text-sm text-brand-900 shadow-sm ring-1 ring-brand-100">{m.text}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-500">{m.time}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 11 13 20"/></svg></div></div>
+                          <div className="max-w-md rounded-2xl rounded-tr-md bg-brand-50 px-4 py-2.5 text-sm text-brand-900 shadow-sm ring-1 ring-brand-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-500">{m.time}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 11 13 20"/></svg></div></div>
                           <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-600 text-[10px] font-bold text-white" title={m.agent || 'via Meta'}>
                             {m.agent ? m.agent.split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase() : 'M'}
                           </span>
@@ -714,26 +733,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {midTab === 'history' && (
-              <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <h4 className="text-sm font-bold mb-3">Active Customer Activity (Stages)</h4>
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500"><th className="py-2 font-semibold">Date &amp; Time</th><th className="py-2 font-semibold">Stage</th><th className="py-2 font-semibold">Status</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">
-                      <tr><td className="py-2.5">May 12, 2024 10:23 AM</td><td>Lead Initiation</td><td><span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Completed</span></td></tr>
-                      <tr><td className="py-2.5">May 12, 2024 10:23 AM</td><td>Auto Responded</td><td><span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Completed</span></td></tr>
-                      <tr><td className="py-2.5">May 12, 2024 10:26 AM</td><td>Human Responded</td><td><span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Completed</span></td></tr>
-                      <tr><td className="py-2.5">May 12, 2024 10:28 AM</td><td>Design Received</td><td><span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Completed</span></td></tr>
-                      <tr><td className="py-2.5">May 12, 2024 10:31 AM</td><td>Address Provided</td><td><span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Not Yet Reached</span></td></tr>
-                      <tr><td className="py-2.5">May 12, 2024 10:33 AM</td><td>Quotation Given</td><td><span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Not Yet Reached</span></td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {midTab === 'timestamps' && <TimestampsTab conv={conv} />}
+            {midTab === 'history' && <HistoryTab conv={conv} />}
             </>)}
           </div>
 
@@ -1031,10 +1031,10 @@ function fmtDur(min) {
   return m ? `${h}h ${m}m` : `${h}h`
 }
 
-// Timestamps tab — exact time of each message + response times + averages (both directions).
-function TimestampsTab({ conv }) {
+// History tab — full message timeline: response times, agent SLA rating, 3-word
+// summary, media thumbnails + averages + stage/status. (Replaces old Timestamps + History.)
+function HistoryTab({ conv }) {
   const msgs = (conv?.messages || []).filter((m) => m.dir === 'in' || m.dir === 'out')
-  // Annotate each message with the wait since the previous message of the OPPOSITE direction.
   let prev = null
   const rows = msgs.map((m) => {
     const clock = parseClock(m.time)
@@ -1052,12 +1052,8 @@ function TimestampsTab({ conv }) {
   const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null)
   const avgAgent = avg(agentTimes)
   const avgCust = avg(custTimes)
-
-  // Message counts (agent vs customer)
   const agentMsgs = rows.filter((r) => r.dir === 'out').length
   const custMsgs = rows.filter((r) => r.dir === 'in').length
-
-  // First response time: customer's first message → agent's first reply after it
   const firstInIdx = rows.findIndex((r) => r.dir === 'in')
   const firstOut = firstInIdx >= 0 ? rows.find((r, i) => i > firstInIdx && r.dir === 'out') : null
   let firstResponse = null
@@ -1065,6 +1061,15 @@ function TimestampsTab({ conv }) {
     firstResponse = firstOut.clock - rows[firstInIdx].clock
     if (firstResponse < 0) firstResponse += 1440
   }
+
+  // 3-word summary heading for a message
+  const words3 = (t) => { const s = (t || '').trim().replace(/\s+/g, ' '); return s ? s.split(' ').slice(0, 3).join(' ') : '' }
+  // Agent SLA rating: ≤2m on time, ≤5m delayed, else too delayed
+  const sla = (m) => m <= 2 ? { l: 'On time', c: 'bg-emerald-50 text-emerald-700' } : m <= 5 ? { l: 'Delayed', c: 'bg-amber-50 text-amber-700' } : { l: 'Too delayed', c: 'bg-rose-50 text-rose-700' }
+
+  // On-time score across agent replies
+  const onTime = agentTimes.filter((m) => m <= 2).length
+  const slaPct = agentTimes.length ? Math.round((onTime / agentTimes.length) * 100) : null
 
   if (!rows.length) {
     return <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5"><div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Is chat mein abhi koi message nahi.</div></div>
@@ -1080,9 +1085,9 @@ function TimestampsTab({ conv }) {
           <div className="mt-0.5 text-[11px] text-slate-500">Customer → Agent · {agentTimes.length} replies</div>
         </div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Avg customer reply time</div>
-          <div className="mt-1 text-2xl font-extrabold text-emerald-700">{fmtDur(avgCust)}</div>
-          <div className="mt-0.5 text-[11px] text-slate-500">Agent → Customer · {custTimes.length} replies</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">On-time rate</div>
+          <div className="mt-1 text-2xl font-extrabold text-emerald-700">{slaPct == null ? '—' : slaPct + '%'}</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">{onTime}/{agentTimes.length} agent replies ≤ 2 min</div>
         </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">First response time</div>
@@ -1103,26 +1108,43 @@ function TimestampsTab({ conv }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-2 font-semibold">Role</th>
-                <th className="px-4 py-2 font-semibold">Time</th>
-                <th className="px-4 py-2 font-semibold">Reply after</th>
+                <th className="px-3 py-2 font-semibold">Role</th>
+                <th className="px-3 py-2 font-semibold">Time</th>
+                <th className="px-3 py-2 font-semibold">Reply after</th>
+                <th className="px-3 py-2 font-semibold">Message</th>
+                <th className="px-3 py-2 font-semibold">Media</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r, i) => {
                 const isAgent = r.dir === 'out'
+                const s = r.resp && isAgent ? sla(r.resp.minutes) : null
+                const heading = words3(r.text) || (r.attachments?.length ? (r.attachments[0].type === 'image' ? '📷 Photo' : r.attachments[0].type === 'video' ? '🎥 Video' : '📎 Attachment') : '—')
                 return (
                   <tr key={i} className="align-top hover:bg-slate-50/60">
-                    <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold ${isAgent ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-700'}`}>
+                    <td className="px-3 py-2.5">
+                      <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${isAgent ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-700'}`}>
                         {isAgent ? '🧑‍💼 Agent' : '👤 Customer'}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 font-medium text-slate-700">{r.time || '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-2.5">
-                      {r.resp
-                        ? <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${isAgent ? 'bg-violet-50 text-violet-700' : 'bg-emerald-50 text-emerald-700'}`}>⏱ {fmtDur(r.resp.minutes)}</span>
-                        : <span className="text-slate-300">—</span>}
+                    <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-700">{r.time || '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5">
+                      {r.resp ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">⏱ {fmtDur(r.resp.minutes)}</span>
+                          {s && <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${s.c}`}>{s.l}</span>}
+                        </div>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-700" title={r.text || ''}>{heading}</td>
+                    <td className="px-3 py-2.5">
+                      {Array.isArray(r.attachments) && r.attachments.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {r.attachments.map((a, k) => a.type === 'image'
+                            ? <a key={k} href={a.url} target="_blank" rel="noreferrer"><img src={a.url} alt="" loading="lazy" className="h-10 w-10 rounded object-cover ring-1 ring-slate-200" /></a>
+                            : <a key={k} href={a.url} target="_blank" rel="noreferrer" className="text-base">{a.type === 'video' ? '🎥' : '📎'}</a>)}
+                        </div>
+                      ) : <span className="text-slate-300">—</span>}
                     </td>
                   </tr>
                 )
@@ -1132,7 +1154,31 @@ function TimestampsTab({ conv }) {
         </div>
       </div>
 
-      <p className="mt-3 text-[11px] text-slate-400">Note: "Time" is each message's clock time (as shown in chat). "Reply after" = gap since the previous message from the other side. Cross-day gaps are approximate.</p>
+      <p className="mt-3 text-[11px] text-slate-400">SLA: ≤2 min = On time · 2–5 min = Delayed · &gt;5 min = Too delayed. "Time" is each message's clock time; cross-day gaps are approximate.</p>
+
+      {/* Stages & status */}
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+        <h4 className="text-sm font-bold mb-3">Customer Activity (Stages)</h4>
+        <table className="w-full text-sm">
+          <thead><tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500"><th className="py-2 font-semibold">Stage</th><th className="py-2 font-semibold">Status</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {[
+              ['Lead Initiation', rows.length > 0],
+              ['First Response', agentMsgs > 0],
+              ['In Conversation', rows.length >= 4],
+              ['Design / Quote Discussed', /design|quote|price|precio|diseñ/i.test(rows.map((r) => r.text).join(' '))],
+              ['Address Provided', /\b\d{5}\b|\d+\s+\w+\s+(st|street|ave|avenue|road|rd|blvd|drive|dr|lane|ln)\b|direcci|calle/i.test(rows.filter((r) => r.dir === 'in').map((r) => r.text).join(' '))],
+              ['Quotation Given', /\$\s?\d|quote|quotation|\btotal\b|precio|cotiz/i.test(rows.filter((r) => r.dir === 'out').map((r) => r.text).join(' '))],
+              ['Awaiting Reply', rows[rows.length - 1]?.dir === 'in'],
+            ].map(([stage, done], i) => (
+              <tr key={i}>
+                <td className="py-2.5">{stage}</td>
+                <td><span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${done ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{done ? 'Completed' : 'Not Yet'}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

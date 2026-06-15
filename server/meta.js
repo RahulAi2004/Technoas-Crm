@@ -109,8 +109,19 @@ export class MetaClient {
     return this.request('/me/conversations', {
       query: {
         platform,
-        fields: 'id,updated_time,participants,messages.limit(25){id,message,from,created_time}',
+        fields: 'id,updated_time,participants,messages.limit(25){id,message,from,created_time,attachments{mime_type,name,image_data,video_data,file_url}}',
         limit: 50,
+      },
+    })
+  }
+
+  // One page of a conversation thread's messages (for deep sync / full history).
+  getThreadMessages(threadId, after) {
+    return this.request(`/${threadId}/messages`, {
+      query: {
+        fields: 'id,message,from,created_time,attachments{mime_type,name,image_data,video_data,file_url}',
+        limit: 100,
+        after: after || undefined,
       },
     })
   }
