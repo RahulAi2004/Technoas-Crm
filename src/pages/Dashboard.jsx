@@ -203,6 +203,22 @@ export default function Dashboard() {
 
   const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(draft) } }
 
+  // Add an internal note (with a category). Optimistic; the 4s poll reconciles with
+  // the persisted row, so we don't re-pull on every call (avoids a GET storm on bulk add).
+  const addNote = async (text, category = 'internal', opts = {}) => {
+    if (!text.trim() || !currentId) return false
+    const time = nowTime()
+    setMessages((m) => [...m, { id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, dir: 'note', text: text.trim(), time, category, agent: currentUser()?.name }])
+    try {
+      await api.post(`/api/conversations/${encodeURIComponent(currentId)}/messages`, { dir: 'note', text: text.trim(), time, category })
+      if (!opts.silent) toast('Note saved', 'success')
+      return true
+    } catch (ex) {
+      if (!opts.silent) toast(`Save failed: ${ex.message}`, 'error')
+      return false
+    }
+  }
+
   // Middle + AI tabs
   const [midTab, setMidTab] = useState('conversation')
   const [aiTab, setAiTab] = useState('responses')
@@ -648,8 +664,9 @@ export default function Dashboard() {
                   {conv.assigned_to && <span className="max-w-[80px] truncate text-xs">{conv.assigned_to.split(' ')[0]}</span>}
                 </button>
                 {!aiOpen && (
-                  <button onClick={() => setAiOpen(true)} title="AI Supervisor" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100">
+                  <button onClick={() => setAiOpen(true)} title="Open AI Supervisor" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                    AI Supervisor
                   </button>
                 )}
                 <button className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 hover:bg-slate-50" aria-label="More"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
@@ -657,7 +674,7 @@ export default function Dashboard() {
             </div>
 
             <nav className="flex items-center gap-8 border-b border-slate-200 px-5">
-              {[['conversation','Conversation'],['customer','Customer Info'],['history','History']].map(([id, lbl]) => (
+              {[['conversation','Conversation'],['customer','Customer Info'],['history','History'],['notes','Notes'],['files','Files']].map(([id, lbl]) => (
                 <button key={id} onClick={() => setMidTab(id)} className={`whitespace-nowrap border-b-2 py-3 text-sm ${midTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
               ))}
             </nav>
@@ -734,6 +751,8 @@ export default function Dashboard() {
             )}
 
             {midTab === 'history' && <HistoryTab conv={conv} />}
+            {midTab === 'notes' && <NotesTab conv={conv} onAddNote={addNote} />}
+            {midTab === 'files' && <FilesTab conv={conv} />}
             </>)}
           </div>
 
@@ -913,9 +932,11 @@ const DOC_ITEMS = [
   { label: 'Preview Invoice', msg: '🧾 Here is your invoice.' },
 ]
 
-function SendPanel({ title, items, onSendReply }) {
+function SendPanel({ title, hint, items, onSendReply }) {
   const toast = useToast()
   const [checked, setChecked] = useState({})
+  const allOn = items.length > 0 && items.every((_, i) => checked[i])
+  const toggleAll = () => setChecked(allOn ? {} : Object.fromEntries(items.map((_, i) => [i, true])))
   const send = () => {
     const msgs = items.filter((_, i) => checked[i]).map((x) => x.msg)
     if (!msgs.length) { toast('Pehle kuch select karo', 'info'); return }
@@ -923,18 +944,35 @@ function SendPanel({ title, items, onSendReply }) {
     toast(`${msgs.length} item${msgs.length > 1 ? 's' : ''} sent to chat`, 'success')
     setChecked({})
   }
+  if (!items.length) return null
   return (
-    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-      <div className="text-sm font-bold">{title}</div>
-      <div className="mt-2 space-y-1.5">
+    <div className="h-fit rounded-xl border border-slate-200 bg-white p-2.5">
+      <div className="flex items-center gap-1.5">
+        <h4 className="text-xs font-bold text-slate-800">{title}</h4>
+        {hint && <span className="text-[10px] font-medium text-slate-400">({hint})</span>}
+      </div>
+
+      {items.length > 1 && (
+        <label className="mt-1.5 flex cursor-pointer select-none items-center gap-1.5 border-b border-slate-100 pb-1.5 text-[11px] font-semibold text-slate-500">
+          <input type="checkbox" checked={allOn} onChange={toggleAll} className="h-3.5 w-3.5 accent-brand-600" />
+          Select All
+        </label>
+      )}
+
+      <div className="mt-1">
         {items.map((x, i) => (
-          <label key={i} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-            <input type="checkbox" checked={!!checked[i]} onChange={() => setChecked((c) => ({ ...c, [i]: !c[i] }))} className="accent-brand-600" />
-            <span>{x.label}</span>
+          <label key={i} className="flex cursor-pointer select-none items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50">
+            <input type="checkbox" checked={!!checked[i]} onChange={() => setChecked((c) => ({ ...c, [i]: !c[i] }))} className="h-3.5 w-3.5 shrink-0 accent-brand-600" />
+            <span className="flex-1 truncate text-[13px] font-semibold text-brand-700">{x.label}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-300"><path d="m9 18 6-6-6-6"/></svg>
           </label>
         ))}
       </div>
-      <button onClick={send} className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-100">💬 Send to Chat</button>
+
+      <button onClick={send} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-3 py-1.5 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-100">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+        Send to Chat
+      </button>
     </div>
   )
 }
@@ -946,6 +984,9 @@ function TranslationTab({ onSendReply, lastIncoming }) {
   const [replyEn, setReplyEn] = useState('')
   const [native, setNative] = useState('')
   const [transBusy, setTransBusy] = useState(false)
+  const [verify, setVerify] = useState(null)   // { literal, pairs[] }
+  const [verifyBusy, setVerifyBusy] = useState(false)
+  useEffect(() => { setVerify(null) }, [native])   // reset when the Spanish reply changes
 
   // Auto-run whenever the last customer message changes (new message → updates itself, no button).
   useEffect(() => {
@@ -972,6 +1013,13 @@ function TranslationTab({ onSendReply, lastIncoming }) {
   const send = () => {
     const text = (isEnglish ? replyEn : native).trim()
     if (text) { onSendReply(text); toast(`Sent${isEnglish ? '' : ' in ' + data.detectedLanguage}`, 'success') }
+  }
+  const verifyTranslation = async () => {
+    if (!native.trim()) return
+    setVerifyBusy(true)
+    try { const r = await api.post('/api/ai/verify-translation', { text: native }); setVerify(r) }
+    catch (ex) { toast(ex.message || 'Verify failed', 'error') }
+    finally { setVerifyBusy(false) }
   }
 
   if (!lastIncoming.trim()) {
@@ -1003,6 +1051,35 @@ function TranslationTab({ onSendReply, lastIncoming }) {
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
           <div className="text-sm font-bold text-emerald-800">Reply in {data.detectedLanguage} (ye send hoga)</div>
           <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-2.5 text-sm text-slate-800">{native || '—'}</p>
+        </div>
+      )}
+
+      {!isEnglish && native.trim() && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-bold">🔍 Verify — {data.detectedLanguage} back to English</div>
+            <button onClick={verifyTranslation} disabled={verifyBusy} className="shrink-0 rounded-md border border-violet-200 px-2.5 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">{verifyBusy ? 'Checking…' : (verify ? '↻ Re-check' : 'Check translation')}</button>
+          </div>
+          {!verify ? (
+            <p className="mt-2 text-xs text-slate-500">Confirm karo ki Spanish sahi hai — ise word-by-word wapas English mein dekho.</p>
+          ) : (
+            <>
+              <div className="mt-2 rounded-lg bg-slate-50 p-2.5 text-sm text-slate-700">
+                <div className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Back to English</div>
+                {verify.literal || '—'}
+              </div>
+              {Array.isArray(verify.pairs) && verify.pairs.length > 0 && (
+                <div className="mt-2">
+                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Word by word</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {verify.pairs.map((p, i) => (
+                      <span key={i} className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px]"><b className="text-emerald-700">{p.src}</b> <span className="text-slate-300">→</span> <span className="text-slate-600">{p.en}</span></span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -1066,10 +1143,15 @@ function HistoryTab({ conv }) {
   const words3 = (t) => { const s = (t || '').trim().replace(/\s+/g, ' '); return s ? s.split(' ').slice(0, 3).join(' ') : '' }
   // Agent SLA rating: ≤2m on time, ≤5m delayed, else too delayed
   const sla = (m) => m <= 2 ? { l: 'On time', c: 'bg-emerald-50 text-emerald-700' } : m <= 5 ? { l: 'Delayed', c: 'bg-amber-50 text-amber-700' } : { l: 'Too delayed', c: 'bg-rose-50 text-rose-700' }
+  const slaCat = (m) => m <= 2 ? 'ontime' : m <= 5 ? 'delayed' : 'toodelayed'
 
-  // On-time score across agent replies
+  // On-time score + SLA filter
   const onTime = agentTimes.filter((m) => m <= 2).length
+  const delayedN = agentTimes.filter((m) => m > 2 && m <= 5).length
+  const tooN = agentTimes.filter((m) => m > 5).length
   const slaPct = agentTimes.length ? Math.round((onTime / agentTimes.length) * 100) : null
+  const [slaFilter, setSlaFilter] = useState('all')
+  const visibleRows = slaFilter === 'all' ? rows : rows.filter((r) => r.dir === 'out' && r.resp && slaCat(r.resp.minutes) === slaFilter)
 
   if (!rows.length) {
     return <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5"><div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Is chat mein abhi koi message nahi.</div></div>
@@ -1103,7 +1185,14 @@ function HistoryTab({ conv }) {
 
       {/* Detailed timeline as a table */}
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3 text-sm font-bold">Message timeline ({rows.length} messages)</div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+          <div className="text-sm font-bold">Message timeline ({visibleRows.length}{slaFilter !== 'all' ? ` of ${rows.length}` : ''})</div>
+          <div className="flex flex-wrap gap-1.5">
+            {[['all', `All`, rows.length, 'bg-slate-100 text-slate-600'], ['ontime', 'On time', onTime, 'bg-emerald-50 text-emerald-700'], ['delayed', 'Delayed', delayedN, 'bg-amber-50 text-amber-700'], ['toodelayed', 'Too delayed', tooN, 'bg-rose-50 text-rose-700']].map(([id, lbl, n, cls]) => (
+              <button key={id} onClick={() => setSlaFilter(id)} className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${slaFilter === id ? 'ring-2 ring-brand-400 ' + cls : cls + ' opacity-80 hover:opacity-100'}`}>{lbl} ({n})</button>
+            ))}
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -1116,7 +1205,10 @@ function HistoryTab({ conv }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((r, i) => {
+              {visibleRows.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">Is filter mein koi reply nahi.</td></tr>
+              )}
+              {visibleRows.map((r, i) => {
                 const isAgent = r.dir === 'out'
                 const s = r.resp && isAgent ? sla(r.resp.minutes) : null
                 const heading = words3(r.text) || (r.attachments?.length ? (r.attachments[0].type === 'image' ? '📷 Photo' : r.attachments[0].type === 'video' ? '🎥 Video' : '📎 Attachment') : '—')
@@ -1179,6 +1271,155 @@ function HistoryTab({ conv }) {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+// Notes tab — internal notes/observations about this customer (dir='note' messages),
+// with categories (Internal / Call / Meeting / Follow-up) + an Add Note composer.
+const NOTE_CATS = [['internal', 'Internal', '📝', 'bg-amber-50 text-amber-700'], ['call', 'Call', '📞', 'bg-sky-50 text-sky-700'], ['meeting', 'Meeting', '🗓️', 'bg-violet-50 text-violet-700'], ['followup', 'Follow-up', '⭐', 'bg-emerald-50 text-emerald-700']]
+function NotesTab({ conv, onAddNote }) {
+  const toast = useToast()
+  const [filter, setFilter] = useState('all')
+  const [adding, setAdding] = useState(false)
+  const [text, setText] = useState('')
+  const [cat, setCat] = useState('internal')
+  const [aiBusy, setAiBusy] = useState(false)
+
+  const genAiNotes = async () => {
+    if (!conv?.id) return
+    setAiBusy(true)
+    try {
+      const r = await api.post(`/api/ai/notes/${encodeURIComponent(conv.id)}`, {})
+      if (r.empty || !r.notes?.length) { toast('Is chat se koi note nahi bana', 'info'); return }
+      let ok = 0
+      for (const n of r.notes) { if (await onAddNote(n.text, n.category, { silent: true })) ok++ }
+      toast(ok === r.notes.length ? `${ok} AI notes added` : `${ok}/${r.notes.length} notes saved (kuch fail — dobara try karo)`, ok ? 'success' : 'error')
+    } catch (ex) { toast(ex.message || 'Failed', 'error') }
+    finally { setAiBusy(false) }
+  }
+  const notes = (conv?.messages || []).filter((m) => m.dir === 'note').slice().reverse() // newest first
+  const catOf = (n) => NOTE_CATS.find((c) => c[0] === (n.category || 'internal')) || NOTE_CATS[0]
+  const counts = { all: notes.length }
+  NOTE_CATS.forEach(([id]) => { counts[id] = notes.filter((n) => (n.category || 'internal') === id).length })
+  const shown = filter === 'all' ? notes : notes.filter((n) => (n.category || 'internal') === filter)
+
+  const save = async () => { if (!text.trim()) return; await onAddNote(text.trim(), cat); setText(''); setAdding(false) }
+
+  return (
+    <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-lg font-bold">Notes</div>
+          <p className="text-xs text-slate-500">All notes, observations and important info about this customer.</p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button onClick={genAiNotes} disabled={aiBusy} className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">{aiBusy ? 'Analyzing…' : '✨ AI Notes'}</button>
+          <button onClick={() => setAdding((x) => !x)} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">+ Add Note</button>
+        </div>
+      </div>
+
+      {adding && (
+        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {NOTE_CATS.map(([id, lbl, icon]) => (
+              <button key={id} onClick={() => setCat(id)} className={`rounded-md px-2 py-1 text-[11px] font-semibold ${cat === id ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-300' : 'bg-slate-100 text-slate-600'}`}>{icon} {lbl}</button>
+            ))}
+          </div>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder="Write a note..." className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white" />
+          <div className="mt-2 flex items-center gap-2">
+            <button onClick={save} disabled={!text.trim()} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">Save note</button>
+            <button onClick={() => { setAdding(false); setText('') }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button onClick={() => setFilter('all')} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${filter === 'all' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>All Notes ({counts.all})</button>
+        {NOTE_CATS.map(([id, lbl]) => (
+          <button key={id} onClick={() => setFilter(id)} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${filter === id ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{lbl} ({counts[id]})</button>
+        ))}
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">Koi note nahi. "+ Add Note" se naya note banao.</div>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {shown.map((n, i) => {
+            const [, lbl, icon, cls] = catOf(n)
+            return (
+              <div key={i} className="rounded-xl border border-slate-200 bg-white p-3.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{icon}</span>
+                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${cls}`}>{lbl} Note</span>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{n.text}</p>
+                <div className="mt-2 text-[11px] text-slate-400">{n.time || ''}{n.agent ? ` · ${n.agent}` : ''}</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Files tab — every image/video/document shared in this conversation (from attachments).
+function FilesTab({ conv }) {
+  const [filter, setFilter] = useState('all')
+  const files = []
+  ;(conv?.messages || []).forEach((m) => (Array.isArray(m.attachments) ? m.attachments : []).forEach((a) => {
+    if (!a?.url) return
+    files.push({ url: a.url, type: a.type || 'file', name: a.name || '', by: m.dir === 'out' ? (m.agent || 'Agent') : (conv.name || 'Customer'), time: m.time || '' })
+  }))
+  const counts = { all: files.length, image: files.filter((f) => f.type === 'image').length, document: files.filter((f) => f.type !== 'image').length }
+  const shown = files.filter((f) => filter === 'all' ? true : filter === 'image' ? f.type === 'image' : f.type !== 'image')
+  const typeLabel = (t) => t === 'image' ? 'Image' : t === 'video' ? 'Video' : 'Document'
+
+  return (
+    <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      <div className="text-lg font-bold">Files</div>
+      <p className="mb-3 text-xs text-slate-500">All images, files and documents shared in this conversation.</p>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {[['all', 'All Files', counts.all], ['image', 'Images', counts.image], ['document', 'Documents', counts.document]].map(([id, lbl, n]) => (
+          <button key={id} onClick={() => setFilter(id)} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${filter === id ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{lbl} ({n})</button>
+        ))}
+      </div>
+      {shown.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">Is chat mein abhi koi file / image share nahi hui.</div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-2 font-semibold">File</th>
+                <th className="px-4 py-2 font-semibold">Type</th>
+                <th className="px-4 py-2 font-semibold">Shared By</th>
+                <th className="px-4 py-2 font-semibold">Time</th>
+                <th className="px-4 py-2 font-semibold">Open</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {shown.map((f, i) => (
+                <tr key={i} className="hover:bg-slate-50/60">
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      {f.type === 'image'
+                        ? <a href={f.url} target="_blank" rel="noreferrer"><img src={f.url} alt="" loading="lazy" className="h-9 w-9 rounded object-cover ring-1 ring-slate-200" /></a>
+                        : <span className="grid h-9 w-9 place-items-center rounded bg-slate-100 text-base">{f.type === 'video' ? '🎥' : '📄'}</span>}
+                      <span className="max-w-[140px] truncate text-slate-700">{f.name || `${typeLabel(f.type)} ${i + 1}`}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5"><span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{typeLabel(f.type)}</span></td>
+                  <td className="px-4 py-2.5 text-slate-600">{f.by}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-slate-500">{f.time || '—'}</td>
+                  <td className="px-4 py-2.5"><a href={f.url} target="_blank" rel="noreferrer" className="font-semibold text-brand-600 hover:underline">Open ↗</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -1292,6 +1533,8 @@ function ResponsesTab({ onSendReply, conv, msgCount }) {
   const [reply, setReply] = useState('')
   const [info, setInfo] = useState(null)   // { pending, pendingCount, pendingMessages, detectedLanguage, reply, empty }
   const [loading, setLoading] = useState(false)
+  const [qa, setQa] = useState(null)       // quick-actions from backend (editable in Settings)
+  useEffect(() => { api.get('/api/quick-actions').then(setQa).catch(() => {}) }, [])
 
   const generate = (force = false) => {
     if (!cid) return
@@ -1348,10 +1591,13 @@ function ResponsesTab({ onSendReply, conv, msgCount }) {
         )}
       </div>
 
-      {/* Always-visible quick-send panels (match the design) */}
-      <SendPanel title="Communication Actions" items={COMM_ITEMS} onSendReply={onSendReply} />
-      <SendPanel title="Payment Methods" items={PAY_ITEMS} onSendReply={onSendReply} />
-      <SendPanel title="Document" items={DOC_ITEMS} onSendReply={onSendReply} />
+      {/* Quick-send panels — responsive: side-by-side when wide, stacked when narrow.
+          auto-fit reacts to the AI panel's actual width (not the viewport). */}
+      <div className="mt-3 grid items-start gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))' }}>
+        <SendPanel title="Communication Actions" items={qa?.communication || COMM_ITEMS} onSendReply={onSendReply} />
+        <SendPanel title="Payment Methods" hint="Select to send" items={qa?.payment || PAY_ITEMS} onSendReply={onSendReply} />
+        <SendPanel title="Document" items={qa?.document || DOC_ITEMS} onSendReply={onSendReply} />
+      </div>
     </>
   )
 }

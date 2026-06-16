@@ -77,6 +77,23 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
 })
 
+// Public sign-up — create a new AGENT account (role is forced to 'agent' for safety;
+// managers/admins are created/promoted from the authenticated Team page).
+app.post('/api/auth/register', async (req, res) => {
+  const { name, email, password } = req.body || {}
+  if (!name?.trim() || !email?.trim() || !password) return res.status(400).json({ error: 'Name, email and password are required' })
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
+  const em = email.trim().toLowerCase()
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return res.status(400).json({ error: 'Enter a valid email' })
+  if (getAll('users').some((u) => u.email === em)) return res.status(400).json({ error: 'An account with this email already exists' })
+  const maxId = Math.max(0, ...getAll('users').map((u) => Number(u.id) || 0))
+  const user = insert('users', { id: maxId + 1, name: name.trim(), email: em, role: 'agent', password_hash: bcrypt.hashSync(password, 10) })
+  await flush()
+  // auto-login so the new agent can start immediately
+  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' })
+  res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
+})
+
 app.get('/api/auth/me', authRequired, (req, res) => {
   const user = getAll('users').find(u => u.id === req.user.id)
   if (!user) return res.status(404).json({ error: 'User not found' })
@@ -212,12 +229,13 @@ app.get('/api/conversations/:id/messages', authRequired, (req, res) => {
 })
 
 app.post('/api/conversations/:id/messages', authRequired, (req, res) => {
-  const { dir, text, time } = req.body || {}
+  const { dir, text, time, category } = req.body || {}
   if (!dir || !text) return res.status(400).json({ error: 'dir and text required' })
   const msg = saveMessage({
     conversation_id: req.params.id,
     dir,
     text,
+    ...(category ? { category } : {}),   // note category (internal/call/meeting/followup)
     time: time || new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
     agent: agentName(req),             // who sent this reply / note
   })
@@ -737,6 +755,54 @@ app.post('/api/leads/backfill', authRequired, async (req, res) => {
   res.json({ ok: true, created, totalLeads: getAll('leads').length })
 })
 
+// Create a customer record for a conversation (idempotent — one per conversation).
+function ensureCustomerForConversation(conv) {
+  const id = `cust:${conv.id}`
+  if (!conv || findById('customers', id)) return false
+  const d = conv.created_at ? new Date(conv.created_at) : new Date()
+  insert('customers', {
+    id,
+    name: conv.name || 'Unknown',
+    company: conv.company || '',
+    channel: conv.channel || 'Meta',
+    phone: conv.phone || '',
+    email: '',
+    initials: conv.initials || (conv.name || '?').slice(0, 2).toUpperCase(),
+    avatar: conv.avatar_bg || 'bg-brand-100 text-brand-700',
+    tier: 'Bronze',
+    type: 'Lead',
+    orders: 0,
+    spend: 0,
+    health: 100,
+    healthLabel: 'New',
+    owner: conv.assigned_to || '',
+    role: conv.assigned_to ? 'Agent' : '',
+    loc: '',
+    lastOrder: '—',
+    activityAgo: conv.list_time || '',
+    activityDaysAgo: '',
+    created: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    conversation_id: conv.id,
+    customer_id: conv.customer_id || '',
+    source_type: 'meta',
+  })
+  return true
+}
+
+// Backfill customers from conversations + remove old demo/seed customers (not from Meta).
+app.post('/api/customers/backfill', authRequired, async (req, res) => {
+  // 1) delete demo/seed customers (anything not created from a Meta conversation)
+  let removed = 0
+  for (const c of [...getAll('customers')]) {
+    if (c.source_type !== 'meta') { remove('customers', c.id); removed++ }
+  }
+  // 2) create a real customer for each conversation
+  let created = 0
+  for (const conv of getAll('conversations')) if (ensureCustomerForConversation(conv)) created++
+  await flush()
+  res.json({ ok: true, removed, created, totalCustomers: getAll('customers').length })
+})
+
 // Normalize Meta attachments → [{ type:'image'|'video'|'file', url, name }].
 // Conversations API: attachments.data[{ image_data:{url,preview_url}, video_data, file_url }]
 // Webhook: attachments[{ type, payload:{ url } }]
@@ -796,6 +862,7 @@ async function syncMetaConversations() {
           broadcast({ type: 'conversation', conversation: conv })
         }
         ensureLeadForConversation(conv)  // auto lead-capture (idempotent)
+        ensureCustomerForConversation(conv)  // auto customer-capture (idempotent)
 
         const msgs = (c.messages?.data || []).slice().reverse() // oldest → newest
         let lastText = conv.list_preview, lastTime = conv.list_time, added = false
@@ -892,6 +959,7 @@ app.post('/api/webhooks/meta', async (req, res) => {
         conv = await upsertMetaConversation(channel, senderId, profile)
         broadcast({ type: 'conversation', conversation: conv })
         ensureLeadForConversation(conv)  // auto lead-capture
+        ensureCustomerForConversation(conv)  // auto customer-capture
       }
 
       const stored = saveMessage({
@@ -1155,6 +1223,25 @@ app.post('/api/ai/translate-assist', authRequired, async (req, res) => {
   }
 })
 
+// Verify a translation: back-translate text WORD BY WORD to English so the agent can
+// confirm the translation is accurate.
+app.post('/api/ai/verify-translation', authRequired, async (req, res) => {
+  const { text } = req.body || {}
+  if (!text || !text.trim()) return res.status(400).json({ error: 'text required' })
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  const sys = `The agent wants to verify a reply written in another language. Back-translate it to English so they can check it is correct. Respond with ONLY a JSON object:
+{
+ "literal": string,                          // a faithful, fairly literal English translation of the whole text
+ "pairs": [ { "src": string, "en": string } ] // word-by-word (or short phrase) mapping: each source word/phrase → its English meaning, in order
+}`
+  try {
+    const out = await chatJSON(sys, text.trim())
+    res.json({ ok: true, literal: out.literal || '', pairs: Array.isArray(out.pairs) ? out.pairs : [] })
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
+  }
+})
+
 // Conversation summary — generated on demand, CACHED on the conversation doc, and
 // updated INCREMENTALLY: only the NEW messages (since the saved summary) are sent
 // to the model, which merges them into the existing detailed summary.
@@ -1300,6 +1387,27 @@ app.post('/api/ai/designer-jobs/:id', authRequired, async (req, res) => {
   }
 })
 
+// AI Notes — analyze the conversation and produce concise internal notes for the team.
+app.post('/api/ai/notes/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  const conv = findById('conversations', req.params.id)
+  if (!conv) return res.status(404).json({ error: 'conversation not found' })
+  const msgs = sortedConvMsgs(req.params.id)
+  if (!msgs.length) return res.json({ empty: true })
+  const sys = `You are an assistant for a custom apparel print shop (hoodies, t-shirts, jerseys, DTF transfers, embroidery). Read the conversation and write ONLY the genuinely IMPORTANT internal notes the team must know — e.g. what the customer wants (products, quantities, sizes), agreed prices/quotes, shipping address, key decisions, problems/complaints, and any required follow-up. SKIP greetings, small talk, thanks, and anything trivial or obvious. Each note is ONE short, specific sentence. Return only the essential notes (max 5; fewer is better). Pick the best fitting category. Respond with ONLY a JSON object:
+{ "notes": [ { "text": string, "category": "internal"|"call"|"meeting"|"followup" } ] }`
+  try {
+    const out = await chatJSON(sys, msgs.map(fmtMsg).join('\n'))
+    const valid = ['internal', 'call', 'meeting', 'followup']
+    const notes = (Array.isArray(out.notes) ? out.notes : [])
+      .map((n) => ({ text: String(n?.text || '').trim(), category: valid.includes(n?.category) ? n.category : 'internal' }))
+      .filter((n) => n.text)
+    res.json({ ok: true, notes })
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
+  }
+})
+
 // ============================================================
 // App / Business settings (persisted in Postgres settings store)
 // ============================================================
@@ -1323,6 +1431,46 @@ app.put('/api/settings', authRequired, async (req, res) => {
     notifications: { ...current.notifications, ...(req.body?.notifications || {}) },
   }
   setSetting('app_settings', next)
+  await flush()
+  res.json(next)
+})
+
+// ============================================================
+// Quick actions (Responses tab panels) — editable in Settings, stored in DB.
+// ============================================================
+const DEFAULT_QUICK_ACTIONS = {
+  communication: [
+    { label: 'Send Website Address',      msg: '🌐 Our website: https://decoinks.com' },
+    { label: 'Send Email Address',        msg: '📧 Email us: info@decoinks.com' },
+    { label: 'Send Pinterest Account',    msg: '📌 Pinterest: https://pinterest.com/decoinks' },
+    { label: 'Send WhatsApp Catalog',     msg: '🛍️ Our catalog: https://wa.me/c/decoinks' },
+    { label: 'Send Google Maps Location', msg: '📍 Find us: https://maps.google.com/?q=Decoinks' },
+    { label: 'Our Brochure (PDF)',        msg: '📄 Our brochure: https://decoinks.com/brochure.pdf' },
+  ],
+  payment: [
+    { label: 'Zelle QR Code',          msg: '💳 Pay via Zelle: info@decoinks.com' },
+    { label: 'Cash App QR Code',       msg: '💵 Cash App: $decoinks' },
+    { label: 'PayPal QR Code',         msg: '🅿️ PayPal: https://paypal.me/decoinks' },
+    { label: 'PayPal Invoice (Cards)', msg: '🧾 We will send a secure PayPal invoice link (cards accepted).' },
+  ],
+  document: [
+    { label: 'Preview Quote',   msg: '🧾 Here is your quote.' },
+    { label: 'Preview Invoice', msg: '🧾 Here is your invoice.' },
+  ],
+}
+const cleanItems = (a) => (Array.isArray(a) ? a : []).map((x) => ({ label: String(x?.label || '').trim(), msg: String(x?.msg || '').trim() })).filter((x) => x.label)
+
+app.get('/api/quick-actions', authRequired, (req, res) => {
+  res.json(getSetting('quick_actions') || DEFAULT_QUICK_ACTIONS)
+})
+app.put('/api/quick-actions', authRequired, async (req, res) => {
+  const b = req.body || {}
+  const next = {
+    communication: cleanItems(b.communication),
+    payment: cleanItems(b.payment),
+    document: cleanItems(b.document),
+  }
+  setSetting('quick_actions', next)
   await flush()
   res.json(next)
 })

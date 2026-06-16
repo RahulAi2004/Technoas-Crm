@@ -22,13 +22,26 @@ export default function Settings() {
   const [conn, setConn] = useState({ meta: null, ai: null, qdrant: null })
   const [settings, setSettings] = useState(null)
   const [savingBiz, setSavingBiz] = useState(false)
+  const [qa, setQa] = useState(null)          // quick actions (Responses tab panels)
+  const [savingQa, setSavingQa] = useState(false)
 
   useEffect(() => {
     api.get('/api/meta/status').then((d) => setConn((c) => ({ ...c, meta: d }))).catch(() => {})
     api.get('/api/ai/status').then((d) => setConn((c) => ({ ...c, ai: d }))).catch(() => {})
     api.get('/api/qdrant/status').then((d) => setConn((c) => ({ ...c, qdrant: d }))).catch(() => {})
     api.get('/api/settings').then(setSettings).catch(() => {})
+    api.get('/api/quick-actions').then(setQa).catch(() => {})
   }, [])
+
+  const qaUpdate = (group, i, key, val) => setQa((q) => ({ ...q, [group]: q[group].map((it, j) => j === i ? { ...it, [key]: val } : it) }))
+  const qaAdd = (group) => setQa((q) => ({ ...q, [group]: [...(q[group] || []), { label: '', msg: '' }] }))
+  const qaRemove = (group, i) => setQa((q) => ({ ...q, [group]: q[group].filter((_, j) => j !== i) }))
+  const saveQa = async () => {
+    setSavingQa(true)
+    try { const saved = await api.put('/api/quick-actions', qa); setQa(saved); toast('Quick actions saved', 'success') }
+    catch (ex) { toast(ex.message || 'Save failed', 'error') }
+    finally { setSavingQa(false) }
+  }
 
   const setBiz = (k, v) => setSettings((s) => ({ ...s, business: { ...s.business, [k]: v } }))
   const toggleNotif = (k) => setSettings((s) => ({ ...s, notifications: { ...s.notifications, [k]: !s.notifications[k] } }))
@@ -154,6 +167,33 @@ export default function Settings() {
                   ))}
                 </div>
                 <button onClick={saveSettings} disabled={savingBiz} className="mt-3 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">Save Notifications</button>
+              </section>
+            )}
+
+            {/* Quick Reply Actions (Responses tab panels) */}
+            {qa && (
+              <section className={card}>
+                <h2 className="text-sm font-bold">Quick Reply Actions</h2>
+                <p className="mt-0.5 text-xs text-slate-500">Edit the Communication, Payment &amp; Document buttons that appear in the AI Supervisor → Responses tab.</p>
+                {[['communication', 'Communication Actions'], ['payment', 'Payment Methods'], ['document', 'Document']].map(([group, label]) => (
+                  <div key={group} className="mt-4">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</h3>
+                      <button onClick={() => qaAdd(group)} className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-brand-600 hover:bg-brand-50">+ Add</button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {(qa[group] || []).map((it, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input value={it.label} onChange={(e) => qaUpdate(group, i, 'label', e.target.value)} placeholder="Button label" className={`${field} sm:w-1/3`} />
+                          <input value={it.msg} onChange={(e) => qaUpdate(group, i, 'msg', e.target.value)} placeholder="Message sent to chat" className={field} />
+                          <button onClick={() => qaRemove(group, i)} className="shrink-0 rounded-md p-1.5 text-rose-500 hover:bg-rose-50" title="Remove">🗑</button>
+                        </div>
+                      ))}
+                      {(qa[group] || []).length === 0 && <p className="text-[11px] text-slate-400">No items — click “+ Add”.</p>}
+                    </div>
+                  </div>
+                ))}
+                <button onClick={saveQa} disabled={savingQa} className="mt-4 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">{savingQa ? 'Saving…' : 'Save Quick Actions'}</button>
               </section>
             )}
 

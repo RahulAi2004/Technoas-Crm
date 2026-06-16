@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { isAuthed, signIn } from '../lib/auth.js'
 
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   const dest = location.state?.from?.pathname || '/dashboard'
-  const [email, setEmail] = useState('info@technocas.com')
+  const [email, setEmail] = useState(location.state?.email || 'info@technocas.com')
   const [pw, setPw] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [err, setErr] = useState('')
@@ -149,7 +149,8 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="mt-8 text-center text-xs text-slate-500">Protected by Technocas · By signing in you accept our Terms of Service.</p>
+          <p className="mt-6 text-center text-sm text-slate-600">New agent? <Link to="/create-account" className="font-semibold text-brand-600 hover:text-brand-700">Create an account</Link></p>
+          <p className="mt-3 text-center text-xs text-slate-500">Protected by Technocas · By signing in you accept our Terms of Service.</p>
         </div>
       </section>
     </main>
