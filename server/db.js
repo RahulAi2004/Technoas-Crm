@@ -29,13 +29,13 @@ pool.on('error', (e) => console.error('[db] idle client error:', e.message))
 
 // Tables that hold a list of documents (id + JSONB doc).
 const ROW_TABLES = ['users', 'customers', 'leads', 'conversations', 'messages',
-  'notes', 'orders', 'payments', 'receipts', 'artworks', 'webhook_events']
+  'notes', 'orders', 'payments', 'receipts', 'artworks', 'webhook_events', 'ai_chats']
 
 function emptyDb() {
   return {
     users: [], customers: [], leads: [], conversations: [], messages: [],
     notes: [], orders: [], payments: [], receipts: [], artworks: [],
-    settings: {}, webhook_events: [], _autoinc: {},
+    settings: {}, webhook_events: [], ai_chats: [], _autoinc: {},
   }
 }
 

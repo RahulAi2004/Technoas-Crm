@@ -6,7 +6,7 @@ import { getAll, findById, insert, update, remove, getSetting, setSetting, delet
 import { ManyChatClient } from './manychat.js'
 import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
-import { aiConfigured, aiModels, embed, chatJSON, chatText } from './ai.js'
+import { aiConfigured, aiModels, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -1406,6 +1406,103 @@ app.post('/api/ai/notes/:id', authRequired, async (req, res) => {
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
   }
+})
+
+// AI Assistant — chat with the whole CRM (DB + chats + semantic search over messages).
+app.post('/api/ai/ask', authRequired, async (req, res) => {
+  const { prompt, history = [] } = req.body || {}
+  if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt required' })
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  try {
+    const convs = getAll('conversations'), custs = getAll('customers'), leads = getAll('leads'), allMsgs = getAll('messages')
+    const stats = `Conversations: ${convs.length} · Customers: ${custs.length} · Leads: ${leads.length} · Messages: ${allMsgs.length}`
+    const pl = prompt.toLowerCase()
+
+    // 1) Match conversations by name/company/phone mentioned in the prompt
+    let matched = convs.filter((c) => c.name && pl.includes(c.name.toLowerCase()))
+    if (!matched.length) {
+      const words = pl.split(/[^a-z0-9]+/i).filter((w) => w.length > 2)
+      matched = convs.filter((c) => {
+        const nm = (c.name || '').toLowerCase()
+        return nm && nm.split(/\s+/).some((part) => words.includes(part))
+      })
+    }
+    matched = matched.slice(0, 3)
+    let entityCtx = ''
+    for (const c of matched) {
+      const cm = allMsgs.filter((m) => m.conversation_id === c.id).slice(-25)
+      const lead = leads.find((l) => l.conversation_id === c.id) || {}
+      entityCtx += `\n\n=== CUSTOMER: ${c.name} (${c.channel || '-'}) ===\nPhone: ${c.phone || '-'} | Company: ${c.company || '-'} | Status: ${c.status || '-'} | Assigned: ${c.assigned_to || '-'} | Lead stage: ${lead.pipeline || lead.status || '-'} | Lead value: ${lead.value ?? '-'}\nConversation:\n` +
+        cm.map((m) => `${m.dir === 'in' ? 'Customer' : m.dir === 'out' ? 'Agent' : 'Note'}: ${m.text}`).join('\n')
+    }
+
+    // 2) Semantic search over all messages (RAG)
+    let ragCtx = ''
+    if (qdrantConfigured()) {
+      try {
+        const [vec] = await embed(prompt)
+        const hits = await new QdrantClient().search('crm_messages', vec, { limit: 12 })
+        ragCtx = (hits?.result || []).map((h) => h.payload?.text).filter(Boolean).join('\n---\n')
+      } catch { /* non-fatal */ }
+    }
+
+    const sys = `You are the AI assistant for Decoinks (a custom apparel print shop) CRM. You ONLY help with this business's CRM data — its customers, conversations, leads, messages and orders.
+
+STRICT RULES:
+1. Answer ONLY using the CRM DATA provided below. NEVER use outside or general knowledge, and NEVER invent, assume or guess facts. If the answer is not present in the provided data, clearly say you don't have that information in the CRM.
+2. SCOPE: Only answer questions about this CRM (customers, conversations, leads, messages, the shop's business). If the user asks anything UNRELATED — general knowledge, world facts, math, coding, news, opinions, etc. (e.g. "what is the population of the world") — politely REFUSE and say you can only answer questions about the CRM data. Do not answer such questions at all.
+3. When asked about a specific customer, give their details (channel, phone, company, status, lead stage) and summarize what was discussed — strictly from the data.
+4. Reply in EXACTLY the same language as the user's message, and mirror its structure (list → bullets, short question → short answer, details → organized sections).
+5. Be clear, concise and professional — no unnecessary preamble.`
+    const dataBlock = `CRM STATS: ${stats}\n${entityCtx || ''}\n\nRELEVANT MESSAGES (semantic search):\n${ragCtx || '(none)'}`
+    const messages = [
+      { role: 'system', content: `${sys}\n\n--- CRM DATA ---\n${dataBlock}` },
+      ...(Array.isArray(history) ? history : []).slice(-6).map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content || '') })),
+      { role: 'user', content: prompt.trim() },
+    ]
+    const answer = await chatMessages(messages)
+    res.json({ ok: true, answer, matched: matched.map((c) => c.name) })
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
+  }
+})
+
+// ---- AI assistant chat history (per user, saved in DB) ----
+const chatTitle = (msgs) => {
+  const first = (msgs || []).find((m) => m.role === 'user')
+  const t = (first?.content || 'New chat').trim().replace(/\s+/g, ' ')
+  return t.length > 48 ? t.slice(0, 48) + '…' : t
+}
+app.get('/api/ai/chats', authRequired, (req, res) => {
+  const list = getAll('ai_chats')
+    .filter((c) => c.user_id === req.user.id)
+    .map((c) => ({ id: c.id, title: c.title, updated_at: c.updated_at, count: (c.messages || []).length }))
+    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+  res.json(list)
+})
+app.get('/api/ai/chats/:id', authRequired, (req, res) => {
+  const c = findById('ai_chats', req.params.id)
+  if (!c || c.user_id !== req.user.id) return res.status(404).json({ error: 'chat not found' })
+  res.json(c)
+})
+app.post('/api/ai/chats', authRequired, async (req, res) => {
+  const msgs = Array.isArray(req.body?.messages) ? req.body.messages : []
+  const now = new Date().toISOString()
+  const c = insert('ai_chats', { user_id: req.user.id, title: chatTitle(msgs), messages: msgs, created_at: now, updated_at: now })
+  res.status(201).json(c)
+})
+app.put('/api/ai/chats/:id', authRequired, async (req, res) => {
+  const c = findById('ai_chats', req.params.id)
+  if (!c || c.user_id !== req.user.id) return res.status(404).json({ error: 'chat not found' })
+  const msgs = Array.isArray(req.body?.messages) ? req.body.messages : c.messages
+  const updated = update('ai_chats', c.id, { messages: msgs, title: req.body?.title || chatTitle(msgs), updated_at: new Date().toISOString() })
+  res.json(updated)
+})
+app.delete('/api/ai/chats/:id', authRequired, (req, res) => {
+  const c = findById('ai_chats', req.params.id)
+  if (!c || c.user_id !== req.user.id) return res.status(404).json({ error: 'chat not found' })
+  remove('ai_chats', c.id)
+  res.json({ ok: true })
 })
 
 // ============================================================

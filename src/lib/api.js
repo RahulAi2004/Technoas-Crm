@@ -5,7 +5,7 @@ export const getToken = () => sessionStorage.getItem(TOKEN_KEY)
 export const setToken = (t) => sessionStorage.setItem(TOKEN_KEY, t)
 export const clearToken = () => sessionStorage.removeItem(TOKEN_KEY)
 
-async function request(path, { method = 'GET', body, headers = {} } = {}) {
+async function request(path, { method = 'GET', body, headers = {}, signal } = {}) {
   const token = getToken()
   const res = await fetch(path, {
     method,
@@ -15,6 +15,7 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
   })
   const text = await res.text()
   const data = text ? JSON.parse(text) : null
@@ -35,7 +36,7 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
 
 export const api = {
   get:   (p)       => request(p),
-  post:  (p, body) => request(p, { method: 'POST',  body }),
+  post:  (p, body, opts) => request(p, { method: 'POST',  body, ...opts }),
   put:   (p, body) => request(p, { method: 'PUT',   body }),
   patch: (p, body) => request(p, { method: 'PATCH', body }),
   del:   (p)       => request(p, { method: 'DELETE' }),

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import RequireAuth from './components/RequireAuth.jsx'
 import Login from './pages/Login.jsx'
 import CreateAccount from './pages/CreateAccount.jsx'
+import AiAssistant from './pages/AiAssistant.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Inbox from './pages/Inbox.jsx'
 import Customers from './pages/Customers.jsx'
@@ -37,6 +38,7 @@ export default function App() {
       <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       <Route path="/team" element={<RequireAuth><Team /></RequireAuth>} />
+      <Route path="/ai-assistant" element={<RequireAuth><AiAssistant /></RequireAuth>} />
       <Route path="/artwork-vault" element={<RequireAuth><ArtworkVault /></RequireAuth>} />
       <Route path="/connect-meta" element={<RequireAuth><MetaConnect /></RequireAuth>} />
       <Route path="/integrations"  element={<RequireAuth><Integrations /></RequireAuth>} />

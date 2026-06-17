@@ -1,0 +1,1195 @@
+{
+  "source": {
+    "conversations": 190,
+    "customerMessages": 8526,
+    "uniqueMessages": 6329,
+    "rawQuestions": 1352
+  },
+  "intents": [
+    {
+      "intent": "view_catalog",
+      "question": "Do you have a catalog or a website to view the designs available for printing?",
+      "examples": [
+        "Do you have a website?",
+        "Do you have stock designs to pick from?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "contact_info",
+      "question": "What is your contact information?",
+      "examples": [
+        "Do you have a phone number?",
+        "What is your email address?",
+        "What is your phone number?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "puerto_rican_designs",
+      "question": "What about Puerto Rican designs?",
+      "examples": [
+        "What about Puerto Rican designs?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "design_ownership",
+      "question": "Are you going to sell the designs I’m sending you to other people too?",
+      "examples": [
+        "Are you going to sell the designs I’m sending you to other people too?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "next_steps",
+      "question": "What do I need to do next?",
+      "examples": [
+        "What do I need to do next?",
+        "How does this work?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "design_availability",
+      "question": "Do you have any designs available?",
+      "examples": [
+        "Do you have any designs available?",
+        "Do you have a catalog with designs?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "transfer_samples",
+      "question": "Are there samples available?",
+      "examples": [
+        "Are there samples available?",
+        "Can I get a sample before ordering?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "color_options",
+      "question": "What other colors do you have?",
+      "examples": [
+        "What other colors do you have?",
+        "What colors do you have?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "promotional_inquiries",
+      "question": "Can I promote your products at concerts?",
+      "examples": [
+        "Can I promote your products at concerts?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "website_request",
+      "question": "What's your website?",
+      "examples": [
+        "Do you have a catalog or website?",
+        "Where are you guys located?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "general_inquiry",
+      "question": "What can you do in terms of custom apparel?",
+      "examples": [
+        "What is your recommendation?",
+        "What kind of frontend support do you need?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "sample_request",
+      "question": "Do you do free samples?",
+      "examples": [
+        "Do you provide samples?",
+        "Do you offer test pieces before a larger order?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "business_inquiries",
+      "question": "Are you manufacturing your merchandise in the U.S.A.?",
+      "examples": [
+        "Do you also offer fulfillment?",
+        "Are you in Texas?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "template_inquiries",
+      "question": "Where can I find the templates?",
+      "examples": [
+        "Do you have the templates for sale?",
+        "Do you sell templates wholesale?"
+      ],
+      "category": "General"
+    },
+    {
+      "intent": "place_order",
+      "question": "How can I place orders and request the catalog?",
+      "examples": [
+        "How do I place my order?",
+        "How do I go about ordering the shirts?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "bulk_order",
+      "question": "Can I order in bulk?",
+      "examples": [
+        "How do I order in bulk?",
+        "What is the pricing for bulk orders?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "shirt_order_quantity",
+      "question": "What is the minimum order quantity needed to place an order?",
+      "examples": [
+        "What is the minimum order quantity?",
+        "How many shirts can I order?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "custom_tshirt_order",
+      "question": "How can I order a custom t-shirt?",
+      "examples": [
+        "Can I send my own design?",
+        "Can I have my own design on shirts?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "payment_methods",
+      "question": "What payment methods do you accept?",
+      "examples": [
+        "Do you have cash app or accept debit/credit cards?",
+        "Can you help me with the payment process?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "order_change",
+      "question": "Can I change my order after it has been placed?",
+      "examples": [
+        "Can I get a size in between the ones I received?",
+        "Can I mix designs in my order?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "reorder_process",
+      "question": "How can I order again?",
+      "examples": [
+        "How can I order again?",
+        "How do I order?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "last_order_price",
+      "question": "How much was my last order?",
+      "examples": [
+        "How much was my last order?",
+        "How much do you charge?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "printing_status",
+      "question": "Do you already print it out?",
+      "examples": [
+        "Do you already print it out?",
+        "Can you tell me how many are you printing?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "payment_options",
+      "question": "Do you have a payment plan or options like Klarna or Afterpay?",
+      "examples": [
+        "Do you have a payment plan or options like Klarna or Afterpay?",
+        "Do you accept money orders?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "payment_instructions",
+      "question": "How do I make the payment if I decide to go for it?",
+      "examples": [
+        "How do I make the payment if I decide to go for it?",
+        "How do I pay for my order?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "order_submission",
+      "question": "Where can I send my order?",
+      "examples": [
+        "Where can I send my order?",
+        "What do I need to send to start the order?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "order_invoice",
+      "question": "Can I get an invoice?",
+      "examples": [
+        "Can I get an invoice?",
+        "What is the total for 700?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "order_details",
+      "question": "Can I have all the details regarding my order?",
+      "examples": [
+        "Can I have all the details regarding my order?",
+        "Can you provide a quote?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "payment_request",
+      "question": "How can I pay the amount of $50.99?",
+      "examples": [
+        "What is the payment for the designs?",
+        "What’s your Venmo?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "order_information",
+      "question": "What do you need from me to proceed with the order?",
+      "examples": [
+        "How can I order it?",
+        "How would I pay when I officially place the order?"
+      ],
+      "category": "Orders & Payment"
+    },
+    {
+      "intent": "free_offer",
+      "question": "Is your 1000 inches + 100 inches FREE offer available?",
+      "examples": [
+        "What do I get with the 1000-inch bulk offer?",
+        "How much for thousands of inches?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "dtf_transfer_pricing",
+      "question": "How much are the DTF transfers?",
+      "examples": [
+        "What’s the cost?",
+        "How much for five transfer sheets?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "pricing_inquiry",
+      "question": "What would the price be?",
+      "examples": [
+        "How much would it cost for shirts and hats?",
+        "What is the total for shirts and hat DTF transfers?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "transfer_sheet_pricing",
+      "question": "How much is the sheet if I get ten?",
+      "examples": [
+        "How much for 1000 sheets?",
+        "How much for 5 transfer sheets?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "bulk_order_inquiries",
+      "question": "What do you consider a bulk order?",
+      "examples": [
+        "Can you offer a better price with a large amount?",
+        "By how many would I qualify for the lower price?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "expedited_delivery_cost",
+      "question": "How much more is it for 24-hour delivery?",
+      "examples": [
+        "How much for a 24-hour delivery?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "design_pricing",
+      "question": "How much are per design?",
+      "examples": [
+        "How much do the designs usually cost?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "bulk_order_pricing",
+      "question": "What is your price for large bulk orders?",
+      "examples": [
+        "How much is a bulk order?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "design_price",
+      "question": "How much would it be for a design for the back of a t-shirt if I have my own design?",
+      "examples": [
+        "How much is the price for 1000?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "order_cost",
+      "question": "What is the total cost for my order?",
+      "examples": [
+        "How much all together?",
+        "How much would it cost to order just 50 shirts?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "bulk_orders",
+      "question": "Do you offer discounts for bulk orders?",
+      "examples": [
+        "What is the pricing for your gang sheets?",
+        "How many pieces can I get for a specific price?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "order_quantity",
+      "question": "What quantity do I need to order to keep within my price range?",
+      "examples": [
+        "Can I split the color of shirts for the same design?",
+        "How many on the gang sheet and what is the price?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "patch_price_request",
+      "question": "How much is the patch that says 'CEO' in pink?",
+      "examples": [
+        "How much are the patches each?",
+        "How much for just the one?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "design_addition_request",
+      "question": "If I add another design, how much would it be?",
+      "examples": [
+        "How much would it cost to order 20 designs?",
+        "What would be the price for 2 shirts with the design?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "bulk_order_request",
+      "question": "How much would it be for 50 pieces?",
+      "examples": [
+        "What is the price for 10 medium, 10 large, 10 x-large, and 10 xx-large black shirts?",
+        "What is the price for recreating the file for printing?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "transfer_cost_request",
+      "question": "How much do DTF transfers cost?",
+      "examples": [
+        "How much are your transfers?",
+        "What is the cost for DTF transfers?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "bulk_pricing_request",
+      "question": "What does bulk pricing start at?",
+      "examples": [
+        "What is the price per dozen?",
+        "What is the minimum order?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "bulk_order",
+      "question": "Can you provide a price for a bulk order?",
+      "examples": [
+        "What is your minimum order quantity and turnaround time?",
+        "Do you offer bulk discounts?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "transfer_price",
+      "question": "What is the price for a transfer?",
+      "examples": [
+        "How much is 2 transfers?",
+        "Is the price $5.00 per DTF transfer?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "custom_design_cost",
+      "question": "How much do you charge for custom designs?",
+      "examples": [
+        "What is the cost for each item?",
+        "How much would it cost for 20 pieces, 10 shirts and 10 shorts?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "pricing_options",
+      "question": "What are your pricing options?",
+      "examples": [
+        "What is the cost for 50 gang sheets?",
+        "How much do you charge per shirt?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "custom_design_pricing",
+      "question": "What are your prices for custom designs?",
+      "examples": [
+        "How much do you charge for a 3 color design?",
+        "What is your pricing for your transfer sheets?"
+      ],
+      "category": "Pricing"
+    },
+    {
+      "intent": "buy_transfers_only",
+      "question": "Can I buy only transfers?",
+      "examples": [
+        "Can I order a single heat transfer sheet?",
+        "Do you sell shirts that come already printed or just the transfers?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "sample_pack",
+      "question": "How do I get a sample pack?",
+      "examples": [
+        "Can I receive 1 shirt as a tester for quality check and design?",
+        "Do you do samples of your patches or DTF stickers?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "custom_options",
+      "question": "Do you have custom options?",
+      "examples": [
+        "Do you offer custom design services?",
+        "Can I customize an image for a birthday theme?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "size_recommendation",
+      "question": "Do you suggest one size or not?",
+      "examples": [
+        "What sizes do you offer and what size would you recommend for a six-month-old?",
+        "What size should I use for the back of the t-shirt?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "transfer_types",
+      "question": "What kind of transfers do you have?",
+      "examples": [
+        "Do you have Michael Jackson transfers?",
+        "Do you have Koi fish transfers available?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "custom_tags",
+      "question": "Do you make custom tags on transfer paper?",
+      "examples": [
+        "Can you add the logo if possible?",
+        "Can you remove the writings?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "design_size",
+      "question": "What is the biggest size you can print?",
+      "examples": [
+        "How much for a size like this or a little smaller?",
+        "What’s the biggest size for a print?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "order_quantity",
+      "question": "What’s the minimum amount of shirts I can order?",
+      "examples": [
+        "Is there a minimum order requirement?",
+        "What is the minimum amount I can order?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "design_samples",
+      "question": "Can you provide samples for these shirts in black and white?",
+      "examples": [
+        "Do you have any dtg samples you did for anyone else that you can share a picture of?",
+        "Can you show me some examples of designs?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "transfer_options",
+      "question": "Are there different transfers available?",
+      "examples": [
+        "Do you have DTF transfers available?",
+        "Can you do front and back printing?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "gang_sheet_capacity",
+      "question": "How many designs fit on a $93 gang sheet?",
+      "examples": [
+        "How many designs fit on a $93 gang sheet?",
+        "How many designs fit on 22x240 sheets?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "youth_design_capacity",
+      "question": "How many youth XL designs fit on a gang sheet?",
+      "examples": [
+        "How many youth XL designs fit on a gang sheet?",
+        "How many fit in the sheet?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "youth_adult_sizes",
+      "question": "What about sizes for adult and youth?",
+      "examples": [
+        "What about sizes for adult and youth?",
+        "Do you offer assorted sizes?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "print_quantity",
+      "question": "How many prints come for a specific amount and what sizes?",
+      "examples": [
+        "How many prints come for a specific amount and what sizes?",
+        "How many do you need?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "transfer_dimensions",
+      "question": "What are the dimensions of the transfers?",
+      "examples": [
+        "What are the dimensions of the transfers?",
+        "What is the price for an 8 x 6 design?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "transfer_quality",
+      "question": "Do the prints crack or fade when washed or dried?",
+      "examples": [
+        "Do the prints crack or fade when washed or dried?",
+        "Is DTF good with cotton?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "design_size_request",
+      "question": "What size transfers do I need for the shirts?",
+      "examples": [
+        "What size transfers do I need for the shirts?",
+        "What is a normal size for the front of a hoodie or t-shirt?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "sample_request",
+      "question": "Can I see a sample first before placing a larger order?",
+      "examples": [
+        "Can I see a sample?",
+        "Is there any chance I can get 1 sample of the design before I order 1100 inches?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "product_availability",
+      "question": "What products do you offer?",
+      "examples": [
+        "Do you have hoodies, windbreakers, and shirts?",
+        "Do you offer embroidery services?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "product_sizes",
+      "question": "What sizes do you offer for t-shirts?",
+      "examples": [
+        "What are the sizes of the second order?",
+        "What size shirt do you use?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "transfer_requests",
+      "question": "Can I request DTF transfers?",
+      "examples": [
+        "How do you charge for DTF transfers for t-shirts?",
+        "Do you sell different transfers?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "patch_size_request",
+      "question": "What size is the 'CEO' patch?",
+      "examples": [
+        "What size will this be again?",
+        "What sizes do you have?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "transfer_size_request",
+      "question": "What is the width of the transfers?",
+      "examples": [
+        "How big are the transfers?",
+        "What are the width yard transfers?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "transfer_type_request",
+      "question": "What are DTF transfers?",
+      "examples": [
+        "Do you do glow in the dark transfers?",
+        "Do your transfers work on boxing gloves?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "transfer_sample_request",
+      "question": "Can I test your service with 6 t-shirts in size large?",
+      "examples": [
+        "Can I start with just one t-shirt?",
+        "Can I order a couple to sample your product?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "custom_item_request",
+      "question": "Do you only do t-shirts or can you customize other items like duffle bags?",
+      "examples": [
+        "Do you do shirts for HVAC companies?",
+        "Do you do tumbler sublimation wraps?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "dtf_print_sizes",
+      "question": "What are the sizes of the DTF prints?",
+      "examples": [
+        "What is the average size for a transfer?",
+        "Can I pick the size of the transfers?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "sheet_capacity",
+      "question": "How many logos can fit on one sheet?",
+      "examples": [
+        "How many fit in a sheet?",
+        "How many come on a gang sheet?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "product_availability_types",
+      "question": "What type of shirts do you carry?",
+      "examples": [
+        "Do you have football jerseys?",
+        "Do you carry 6XL shirts?"
+      ],
+      "category": "Products & Materials"
+    },
+    {
+      "intent": "delivery_time",
+      "question": "How long does delivery take?",
+      "examples": [
+        "How long does shipping take?",
+        "How long will it take to receive my order?",
+        "How long will it take to get here?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "shipping_inquiry",
+      "question": "Do you ship?",
+      "examples": [
+        "How much is shipping?",
+        "When will I get my DTF transfers?",
+        "Can you send me the transfers to an address in Vegas?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "order_tracking",
+      "question": "How can I track my order?",
+      "examples": [
+        "What is the status of my package?",
+        "Can you help me with my tracking?",
+        "Can I track my package with the number you provided?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "turnaround_time",
+      "question": "What’s the turnaround time?",
+      "examples": [
+        "How long should I expect to get my orders?",
+        "How long does it take to receive them?",
+        "What is the turnaround time for a small batch order?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "shipping_costs",
+      "question": "What is the shipping price?",
+      "examples": [
+        "How much is the shipping?",
+        "What is the shipping fee?",
+        "How much was the shipping and handling?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "rush_orders",
+      "question": "Do you offer rush orders?",
+      "examples": [
+        "How quickly can you start production?",
+        "How fast is delivery?",
+        "How fast can I get my order?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "order_status",
+      "question": "Can I have the tracking number?",
+      "examples": [
+        "Did you send my order?",
+        "Are you able to provide updates on my order?",
+        "How long does it take to receive the items?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "shipping_status",
+      "question": "Have you mailed out my order already?",
+      "examples": [
+        "When can I expect my order to arrive?",
+        "Have you mailed them out yet?",
+        "When are you going to ship my transfers?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "order_arrival_time",
+      "question": "When can I expect my order to arrive?",
+      "examples": [
+        "When will I receive my shirt?",
+        "Will my order be delivered by the weekend?",
+        "How long will it take to ship?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "shipping_methods",
+      "question": "Can you use only 2nd day air for shipping?",
+      "examples": [
+        "How much is next day shipping?",
+        "Can I change the shipping method?",
+        "Which USPS service do you use?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "shipping_info",
+      "question": "What is sharepost shipping?",
+      "examples": [
+        "Do you deliver ground packages on Saturdays in Hawaii?",
+        "What is the price for the shirts delivered to Riverside, CA 92506?",
+        "How long will it take to get my order to Connecticut and what is the cost?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "tracking_info",
+      "question": "Can I get the tracking number?",
+      "examples": [
+        "Is there a tracking number available?",
+        "Can you send me pictures of my order?",
+        "Have you mailed out my order already?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "delivery_service",
+      "question": "What delivery service has been working best for you so far?",
+      "examples": [
+        "Do you handle deliveries yourself or are you working with a fulfillment partner?",
+        "Are you running your store as a dropshipping model or do you hold your own inventory?",
+        "What delivery service do you use?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "shipping_cost",
+      "question": "What would the cost be for shipping to Nevada?",
+      "examples": [
+        "Is shipping free or are there additional charges?",
+        "Will shipping be included with the $49 hoodie when the order is placed?",
+        "How much is the shipping charge to Vegas?"
+      ],
+      "category": "Delivery & Shipping"
+    },
+    {
+      "intent": "artwork_conversion",
+      "question": "If I send you images, can you make them DTF for me?",
+      "examples": [
+        "Can you help me with 4th of July and Juneteenth transfers and provide quotes for quality and price?",
+        "Can you make my design?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "mockup_request",
+      "question": "Can I see a mock-up of my order?",
+      "examples": [
+        "Can you make a mock-up so I can see how it will look on the front of the jacket?",
+        "Can you show what it will look like?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_submission_process",
+      "question": "What is the process for submitting my design?",
+      "examples": [
+        "How do I send you the design?",
+        "Where do I send my work to?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_options",
+      "question": "What colors and layouts do you have available?",
+      "examples": [
+        "Do you have designs in Spanish?",
+        "Do you have any designs with lighter lettering?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "custom_designs",
+      "question": "Do you do custom designs?",
+      "examples": [
+        "Can you design logos?",
+        "Can you do custom designs?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "mockup_requests",
+      "question": "Can you provide a mockup and an invoice?",
+      "examples": [
+        "Can you send me a picture of what the finished shirt will look like?",
+        "Can you show me how it looks on a person?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_requirements",
+      "question": "How big do the images need to be for the shirts?",
+      "examples": [
+        "What size do you think would be best?",
+        "Can you change the name ZANNDREA to ZEE?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "order_modifications",
+      "question": "Is it okay if I send you a corrected image later?",
+      "examples": [
+        "Can I send you a picture of a design?",
+        "If I send an image, can you change the color on it?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_modifications",
+      "question": "Can you put a thin white outline in the design?",
+      "examples": [
+        "Can you change something in this picture?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "order_correction",
+      "question": "Can you make sure that where it says Buffalo it is correct?",
+      "examples": [
+        "Is the printout I’m expecting the same as the one I received before?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_comparison",
+      "question": "Is the design the same as Mickey?",
+      "examples": [
+        "What is the best placement for the logo?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_example_request",
+      "question": "Can you send me a picture of how it looks?",
+      "examples": [
+        "Can you provide an example or visual of the design?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_customization",
+      "question": "Can you create a design based on the ideas I shared?",
+      "examples": [
+        "Can you change anything on the logo?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "transfer_separation",
+      "question": "Can you provide separated transfer sheets for our summer enrichment program?",
+      "examples": [
+        "Can I cut them separately and just put them in an envelope?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "transfer_background",
+      "question": "Can you remove the background from the design?",
+      "examples": [
+        "Is the background clear?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "transfer_color_options",
+      "question": "What color options do you have for the font?",
+      "examples": [
+        "What colors are available?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_improvements",
+      "question": "Is there any way you can improve the designs?",
+      "examples": [
+        "Can you show me some of your work?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_placement",
+      "question": "What is the best placement for the logo?",
+      "examples": [
+        "Could you make the logo a bit larger for sizes XL, X2, X3?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_creation",
+      "question": "Can I create new designs for an upcoming concert?",
+      "examples": [
+        "If I make my own design, can I send it to you and order that?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_color",
+      "question": "Can you make the designs white?",
+      "examples": [
+        "Can you send color options?",
+        "Can you send shirt options?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_size",
+      "question": "What is the size of the image on the shirt?",
+      "examples": [
+        "How big will the design be in front?",
+        "Can you do just the back?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "sample_request",
+      "question": "Can you show me a sample on the back of a letterman jacket?",
+      "examples": [
+        "Can I send them to you and you do a preview for me?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "custom_design_request",
+      "question": "Can you adjust the design to include specific text and formatting?",
+      "examples": [
+        "Can you put 'Las Vegas, NV' under the logo patch?",
+        "Can you add www.covenantchurchhouma.com on the back?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_rights_request",
+      "question": "Can I have the rights to a design if I pay for it?",
+      "examples": [
+        "Can you recreate the images I designed onto vinyl?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_recreation_request",
+      "question": "Can your company recreate 100 images and what would that price be like?",
+      "examples": [
+        "What is my quote for the above?",
+        "What is the price and how long for delivery?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_examples",
+      "question": "Can I see some examples of your work?",
+      "examples": [
+        "Can you show me a picture to demonstrate the size on the back of a shirt?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_proofs",
+      "question": "Can you show proofs of the design before I place an order?",
+      "examples": [
+        "Can you send me pictures of the shirts on models that I can use to build my website?",
+        "Can you send me an actual mockup of the actual gang sheet?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "custom_designs",
+      "question": "What designs can you create for the 4th of July?",
+      "examples": [
+        "Can you add some designs for cups and mugs?",
+        "Can you create a small gang sheet?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_size",
+      "question": "What is the maximum width for the designs?",
+      "examples": [
+        "What are the dimensions for the custom design?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_options",
+      "question": "Can I order different colors of the same print?",
+      "examples": [
+        "Can I get t-shirts in the same color as the picture?",
+        "Can you put a design on the front of a shirt?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_modifications",
+      "question": "Can you put the logo on black t-shirts with white color?",
+      "examples": [
+        "Can you do glow?",
+        "Can you switch the designs between shirts and shorts?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "design_protection",
+      "question": "Can you help me protect my design for t-shirts before I post it on Facebook?",
+      "examples": [
+        "If I change the colors, would it change the price?"
+      ],
+      "category": "Design & Artwork"
+    },
+    {
+      "intent": "returns_policy",
+      "question": "What is your returns policy?",
+      "examples": [
+        "Do you allow free samples?",
+        "Is there any way I can get my $230 back?",
+        "Can you disregard my unsubscribe request?"
+      ],
+      "category": "Returns & Issues"
+    },
+    {
+      "intent": "order_status",
+      "question": "What is the status of my order?",
+      "examples": [
+        "Am I going to get my order?",
+        "What are you going to do about the printing issue?",
+        "Did you get it?"
+      ],
+      "category": "Returns & Issues"
+    },
+    {
+      "intent": "reprint_request",
+      "question": "Can you reprint my design?",
+      "examples": [
+        "Can you reprint the design and send it to me?",
+        "What should I do if my shirt has not been washed yet?",
+        "Can you send me the money back?"
+      ],
+      "category": "Returns & Issues"
+    },
+    {
+      "intent": "returns_instructions",
+      "question": "What should I do with returned items?",
+      "examples": [
+        "What should I do if I received returned shirts?",
+        "What should I do if the letters on my shirt look like the color is running down?",
+        "What if I receive the wrong item?"
+      ],
+      "category": "Returns & Issues"
+    },
+    {
+      "intent": "returns_and_issues",
+      "question": "What if I change my mind about my order?",
+      "examples": [
+        "Can you disregard all my information and designs immediately?",
+        "What if I change my mind about the design?",
+        "What if I receive the wrong item?"
+      ],
+      "category": "Returns & Issues"
+    }
+  ]
+}

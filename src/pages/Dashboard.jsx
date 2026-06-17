@@ -151,7 +151,8 @@ export default function Dashboard() {
     if (filters.to && convTs(c) > Date.parse(filters.to) + 86399999) return false
     if (search) {
       const q = search.toLowerCase()
-      if (!((c.name || '').toLowerCase().includes(q) || (c.listPreview || '').toLowerCase().includes(q))) return false
+      const hay = `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.listPreview || ''}`.toLowerCase()
+      if (!hay.includes(q)) return false
     }
     return true
   }).sort((a, b) => sortDir === 'latest' ? convTs(b) - convTs(a) : convTs(a) - convTs(b))
@@ -359,6 +360,10 @@ export default function Dashboard() {
               </span>
               {bookmarkCount > 0 && <span className="sb-badge rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold text-white">{bookmarkCount}</span>}
             </button></li>
+            <li><Link to="/ai-assistant" className="sb-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-violet-300 hover:bg-white/5" data-tip="AI Prompting">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              <span className="sb-label">AI Prompting</span>
+            </Link></li>
           </ul>
 
           <p className="sb-section mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Channels</p>
@@ -511,6 +516,20 @@ export default function Dashboard() {
                 </button>
                 <button onClick={() => setSortDir((d) => d === 'latest' ? 'oldest' : 'latest')} title="Toggle sort order" className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{sortDir === 'latest' ? 'Latest' : 'Oldest'} <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transition: 'transform .2s ease', transform: sortDir === 'oldest' ? 'rotate(180deg)' : 'none' }}><path d="m6 9 6 6 6-6"/></svg></button>
               </div>
+            </div>
+
+            {/* Search the conversation list (name / message) */}
+            <div className="fp-only-expanded relative border-b border-slate-200 px-3 py-2">
+              <span className="pointer-events-none absolute inset-y-0 left-5 grid place-items-center text-slate-400">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              </span>
+              <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name or message…"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-8 text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20" />
+              {search && (
+                <button onClick={() => setSearch('')} className="absolute inset-y-0 right-5 grid place-items-center text-slate-400 hover:text-slate-600" aria-label="Clear search">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              )}
             </div>
 
             {/* Collapsible filter form — hidden by default */}

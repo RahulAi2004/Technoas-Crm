@@ -1,0 +1,1455 @@
+{
+  "total": 132,
+  "withRealReply": 130,
+  "intents": [
+    {
+      "intent": "view_catalog",
+      "question": "Do you have a catalog or a website to view the designs available for printing?",
+      "examples": [
+        "Do you have a website?",
+        "Do you have stock designs to pick from?"
+      ],
+      "category": "General",
+      "realReply": "Yes absolutely 😊\nWe offer special bulk pricing for businesses, brands & resellers 🔥\nSend your quantity for the best quote.",
+      "aiReply": "Yes, absolutely! 😊 You can view our designs and offerings on our website [insert website link]. We also offer special bulk pricing for businesses, brands, and resellers. 🔥 Just let us know your quantity, and we'll provide you with the best quote!"
+    },
+    {
+      "intent": "contact_info",
+      "question": "What is your contact information?",
+      "examples": [
+        "Do you have a phone number?",
+        "What is your email address?",
+        "What is your phone number?"
+      ],
+      "category": "General",
+      "realReply": "What would you prefer paypal or bank transfer",
+      "aiReply": "Thank you for reaching out! You can contact us via email at support@decoinks.com or give us a call at [your phone number]. If you have any specific questions or need assistance with an order, feel free to let us know!"
+    },
+    {
+      "intent": "puerto_rican_designs",
+      "question": "What about Puerto Rican designs?",
+      "examples": [
+        "What about Puerto Rican designs?"
+      ],
+      "category": "General",
+      "realReply": "Is it based on your requirement . It was just introduction",
+      "aiReply": "Thank you for your inquiry about Puerto Rican designs! We can definitely create custom designs based on your specific requirements. Please let us know what you're looking for, and we'll be happy to assist you in bringing your vision to life!"
+    },
+    {
+      "intent": "design_ownership",
+      "question": "Are you going to sell the designs I’m sending you to other people too?",
+      "examples": [
+        "Are you going to sell the designs I’m sending you to other people too?"
+      ],
+      "category": "General",
+      "realReply": "Total the order cost was $140",
+      "aiReply": "Thank you for reaching out! At Decoinks, we value your creativity and privacy. Rest assured, the designs you send us for your custom apparel will not be sold or shared with anyone else. They are exclusively yours. If you have any more questions or need assistance with your order, feel free to ask!"
+    },
+    {
+      "intent": "next_steps",
+      "question": "What do I need to do next?",
+      "examples": [
+        "What do I need to do next?",
+        "How does this work?"
+      ],
+      "category": "General",
+      "realReply": "Please confirm how many designs you want so that I can make invoice for you",
+      "aiReply": "Thank you for reaching out! To proceed, please confirm the number of designs you would like to order. Once I have that information, I can create an invoice for you. Looking forward to your response!"
+    },
+    {
+      "intent": "design_availability",
+      "question": "Do you have any designs available?",
+      "examples": [
+        "Do you have any designs available?",
+        "Do you have a catalog with designs?"
+      ],
+      "category": "General",
+      "realReply": "Is it based on your requirement . It was just introduction",
+      "aiReply": "Thank you for reaching out! We offer custom designs tailored to your specific requirements. If you have a particular idea or theme in mind, please share it with us, and we can help create something unique for you!"
+    },
+    {
+      "intent": "transfer_samples",
+      "question": "Are there samples available?",
+      "examples": [
+        "Are there samples available?",
+        "Can I get a sample before ordering?"
+      ],
+      "category": "General",
+      "realReply": "80 transfers is giving you 20% discount",
+      "aiReply": "Hi there! Thank you for reaching out. We do not offer samples of our custom apparel or transfers, but we can provide a discount for larger orders. For example, if you order 80 transfers, you'll receive a 20% discount. If you have any other questions or need assistance with your order, feel free to ask!"
+    },
+    {
+      "intent": "color_options",
+      "question": "What other colors do you have?",
+      "examples": [
+        "What other colors do you have?",
+        "What colors do you have?"
+      ],
+      "category": "General",
+      "realReply": "Please have a look at this white t shirt preview",
+      "aiReply": "Thank you for your inquiry! We offer a wide range of colors for our apparel. To see the available colors for a specific item, please check the product preview on our website. If you have a particular item in mind, let me know, and I can provide more details!"
+    },
+    {
+      "intent": "promotional_inquiries",
+      "question": "Can I promote your products at concerts?",
+      "examples": [
+        "Can I promote your products at concerts?"
+      ],
+      "category": "General",
+      "realReply": "Hi Michael! Please let us know how we can help you.",
+      "aiReply": "Hi there! Thank you for your interest in promoting our products at concerts. We'd love to hear more about your plans and how we can support you. Please let us know what specific products you're interested in and any details you have in mind!"
+    },
+    {
+      "intent": "website_request",
+      "question": "What's your website?",
+      "examples": [
+        "Do you have a catalog or website?",
+        "Where are you guys located?"
+      ],
+      "category": "General",
+      "realReply": "Hi Sam! Please let us know how we can help you.",
+      "aiReply": "Hi there! You can visit our website at [insert website URL here]. If you have any questions or need assistance, feel free to ask!"
+    },
+    {
+      "intent": "general_inquiry",
+      "question": "What can you do in terms of custom apparel?",
+      "examples": [
+        "What is your recommendation?",
+        "What kind of frontend support do you need?"
+      ],
+      "category": "General",
+      "realReply": "Hi Thyra! Please let us know how we can help you.",
+      "aiReply": "Hi Thyra! At Decoinks, we specialize in a variety of custom apparel options including hoodies, t-shirts, jerseys, DTF transfers, and embroidery. We can also assist with custom designs to bring your vision to life. If you have specific ideas or requirements, feel free to share, and we'll be happy to help you create something unique!"
+    },
+    {
+      "intent": "sample_request",
+      "question": "Do you do free samples?",
+      "examples": [
+        "Do you provide samples?",
+        "Do you offer test pieces before a larger order?"
+      ],
+      "category": "General",
+      "realReply": "Hi Toni! Please let us know how we can help you.",
+      "aiReply": "Hi there! Thank you for reaching out. Unfortunately, we do not offer free samples at this time. However, we would be happy to assist you with any questions or help you with your order. Let us know how we can help!"
+    },
+    {
+      "intent": "business_inquiries",
+      "question": "Are you manufacturing your merchandise in the U.S.A.?",
+      "examples": [
+        "Do you also offer fulfillment?",
+        "Are you in Texas?"
+      ],
+      "category": "General",
+      "realReply": "Pls share your address with zip code to calculate shipping cost",
+      "aiReply": "Thank you for your question! Yes, we manufacture our merchandise in the U.S.A. If you have any other questions or need assistance, feel free to ask!"
+    },
+    {
+      "intent": "template_inquiries",
+      "question": "Where can I find the templates?",
+      "examples": [
+        "Do you have the templates for sale?",
+        "Do you sell templates wholesale?"
+      ],
+      "category": "General",
+      "realReply": "Se los enviaremos más tarde por la mañana. ¿Cuántas transferencias DTF necesita?",
+      "aiReply": "¡Hola! Los templates se enviarán más tarde por la mañana. ¿Cuántas transferencias DTF necesitas?"
+    },
+    {
+      "intent": "place_order",
+      "question": "How can I place orders and request the catalog?",
+      "examples": [
+        "How do I place my order?",
+        "How do I go about ordering the shirts?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "loyalty discount",
+      "aiReply": "Hi there! To place an order, you can visit our website and browse through our catalog. If you would like a physical or digital copy of our catalog, please let us know your preferred format, and we’ll be happy to send it to you. Also, don't forget to ask about our loyalty discount for returning customers! If you have any other questions, feel free to reach out. We're here to help!"
+    },
+    {
+      "intent": "bulk_order",
+      "question": "Can I order in bulk?",
+      "examples": [
+        "How do I order in bulk?",
+        "What is the pricing for bulk orders?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "Hi Janice Jeannette! Please let us know how we can help you.",
+      "aiReply": "Hi there! Yes, you can definitely order in bulk with us at Decoinks. Please provide the details of your order, including the type of apparel, quantities, and any specific designs you have in mind. We're here to help!"
+    },
+    {
+      "intent": "shirt_order_quantity",
+      "question": "What is the minimum order quantity needed to place an order?",
+      "examples": [
+        "What is the minimum order quantity?",
+        "How many shirts can I order?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "Hi Mary! We wanted to follow up. Do you have any questions?",
+      "aiReply": "Hi there! Thank you for reaching out. The minimum order quantity for placing an order with us is [insert minimum order quantity]. If you have any more questions or need assistance with your order, feel free to ask!"
+    },
+    {
+      "intent": "custom_tshirt_order",
+      "question": "How can I order a custom t-shirt?",
+      "examples": [
+        "Can I send my own design?",
+        "Can I have my own design on shirts?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "Hi M Dick! Please let us know how we can help you.",
+      "aiReply": "Hi there! To order a custom t-shirt, please provide us with the design you have in mind, the quantity you need, and any specific colors or styles you're interested in. Once we have that information, we can give you a quote and guide you through the ordering process. Looking forward to helping you create your custom t-shirt!"
+    },
+    {
+      "intent": "payment_methods",
+      "question": "What payment methods do you accept?",
+      "examples": [
+        "Do you have cash app or accept debit/credit cards?",
+        "Can you help me with the payment process?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "The support is busy with other customer you can call on this number this number is for our incoming calls +1 (667) 341-4834",
+      "aiReply": "Thank you for reaching out! We accept various payment methods including credit cards, PayPal, and other secure payment options. If you have any specific questions or need assistance, feel free to call us at +1 (667) 341-4834. We're here to help!"
+    },
+    {
+      "intent": "order_change",
+      "question": "Can I change my order after it has been placed?",
+      "examples": [
+        "Can I get a size in between the ones I received?",
+        "Can I mix designs in my order?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "You can tell us the ideas and we will design it for you",
+      "aiReply": "Yes, you can change your order after it has been placed! Just let us know your new ideas, and we will work with you to create the design you have in mind. Please reach out to us as soon as possible to ensure we can accommodate your changes."
+    },
+    {
+      "intent": "reorder_process",
+      "question": "How can I order again?",
+      "examples": [
+        "How can I order again?",
+        "How do I order?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "Hi Bobby! Please let us know how we can help you.",
+      "aiReply": "Hi there! We're glad to hear you're interested in ordering again. You can simply visit our website and select the items you'd like to order. If you have a previous order you'd like to replicate, please provide us with the details, and we'll assist you in placing that order. Let us know how we can help further!"
+    },
+    {
+      "intent": "last_order_price",
+      "question": "How much was my last order?",
+      "examples": [
+        "How much was my last order?",
+        "How much do you charge?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "Hi Sheron! Please let us know how we can help you.",
+      "aiReply": "Hi Sheron! To assist you with the details of your last order, could you please provide me with your order number or the email address associated with your account? Thank you!"
+    },
+    {
+      "intent": "printing_status",
+      "question": "Do you already print it out?",
+      "examples": [
+        "Do you already print it out?",
+        "Can you tell me how many are you printing?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "We have recreated your artwork so that the quality wont be compromised and you get the perfect result please check",
+      "aiReply": "Thank you for reaching out! We have recreated your artwork to ensure that the quality is top-notch and that you receive the perfect result. If you have any further questions or need assistance, feel free to ask!"
+    },
+    {
+      "intent": "payment_options",
+      "question": "Do you have a payment plan or options like Klarna or Afterpay?",
+      "examples": [
+        "Do you have a payment plan or options like Klarna or Afterpay?",
+        "Do you accept money orders?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "Not now",
+      "aiReply": "Thank you for reaching out! Currently, we do not offer payment plans or options like Klarna or Afterpay. If you have any other questions or need assistance with your order, feel free to ask!"
+    },
+    {
+      "intent": "payment_instructions",
+      "question": "How do I make the payment if I decide to go for it?",
+      "examples": [
+        "How do I make the payment if I decide to go for it?",
+        "How do I pay for my order?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "Valuable customer It will cost you $46.85",
+      "aiReply": "Hello! Thank you for your interest in our custom apparel. If you decide to proceed with your order, you can make the payment through our website using a credit card or PayPal. The total cost for your order will be $46.85. If you have any further questions or need assistance, feel free to ask!"
+    },
+    {
+      "intent": "order_submission",
+      "question": "Where can I send my order?",
+      "examples": [
+        "Where can I send my order?",
+        "What do I need to send to start the order?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "Hi Walby! Please let us know how we can help you.",
+      "aiReply": "Hi [Customer's Name]! You can send your order details to us via email at orders@decoinks.com or through our website's order submission form. If you have any specific questions or need assistance with your order, feel free to ask! We're here to help."
+    },
+    {
+      "intent": "order_invoice",
+      "question": "Can I get an invoice?",
+      "examples": [
+        "Can I get an invoice?",
+        "What is the total for 700?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "We offer zelle, paypal and bank transfer payment method",
+      "aiReply": "Absolutely! We can provide you with an invoice for your order. Please let us know your preferred payment method (Zelle, PayPal, or bank transfer), and we'll get the invoice sent over to you right away!"
+    },
+    {
+      "intent": "order_details",
+      "question": "Can I have all the details regarding my order?",
+      "examples": [
+        "Can I have all the details regarding my order?",
+        "Can you provide a quote?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "$5 each",
+      "aiReply": "Of course! To provide you with the details regarding your order, could you please share your order number or any specific information related to it? This will help me assist you better. Thank you!"
+    },
+    {
+      "intent": "payment_request",
+      "question": "How can I pay the amount of $50.99?",
+      "examples": [
+        "What is the payment for the designs?",
+        "What’s your Venmo?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "I hope you understand 😊\n\nOn our side, it was asking a question first, and the answer was “designs.” After that, it started asking for routing number, account number, and other bank details.\n\nBecause of the number of scams these days, we preferred not to proceed with that step just to stay safe 🙏\n\nI hope that makes sense. Let me know how you’d like to move forward",
+      "aiReply": "Hi there! 😊 Thank you for reaching out. To pay the amount of $50.99, we recommend using secure payment methods such as credit/debit cards or PayPal. If you have any specific preferences or need assistance with the payment process, please let me know, and I'll be happy to help! Stay safe and let me know how you'd like to proceed. 🙏"
+    },
+    {
+      "intent": "order_information",
+      "question": "What do you need from me to proceed with the order?",
+      "examples": [
+        "How can I order it?",
+        "How would I pay when I officially place the order?"
+      ],
+      "category": "Orders & Payment",
+      "realReply": "Don’t worry",
+      "aiReply": "To proceed with your order, we'll need a few details from you: \n1. The type of apparel you want (hoodies, t-shirts, jerseys, etc.). \n2. The quantity of each item. \n3. Any specific designs or logos you want printed. \n4. The sizes you need. \n5. Your preferred colors. \nOnce we have this information, we can provide you with a quote and estimated turnaround time. Let us know if you have any questions!"
+    },
+    {
+      "intent": "free_offer",
+      "question": "Is your 1000 inches + 100 inches FREE offer available?",
+      "examples": [
+        "What do I get with the 1000-inch bulk offer?",
+        "How much for thousands of inches?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hi Alberta! Please let us know how we can help you.",
+      "aiReply": "Hi Alberta! Thank you for reaching out. Yes, our 1000 inches + 100 inches FREE offer is currently available! If you have any specific questions or need assistance with your order, feel free to let us know. We're here to help!"
+    },
+    {
+      "intent": "dtf_transfer_pricing",
+      "question": "How much are the DTF transfers?",
+      "examples": [
+        "What’s the cost?",
+        "How much for five transfer sheets?"
+      ],
+      "category": "Pricing",
+      "realReply": "Feel free to contact us",
+      "aiReply": "Thank you for your inquiry about DTF transfers! The pricing can vary based on size and quantity. For a detailed quote, please provide us with the specifics of your order, and we'll be happy to assist you further!"
+    },
+    {
+      "intent": "pricing_inquiry",
+      "question": "What would the price be?",
+      "examples": [
+        "How much would it cost for shirts and hats?",
+        "What is the total for shirts and hat DTF transfers?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hi , apprecaite to know if you are interested in order or just a delay for any information compiling or approval",
+      "aiReply": "Hi there! Thank you for reaching out. To provide you with an accurate price, could you please share more details about your order? Specifically, let us know the type of apparel (hoodies, t-shirts, jerseys, etc.), the quantity, and any custom designs or printing options you have in mind. Looking forward to assisting you!"
+    },
+    {
+      "intent": "transfer_sheet_pricing",
+      "question": "How much is the sheet if I get ten?",
+      "examples": [
+        "How much for 1000 sheets?",
+        "How much for 5 transfer sheets?"
+      ],
+      "category": "Pricing",
+      "realReply": "Please tell us what is the right time to call you back",
+      "aiReply": "Thank you for your inquiry! The price for DTF transfer sheets varies depending on the specific design and size. If you're looking to order ten sheets, please provide us with the details of your design, and we can give you an accurate quote. Feel free to reach out with any additional questions!"
+    },
+    {
+      "intent": "bulk_order_inquiries",
+      "question": "What do you consider a bulk order?",
+      "examples": [
+        "Can you offer a better price with a large amount?",
+        "By how many would I qualify for the lower price?"
+      ],
+      "category": "Pricing",
+      "realReply": "Yes definitely we do offer discounted price on bulk order",
+      "aiReply": "A bulk order at Decoinks typically refers to an order of [insert minimum quantity, e.g., 12 or more] items. We do offer discounted prices for these larger orders, so feel free to reach out if you have a specific quantity in mind!"
+    },
+    {
+      "intent": "expedited_delivery_cost",
+      "question": "How much more is it for 24-hour delivery?",
+      "examples": [
+        "How much for a 24-hour delivery?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hi Marv! Please let us know how we can help you.",
+      "aiReply": "Hi there! Thank you for reaching out. For 24-hour delivery, there is an additional fee of [insert price here]. Please let us know if you need any further assistance or if you'd like to place an order!"
+    },
+    {
+      "intent": "design_pricing",
+      "question": "How much are per design?",
+      "examples": [
+        "How much do the designs usually cost?"
+      ],
+      "category": "Pricing",
+      "realReply": "Valuable customer yes I can do for you. How many designs do you wany",
+      "aiReply": "Hello! Thank you for reaching out to Decoinks. The cost per design can vary based on the complexity and type of apparel you choose. Could you please let me know how many designs you would like to order? This will help me provide you with a more accurate quote. Looking forward to your response!"
+    },
+    {
+      "intent": "bulk_order_pricing",
+      "question": "What is your price for large bulk orders?",
+      "examples": [
+        "How much is a bulk order?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hi Janice Jeannette! Please let us know how we can help you.",
+      "aiReply": "Hi there! Thank you for reaching out. For large bulk orders, our pricing can vary based on the specific items, quantities, and customization options you choose. Please provide us with more details about your order, such as the type of apparel and the quantity you need, and we'll be happy to give you a tailored quote. Looking forward to assisting you!"
+    },
+    {
+      "intent": "design_price",
+      "question": "How much would it be for a design for the back of a t-shirt if I have my own design?",
+      "examples": [
+        "How much is the price for 1000?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hi Bobby! Please let us know how we can help you.",
+      "aiReply": "Hi there! If you have your own design for the back of a t-shirt, we can help you with that. The cost for printing your design will depend on factors such as the number of colors in your design and the quantity of shirts you need. Please provide us with those details, and we'll give you a quote. Looking forward to assisting you!"
+    },
+    {
+      "intent": "order_cost",
+      "question": "What is the total cost for my order?",
+      "examples": [
+        "How much all together?",
+        "How much would it cost to order just 50 shirts?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hi Sovakia! Please let us know how we can help you.",
+      "aiReply": "Hi Sovakia! To provide you with the total cost for your order, could you please share the details such as the type of apparel, quantity, and any specific customizations you have in mind? Once I have that information, I'll be happy to calculate the total for you!"
+    },
+    {
+      "intent": "bulk_orders",
+      "question": "Do you offer discounts for bulk orders?",
+      "examples": [
+        "What is the pricing for your gang sheets?",
+        "How many pieces can I get for a specific price?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hi Janice Jeannette! Please let us know how we can help you.",
+      "aiReply": "Hi Janice Jeannette! Yes, we do offer discounts for bulk orders. The discount percentage depends on the quantity and type of items you are ordering. Please provide us with the details of your order, and we'll be happy to give you a quote!"
+    },
+    {
+      "intent": "order_quantity",
+      "question": "What quantity do I need to order to keep within my price range?",
+      "examples": [
+        "Can I split the color of shirts for the same design?",
+        "How many on the gang sheet and what is the price?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hey David, really appreciate your message — and no worries at all, we’ve got you 👍\n\nFor the $10 target, the best way to make that work is by going with a slightly higher quantity. That way we can keep the cost per shirt low while still maintaining good quality 👕\n\nFor style and quality, we’ll take care of everything for you — we usually recommend a clean, medium-weight tee with a balanced front print (not too big, not too small), so it looks professional and sells well.\n\nAlso, since you mentioned people are already interested in your shirts, this could be a great opportunity to start small and scale up",
+      "aiReply": "Hi [Customer's Name], thanks for reaching out! 😊 To stay within your $10 price range, we recommend ordering a slightly higher quantity. This approach helps keep the cost per shirt low while ensuring great quality. For style, a clean, medium-weight tee with a balanced front print works best for a professional look. Since you already have interest in your shirts, this could be a perfect chance to start small and scale up as needed. Let us know if you have any other questions!"
+    },
+    {
+      "intent": "patch_price_request",
+      "question": "How much is the patch that says 'CEO' in pink?",
+      "examples": [
+        "How much are the patches each?",
+        "How much for just the one?"
+      ],
+      "category": "Pricing",
+      "realReply": "Please check",
+      "aiReply": "Thank you for your inquiry! The price for a custom patch that says 'CEO' in pink is [insert price here]. If you have any other questions or need assistance with your order, feel free to ask!"
+    },
+    {
+      "intent": "design_addition_request",
+      "question": "If I add another design, how much would it be?",
+      "examples": [
+        "How much would it cost to order 20 designs?",
+        "What would be the price for 2 shirts with the design?"
+      ],
+      "category": "Pricing",
+      "realReply": "You can send the payment using the Cash App QR code I shared 👍\nThank you — once done, please let me know so we can process your order right away",
+      "aiReply": "Adding another design typically incurs an additional fee of [insert price here] depending on the complexity of the design. Please let me know the specifics of the new design, and I can provide you with an accurate quote. Once you're ready, you can send the payment using the Cash App QR code I shared. Thank you, and I look forward to processing your order!"
+    },
+    {
+      "intent": "bulk_order_request",
+      "question": "How much would it be for 50 pieces?",
+      "examples": [
+        "What is the price for 10 medium, 10 large, 10 x-large, and 10 xx-large black shirts?",
+        "What is the price for recreating the file for printing?"
+      ],
+      "category": "Pricing",
+      "realReply": "Yes we are soecialized in bulk",
+      "aiReply": "Thank you for reaching out! The price for 50 pieces will depend on the specific items and designs you want. We specialize in bulk orders, so we can offer competitive pricing. Please provide the details of the apparel (type, colors, and any custom designs) so I can give you an accurate quote. Looking forward to assisting you!"
+    },
+    {
+      "intent": "transfer_cost_request",
+      "question": "How much do DTF transfers cost?",
+      "examples": [
+        "How much are your transfers?",
+        "What is the cost for DTF transfers?"
+      ],
+      "category": "Pricing",
+      "realReply": "Feel free to contact us",
+      "aiReply": "Thank you for your inquiry! The cost of DTF transfers can vary based on factors such as size, quantity, and design complexity. For a detailed quote, please provide us with the specifics of your project, and we'll be happy to assist you further!"
+    },
+    {
+      "intent": "bulk_pricing_request",
+      "question": "What does bulk pricing start at?",
+      "examples": [
+        "What is the price per dozen?",
+        "What is the minimum order?"
+      ],
+      "category": "Pricing",
+      "realReply": "Yes, bulk orders = better pricing 💰\nPerfect for businesses, events & brands\nMessage now for special bulk discount!",
+      "aiReply": "Yes, bulk orders do come with better pricing! 💰 This is perfect for businesses, events, and brands looking to save. Please message us directly for details on our special bulk discounts!"
+    },
+    {
+      "intent": "bulk_order",
+      "question": "Can you provide a price for a bulk order?",
+      "examples": [
+        "What is your minimum order quantity and turnaround time?",
+        "Do you offer bulk discounts?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hi Janice Jeannette! Please let us know how we can help you.",
+      "aiReply": "Hi there! Thank you for reaching out to us. To provide you with an accurate price for your bulk order, could you please share the following details: the type of apparel you are interested in (hoodies, t-shirts, etc.), the quantity you need, and any specific designs or customizations you have in mind? Once I have that information, I'll be happy to assist you further!"
+    },
+    {
+      "intent": "transfer_price",
+      "question": "What is the price for a transfer?",
+      "examples": [
+        "How much is 2 transfers?",
+        "Is the price $5.00 per DTF transfer?"
+      ],
+      "category": "Pricing",
+      "realReply": "Are your designs available ?",
+      "aiReply": "Thank you for your inquiry! The price for a DTF transfer varies based on the size and complexity of your design. If you could provide more details about your design and the size you need, I would be happy to give you a specific quote. Looking forward to hearing from you!"
+    },
+    {
+      "intent": "custom_design_cost",
+      "question": "How much do you charge for custom designs?",
+      "examples": [
+        "What is the cost for each item?",
+        "How much would it cost for 20 pieces, 10 shirts and 10 shorts?"
+      ],
+      "category": "Pricing",
+      "realReply": "Are you looking for DTF transfers or custom printed t-shirts",
+      "aiReply": "Thank you for reaching out! Our pricing for custom designs can vary depending on the type of product you're interested in. Are you looking for DTF transfers or custom printed t-shirts? Let me know so I can provide you with the most accurate information!"
+    },
+    {
+      "intent": "pricing_options",
+      "question": "What are your pricing options?",
+      "examples": [
+        "What is the cost for 50 gang sheets?",
+        "How much do you charge per shirt?"
+      ],
+      "category": "Pricing",
+      "realReply": "now you can check this",
+      "aiReply": "Hi there! You can find our pricing options by visiting our website at [insert website link] where we have detailed information on all our products, including hoodies, t-shirts, jerseys, DTF transfers, and embroidery. If you have any specific items in mind or need further assistance, feel free to let me know! I'm here to help!"
+    },
+    {
+      "intent": "custom_design_pricing",
+      "question": "What are your prices for custom designs?",
+      "examples": [
+        "How much do you charge for a 3 color design?",
+        "What is your pricing for your transfer sheets?"
+      ],
+      "category": "Pricing",
+      "realReply": "Hi Paul! Please let us know how we can help you.",
+      "aiReply": "Hi there! Thank you for reaching out. Our prices for custom designs can vary based on the complexity and type of design you need. If you could provide us with more details about your project, such as the type of apparel and any specific design elements you have in mind, we would be happy to give you a more accurate quote. Looking forward to hearing from you!"
+    },
+    {
+      "intent": "buy_transfers_only",
+      "question": "Can I buy only transfers?",
+      "examples": [
+        "Can I order a single heat transfer sheet?",
+        "Do you sell shirts that come already printed or just the transfers?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "is your desgin ready",
+      "aiReply": "Yes, you can purchase only DTF transfers from us! Please make sure your design is ready for printing. If you have any specific requirements or questions about the process, feel free to ask!"
+    },
+    {
+      "intent": "sample_pack",
+      "question": "How do I get a sample pack?",
+      "examples": [
+        "Can I receive 1 shirt as a tester for quality check and design?",
+        "Do you do samples of your patches or DTF stickers?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Yes absolutely 😊\nWe offer special bulk pricing for businesses, brands & resellers 🔥\nSend your quantity for the best quote.",
+      "aiReply": "Yes, absolutely! 😊 To get a sample pack, please let us know the quantity you're interested in, and we'll provide you with the best quote. We also offer special bulk pricing for businesses, brands, and resellers. Looking forward to hearing from you!"
+    },
+    {
+      "intent": "custom_options",
+      "question": "Do you have custom options?",
+      "examples": [
+        "Do you offer custom design services?",
+        "Can I customize an image for a birthday theme?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Hi Erica! Please let us know how we can help you.",
+      "aiReply": "Hi there! Yes, we offer a variety of custom options for our apparel, including hoodies, t-shirts, jerseys, DTF transfers, embroidery, and custom designs. Please let us know what specific items or designs you have in mind, and we'll be happy to assist you further!"
+    },
+    {
+      "intent": "size_recommendation",
+      "question": "Do you suggest one size or not?",
+      "examples": [
+        "What sizes do you offer and what size would you recommend for a six-month-old?",
+        "What size should I use for the back of the t-shirt?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "To look nice and fit for that",
+      "aiReply": "Choosing the right size is important for both comfort and appearance. We recommend selecting a size that fits well and complements your style. If you're unsure, feel free to provide your measurements, and we can help suggest the best size for you!"
+    },
+    {
+      "intent": "transfer_types",
+      "question": "What kind of transfers do you have?",
+      "examples": [
+        "Do you have Michael Jackson transfers?",
+        "Do you have Koi fish transfers available?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Are you looking for t-shirts or DTg transfers",
+      "aiReply": "We offer a variety of transfers, including DTF (Direct to Film) transfers, which are great for vibrant designs on various fabrics. If you're looking for something specific, like t-shirts or other apparel, please let us know so we can assist you further!"
+    },
+    {
+      "intent": "custom_tags",
+      "question": "Do you make custom tags on transfer paper?",
+      "examples": [
+        "Can you add the logo if possible?",
+        "Can you remove the writings?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Let us know if you have any other query",
+      "aiReply": "Thank you for your inquiry! Yes, we do offer custom tags on transfer paper. If you have specific designs or sizes in mind, please share those details with us, and we'll be happy to assist you further. Let us know if you have any other questions!"
+    },
+    {
+      "intent": "design_size",
+      "question": "What is the biggest size you can print?",
+      "examples": [
+        "How much for a size like this or a little smaller?",
+        "What’s the biggest size for a print?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "We'll let you know how many designs you will get in 1000 inches",
+      "aiReply": "The biggest size we can print is 1000 inches. If you have a specific design in mind, feel free to share it, and we can let you know how many designs can fit within that size!"
+    },
+    {
+      "intent": "order_quantity",
+      "question": "What’s the minimum amount of shirts I can order?",
+      "examples": [
+        "Is there a minimum order requirement?",
+        "What is the minimum amount I can order?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "This is the best size for the transfer to get cost efficient rates. I will send you a comparison of previews so that you can get a better idea",
+      "aiReply": "Hi there! The minimum order for shirts at Decoinks is [insert minimum quantity]. This allows us to provide you with the best cost-efficient rates. If you have any specific designs in mind, feel free to share, and I can assist you further!"
+    },
+    {
+      "intent": "design_samples",
+      "question": "Can you provide samples for these shirts in black and white?",
+      "examples": [
+        "Do you have any dtg samples you did for anyone else that you can share a picture of?",
+        "Can you show me some examples of designs?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Are we ready to proceed further?",
+      "aiReply": "Thank you for your interest in our shirts! We can provide samples in both black and white. Please let us know the sizes and quantities you would like, and we can assist you with the next steps!"
+    },
+    {
+      "intent": "transfer_options",
+      "question": "Are there different transfers available?",
+      "examples": [
+        "Do you have DTF transfers available?",
+        "Can you do front and back printing?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Fast shipping 🚚\nDTF transfers are usually shipped within 1–2 business days after confirmation",
+      "aiReply": "Yes, we offer different types of transfers, including DTF (Direct to Film) transfers. Our DTF transfers are typically shipped within 1–2 business days after confirmation. If you have any specific needs or questions about our transfer options, feel free to ask!"
+    },
+    {
+      "intent": "gang_sheet_capacity",
+      "question": "How many designs fit on a $93 gang sheet?",
+      "examples": [
+        "How many designs fit on a $93 gang sheet?",
+        "How many designs fit on 22x240 sheets?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "We already have a design warehouse so we do not have to use any of clients design",
+      "aiReply": "Thank you for your question! A $93 gang sheet can accommodate multiple designs depending on their size and layout. If you have specific designs in mind, feel free to share their dimensions, and I can help you determine how many will fit on the sheet. If you need assistance with design options, we also have a design warehouse available for you to choose from!"
+    },
+    {
+      "intent": "youth_design_capacity",
+      "question": "How many youth XL designs fit on a gang sheet?",
+      "examples": [
+        "How many youth XL designs fit on a gang sheet?",
+        "How many fit in the sheet?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "so shall i proceed with gangsheet now?",
+      "aiReply": "The number of youth XL designs that fit on a gang sheet depends on the size of each design. Typically, we can fit [insert number] youth XL designs on a standard gang sheet. If you have specific designs in mind, feel free to share them, and I can provide a more accurate estimate. Would you like me to proceed with the gang sheet now?"
+    },
+    {
+      "intent": "youth_adult_sizes",
+      "question": "What about sizes for adult and youth?",
+      "examples": [
+        "What about sizes for adult and youth?",
+        "Do you offer assorted sizes?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Do you have design",
+      "aiReply": "We offer a variety of sizes for both adult and youth apparel. For adults, sizes typically range from Small to 3XL, while youth sizes usually range from Small to XL. If you have a specific design in mind, please let us know, and we can assist you further!"
+    },
+    {
+      "intent": "print_quantity",
+      "question": "How many prints come for a specific amount and what sizes?",
+      "examples": [
+        "How many prints come for a specific amount and what sizes?",
+        "How many do you need?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "You can do with (paypal, zelle & the bank transfer)",
+      "aiReply": "Thank you for your inquiry! To provide you with accurate information regarding the number of prints and sizes available for a specific amount, could you please specify the quantity and type of apparel you are interested in? Once I have that information, I can give you a detailed breakdown. Looking forward to your response!"
+    },
+    {
+      "intent": "transfer_dimensions",
+      "question": "What are the dimensions of the transfers?",
+      "examples": [
+        "What are the dimensions of the transfers?",
+        "What is the price for an 8 x 6 design?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "We don’t have a minimum order quantity—you can order as little as 1 transfer 😊 Let us know what size or design you’re looking for, and we’ll get you a quote!",
+      "aiReply": "The dimensions of our DTF transfers can vary based on your design. We don’t have a minimum order quantity—you can order as little as 1 transfer 😊 Just let us know what size or design you’re looking for, and we’ll provide you with a quote!"
+    },
+    {
+      "intent": "transfer_quality",
+      "question": "Do the prints crack or fade when washed or dried?",
+      "examples": [
+        "Do the prints crack or fade when washed or dried?",
+        "Is DTF good with cotton?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Yes absolutely 😊\nWe offer special bulk pricing for businesses, brands & resellers 🔥\nSend your quantity for the best quote.",
+      "aiReply": "Yes, our prints are designed to be durable and should not crack or fade when properly washed and dried. To ensure the longevity of your prints, we recommend following the care instructions provided with your order. If you have any specific concerns or need assistance, feel free to ask! 😊"
+    },
+    {
+      "intent": "design_size_request",
+      "question": "What size transfers do I need for the shirts?",
+      "examples": [
+        "What size transfers do I need for the shirts?",
+        "What is a normal size for the front of a hoodie or t-shirt?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "6 variations ?",
+      "aiReply": "The size of the transfers you need for the shirts can vary based on the design and the size of the shirt. We typically offer 6 variations of transfer sizes to accommodate different shirt sizes and styles. If you have specific dimensions in mind or a particular design, feel free to share, and we can help you choose the best size for your needs!"
+    },
+    {
+      "intent": "sample_request",
+      "question": "Can I see a sample first before placing a larger order?",
+      "examples": [
+        "Can I see a sample?",
+        "Is there any chance I can get 1 sample of the design before I order 1100 inches?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Hi Robert! Please let us know how we can help you.",
+      "aiReply": "Hi there! Thank you for reaching out. We understand the importance of seeing a sample before placing a larger order. We do offer sample products, which can be ordered for a small fee. Please let us know what specific item you are interested in, and we can provide you with more details on how to proceed. Looking forward to assisting you!"
+    },
+    {
+      "intent": "product_availability",
+      "question": "What products do you offer?",
+      "examples": [
+        "Do you have hoodies, windbreakers, and shirts?",
+        "Do you offer embroidery services?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Hi Tierra! Please let us know how we can help you.",
+      "aiReply": "Hi there! At Decoinks, we offer a variety of custom apparel products including hoodies, t-shirts, jerseys, DTF transfers, embroidery, and custom designs. If you have a specific product in mind or need assistance with your order, feel free to ask!"
+    },
+    {
+      "intent": "product_sizes",
+      "question": "What sizes do you offer for t-shirts?",
+      "examples": [
+        "What are the sizes of the second order?",
+        "What size shirt do you use?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Super easy 👇\nSend us your design (or idea), size & quantity\nWe’ll create your mockup + best price instantly 🔥",
+      "aiReply": "Hi there! We offer a wide range of sizes for our t-shirts, typically from [small] to [XXL]. Just send us your design, preferred size, and quantity, and we'll create your mockup along with the best price for you instantly! Looking forward to helping you with your custom apparel!"
+    },
+    {
+      "intent": "transfer_requests",
+      "question": "Can I request DTF transfers?",
+      "examples": [
+        "How do you charge for DTF transfers for t-shirts?",
+        "Do you sell different transfers?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Hi Gaby! Please let us know how we can help you.",
+      "aiReply": "Hi there! Yes, you can absolutely request DTF transfers. Please provide us with the details of your design and the quantity you need, and we'll be happy to assist you further!"
+    },
+    {
+      "intent": "patch_size_request",
+      "question": "What size is the 'CEO' patch?",
+      "examples": [
+        "What size will this be again?",
+        "What sizes do you have?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Can you please confirm me the quantity of patch for letterman and also the ceo pink patch",
+      "aiReply": "Thank you for your inquiry! The 'CEO' patch typically comes in a standard size of [insert size here]. If you need a specific size or have a custom request, please let us know the quantity you need, and we can assist you further!"
+    },
+    {
+      "intent": "transfer_size_request",
+      "question": "What is the width of the transfers?",
+      "examples": [
+        "How big are the transfers?",
+        "What are the width yard transfers?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "We don’t have a minimum order quantity—you can order as little as 1 transfer 😊 Let us know what size or design you’re looking for, and we’ll get you a quote!",
+      "aiReply": "The width of our DTF transfers can vary depending on your design. Please let us know the specific size or design you have in mind, and we'll be happy to provide you with a quote! 😊"
+    },
+    {
+      "intent": "transfer_type_request",
+      "question": "What are DTF transfers?",
+      "examples": [
+        "Do you do glow in the dark transfers?",
+        "Do your transfers work on boxing gloves?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Could you please let us know what you’re looking for—custom T-shirts or DTF transfers?",
+      "aiReply": "DTF transfers, or Direct to Film transfers, are a printing method that allows for vibrant and detailed designs to be printed onto a special film, which can then be transferred onto various fabrics. This method is great for custom apparel like T-shirts and hoodies, providing a durable and high-quality finish. If you're interested in ordering DTF transfers or custom T-shirts, please let us know how we can assist you further!"
+    },
+    {
+      "intent": "transfer_sample_request",
+      "question": "Can I test your service with 6 t-shirts in size large?",
+      "examples": [
+        "Can I start with just one t-shirt?",
+        "Can I order a couple to sample your product?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Do you want to do heat press yourself",
+      "aiReply": "Absolutely! You can definitely test our service with 6 large t-shirts. If you're interested in DTF transfers, you can choose to heat press them yourself. Just let us know how we can assist you further!"
+    },
+    {
+      "intent": "custom_item_request",
+      "question": "Do you only do t-shirts or can you customize other items like duffle bags?",
+      "examples": [
+        "Do you do shirts for HVAC companies?",
+        "Do you do tumbler sublimation wraps?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "How many pcs do you need ?",
+      "aiReply": "Hi there! We can customize a variety of items beyond just t-shirts, including duffle bags. Could you please let us know how many pieces you need? This will help us provide you with the best options and pricing. Looking forward to hearing from you!"
+    },
+    {
+      "intent": "dtf_print_sizes",
+      "question": "What are the sizes of the DTF prints?",
+      "examples": [
+        "What is the average size for a transfer?",
+        "Can I pick the size of the transfers?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "Hi ThuddaRow! Please let us know how we can help you.",
+      "aiReply": "Hi ThuddaRow! Our DTF prints are available in various sizes to accommodate your needs. The standard sizes we offer are [insert sizes here, e.g., small, medium, large, etc.]. If you have a specific size in mind or need a custom size, feel free to let us know, and we'll do our best to assist you!"
+    },
+    {
+      "intent": "sheet_capacity",
+      "question": "How many logos can fit on one sheet?",
+      "examples": [
+        "How many fit in a sheet?",
+        "How many come on a gang sheet?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "It depends on the size of your logo and the quantity you need.\nhow many sheets you’re looking for?",
+      "aiReply": "The number of logos that can fit on one sheet depends on the size of your logos and the quantity you need. Could you please provide the dimensions of your logos and how many sheets you're looking for? This will help us give you a more accurate estimate!"
+    },
+    {
+      "intent": "product_availability_types",
+      "question": "What type of shirts do you carry?",
+      "examples": [
+        "Do you have football jerseys?",
+        "Do you carry 6XL shirts?"
+      ],
+      "category": "Products & Materials",
+      "realReply": "We actually do carry larger sizes 😊 We have 3XL and 4XL available. Let me know which size you need and I’ll get this sorted for you.",
+      "aiReply": "We carry a variety of shirt styles, including t-shirts, hoodies, and jerseys. Our sizes range from small to 4XL, so we can accommodate different preferences. If you have a specific style or size in mind, just let me know, and I'll be happy to assist you further! 😊"
+    },
+    {
+      "intent": "delivery_time",
+      "question": "How long does delivery take?",
+      "examples": [
+        "How long does shipping take?",
+        "How long will it take to receive my order?",
+        "How long will it take to get here?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "Production takes 1–2 business days, with standard shipping taking 2–5 business days within the USA. Rush production and expedited shipping are also available for urgent orders.",
+      "aiReply": "Thank you for your question! Our production time is typically 1–2 business days. Once your order is produced, standard shipping within the USA takes an additional 2–5 business days. If you need your order sooner, we do offer rush production and expedited shipping options for urgent requests. Let us know if you have any other questions!"
+    },
+    {
+      "intent": "shipping_inquiry",
+      "question": "Do you ship?",
+      "examples": [
+        "How much is shipping?",
+        "When will I get my DTF transfers?",
+        "Can you send me the transfers to an address in Vegas?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "We are located at:\n\nSuite 111, 1218 Magnolia Avenue,\nCorona, CA 92881",
+      "aiReply": "Yes, we do ship! We are located at Suite 111, 1218 Magnolia Avenue, Corona, CA 92881. If you have any specific shipping questions or need assistance with your order, feel free to ask!"
+    },
+    {
+      "intent": "order_tracking",
+      "question": "How can I track my order?",
+      "examples": [
+        "What is the status of my package?",
+        "Can you help me with my tracking?",
+        "Can I track my package with the number you provided?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "Order is ready to be shipped",
+      "aiReply": "Hi there! You can track your order by using the tracking link that was sent to your email once your order was shipped. If you haven't received it, please check your spam folder or let us know, and we can assist you further. Thank you for choosing Decoinks!"
+    },
+    {
+      "intent": "turnaround_time",
+      "question": "What’s the turnaround time?",
+      "examples": [
+        "How long should I expect to get my orders?",
+        "How long does it take to receive them?",
+        "What is the turnaround time for a small batch order?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "If your artworks are ready you can share",
+      "aiReply": "Hi there! Our standard turnaround time is typically [insert standard turnaround time, e.g., 7-10 business days] once your artwork is approved. If your artworks are ready, feel free to share them with us, and we can get started right away! Let us know if you have any other questions."
+    },
+    {
+      "intent": "shipping_costs",
+      "question": "What is the shipping price?",
+      "examples": [
+        "How much is the shipping?",
+        "What is the shipping fee?",
+        "How much was the shipping and handling?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "typo misstake",
+      "aiReply": "Hi there! Thank you for reaching out. The shipping price depends on the size and weight of your order, as well as the shipping method you choose. For a more accurate estimate, please provide the details of your order and your shipping address, and I'll be happy to assist you further!"
+    },
+    {
+      "intent": "rush_orders",
+      "question": "Do you offer rush orders?",
+      "examples": [
+        "How quickly can you start production?",
+        "How fast is delivery?",
+        "How fast can I get my order?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "The address for delivery is UPS center pickup : 9674 Colerain Ave, Cincinnati, OH 45251",
+      "aiReply": "Yes, we do offer rush orders! Please let us know the specifics of your order, including the items and quantities, and we can provide you with the details on turnaround times and any additional fees that may apply. If you have a specific deadline, please share that as well. Looking forward to assisting you!"
+    },
+    {
+      "intent": "order_status",
+      "question": "Can I have the tracking number?",
+      "examples": [
+        "Did you send my order?",
+        "Are you able to provide updates on my order?",
+        "How long does it take to receive the items?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "Yea it has been sent . Will give you tracking no tomorrow",
+      "aiReply": "Yes, your tracking number has been sent. I will provide you with the tracking number by tomorrow. Thank you for your patience!"
+    },
+    {
+      "intent": "shipping_status",
+      "question": "Have you mailed out my order already?",
+      "examples": [
+        "When can I expect my order to arrive?",
+        "Have you mailed them out yet?",
+        "When are you going to ship my transfers?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "Good morning valuable customer. Hopefully by the starting of next week we will try to deliver it before. We will try our best dont worry about it",
+      "aiReply": "Good morning! Thank you for reaching out. We are currently processing your order and aim to have it shipped out by the start of next week. We're doing our best to ensure it arrives as soon as possible. If you have any further questions, feel free to ask!"
+    },
+    {
+      "intent": "order_arrival_time",
+      "question": "When can I expect my order to arrive?",
+      "examples": [
+        "When will I receive my shirt?",
+        "Will my order be delivered by the weekend?",
+        "How long will it take to ship?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "Great! That will be $50 for the 16 pieces plus $15 for shipping, making the total $65.",
+      "aiReply": "Thank you for your order! Once your order is placed, our standard turnaround time is [insert turnaround time here] days for production. Shipping typically takes an additional [insert shipping time here] days. You can expect your order to arrive within [insert total estimated time here] days from the date of order confirmation. If you have any further questions, feel free to ask!"
+    },
+    {
+      "intent": "shipping_methods",
+      "question": "Can you use only 2nd day air for shipping?",
+      "examples": [
+        "How much is next day shipping?",
+        "Can I change the shipping method?",
+        "Which USPS service do you use?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "We are located in Corona, CA 📍\nWe offer fast turnaround",
+      "aiReply": "Yes, we can use 2nd day air for shipping! Please let us know your order details and we can provide you with the shipping options available. We're located in Corona, CA 📍 and offer fast turnaround to ensure your items arrive quickly."
+    },
+    {
+      "intent": "shipping_info",
+      "question": "What is sharepost shipping?",
+      "examples": [
+        "Do you deliver ground packages on Saturdays in Hawaii?",
+        "What is the price for the shirts delivered to Riverside, CA 92506?",
+        "How long will it take to get my order to Connecticut and what is the cost?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "Yes that’s no an issue, it can easily be managed",
+      "aiReply": "Hi there! Sharepost shipping is a service that allows for efficient and reliable delivery of your custom apparel orders. If you have any specific questions about how it works or its benefits, feel free to ask! We're here to help."
+    },
+    {
+      "intent": "tracking_info",
+      "question": "Can I get the tracking number?",
+      "examples": [
+        "Is there a tracking number available?",
+        "Can you send me pictures of my order?",
+        "Have you mailed out my order already?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "We were in contact with UPS regarding your package. Your package will be delivered to the UPS facility by 9:00 AM on Thursday morning.\n\nYou can collect it directly from the facility at:\n9674 Colerain Ave, Cincinnati, OH 45251\n\nWe found this to be the best option so you can receive your package as early as possible in the morning. 🙂",
+      "aiReply": "Thank you for reaching out! We have been in contact with UPS regarding your package. It will be delivered to the UPS facility by 9:00 AM on Thursday morning. You can collect it directly from the facility at: 9674 Colerain Ave, Cincinnati, OH 45251. We believe this is the best option for you to receive your package as early as possible in the morning. If you have any further questions, feel free to ask! 🙂"
+    },
+    {
+      "intent": "delivery_service",
+      "question": "What delivery service has been working best for you so far?",
+      "examples": [
+        "Do you handle deliveries yourself or are you working with a fulfillment partner?",
+        "Are you running your store as a dropshipping model or do you hold your own inventory?",
+        "What delivery service do you use?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "Hi Marv! Please let us know how we can help you.",
+      "aiReply": "Hi there! Thank you for reaching out to us. While we don't have a specific delivery service that works best for everyone, we typically use [insert common delivery services used, e.g., UPS, FedEx, USPS] for our shipments. If you have any specific preferences or questions about delivery options, feel free to let us know! We're here to help."
+    },
+    {
+      "intent": "shipping_cost",
+      "question": "What would the cost be for shipping to Nevada?",
+      "examples": [
+        "Is shipping free or are there additional charges?",
+        "Will shipping be included with the $49 hoodie when the order is placed?",
+        "How much is the shipping charge to Vegas?"
+      ],
+      "category": "Delivery & Shipping",
+      "realReply": "typo misstake",
+      "aiReply": "Thank you for reaching out! The cost of shipping to Nevada will depend on the size and weight of your order, as well as the shipping method you choose. Once you place your order, you will be able to see the shipping options and costs at checkout. If you have any specific details about your order, feel free to share, and I can provide a more accurate estimate!"
+    },
+    {
+      "intent": "artwork_conversion",
+      "question": "If I send you images, can you make them DTF for me?",
+      "examples": [
+        "Can you help me with 4th of July and Juneteenth transfers and provide quotes for quality and price?",
+        "Can you make my design?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Hi Marcus! Please let us know how we can help you.",
+      "aiReply": "Hi there! Yes, we can definitely help you with that. If you send us your images, we can create DTF transfers for you. Please ensure the images are high resolution for the best results. Let us know if you have any specific requirements or questions!"
+    },
+    {
+      "intent": "mockup_request",
+      "question": "Can I see a mock-up of my order?",
+      "examples": [
+        "Can you make a mock-up so I can see how it will look on the front of the jacket?",
+        "Can you show what it will look like?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Let me do whatever I can",
+      "aiReply": "Of course! We can provide a mock-up of your order to help you visualize the final product. Please share the details of your design and the items you're ordering, and we'll get that mock-up ready for you!"
+    },
+    {
+      "intent": "design_submission_process",
+      "question": "What is the process for submitting my design?",
+      "examples": [
+        "How do I send you the design?",
+        "Where do I send my work to?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "",
+      "aiReply": "Thank you for your interest in Decoinks! To submit your design, please follow these steps:\n\n1. **Prepare Your Design**: Ensure your design is in a high-resolution format (preferably PNG, JPEG, or vector files like AI or EPS).\n2. **Visit Our Website**: Go to the 'Custom Design' section on our website.\n3. **Upload Your File**: Click on the upload button and select your design file from your device.\n4. **Fill Out the Order Form**: Complete the order form with your details, including the type of apparel, sizes, and quantities.\n5. **Review and Submit**: Double-check your information and submit your order.\n\nOnce we receive your design, our team will review it and reach out if there are any questions. If you have any further questions or need assistance, feel free to ask!"
+    },
+    {
+      "intent": "design_options",
+      "question": "What colors and layouts do you have available?",
+      "examples": [
+        "Do you have designs in Spanish?",
+        "Do you have any designs with lighter lettering?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Sizes \nS,M,L and 2X ?",
+      "aiReply": "Hi there! We offer a wide range of colors and layouts for our custom apparel. The specific colors available can vary by product type, but we typically have options like black, white, red, blue, green, and many more. For layouts, we can accommodate various designs, including text, graphics, and logos, tailored to your needs. If you have a specific product in mind, feel free to let us know, and we can provide more detailed options! Looking forward to helping you with your custom order!"
+    },
+    {
+      "intent": "custom_designs",
+      "question": "Do you do custom designs?",
+      "examples": [
+        "Can you design logos?",
+        "Can you do custom designs?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Hi Dah! Please let us know how we can help you.",
+      "aiReply": "Hi there! Yes, we do offer custom designs for our apparel. Please share your ideas or any specific requirements you have in mind, and we'll be happy to assist you further!"
+    },
+    {
+      "intent": "mockup_requests",
+      "question": "Can you provide a mockup and an invoice?",
+      "examples": [
+        "Can you send me a picture of what the finished shirt will look like?",
+        "Can you show me how it looks on a person?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Let me do whatever I can",
+      "aiReply": "Absolutely! I can help with that. Please provide the details of your order, including the design, quantity, and any specific requirements you have in mind. Once I have that information, I can create a mockup for you and prepare an invoice. Looking forward to your response!"
+    },
+    {
+      "intent": "design_requirements",
+      "question": "How big do the images need to be for the shirts?",
+      "examples": [
+        "What size do you think would be best?",
+        "Can you change the name ZANNDREA to ZEE?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "The background will be removed. Can you please tell us about the sizing. You sent us 8 names and 1 big design so how do you want 10 for each size can you please elaborate",
+      "aiReply": "Hi there! For the images on the shirts, we recommend a resolution of at least 300 DPI for the best print quality. As for the size, it typically depends on the design and placement, but a common size for a front design is around 10-12 inches wide. If you have specific dimensions in mind for your designs, please let us know, and we can assist you further. Looking forward to your response!"
+    },
+    {
+      "intent": "order_modifications",
+      "question": "Is it okay if I send you a corrected image later?",
+      "examples": [
+        "Can I send you a picture of a design?",
+        "If I send an image, can you change the color on it?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "For front : 14 x 14 , 16 x 16 , 20 x 20",
+      "aiReply": "Absolutely! You can send us a corrected image later. Just make sure it meets our size requirements for the front, which are 14 x 14, 16 x 16, or 20 x 20 inches. If you have any other questions or need assistance, feel free to reach out!"
+    },
+    {
+      "intent": "design_modifications",
+      "question": "Can you put a thin white outline in the design?",
+      "examples": [
+        "Can you change something in this picture?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Are these okay?",
+      "aiReply": "Yes, we can definitely add a thin white outline to your design! Please provide the design file and any specific details you have in mind, and we'll make it happen."
+    },
+    {
+      "intent": "order_correction",
+      "question": "Can you make sure that where it says Buffalo it is correct?",
+      "examples": [
+        "Is the printout I’m expecting the same as the one I received before?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Yes, we’ve got you — we’ll take care of the reprint for you 👍\nWe’ll make sure everything comes out clean and perfect this time.\nPlease allow us a little time to process this, and we’ll update you soon.",
+      "aiReply": "Absolutely, we'll double-check the spelling of 'Buffalo' for you! 👍 Your satisfaction is our priority, and we'll ensure everything is correct this time. Please give us a little time to process this, and we'll keep you updated."
+    },
+    {
+      "intent": "design_comparison",
+      "question": "Is the design the same as Mickey?",
+      "examples": [
+        "What is the best placement for the logo?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Please send me us the designs",
+      "aiReply": "Thank you for reaching out! To assist you better, could you please send us the designs you have in mind? This will help us determine if they are similar to Mickey. Looking forward to your response!"
+    },
+    {
+      "intent": "design_example_request",
+      "question": "Can you send me a picture of how it looks?",
+      "examples": [
+        "Can you provide an example or visual of the design?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Thank you so much. That is really nice of you",
+      "aiReply": "Thank you for reaching out! Unfortunately, I can't send pictures directly. However, you can visit our website to see examples of our custom apparel and designs. If you have a specific item in mind, let me know, and I can provide more details!"
+    },
+    {
+      "intent": "design_customization",
+      "question": "Can you create a design based on the ideas I shared?",
+      "examples": [
+        "Can you change anything on the logo?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "No charges for designing",
+      "aiReply": "Absolutely! We can create a design based on the ideas you shared, and there are no charges for designing. Please provide us with your ideas, and we'll get started!"
+    },
+    {
+      "intent": "transfer_separation",
+      "question": "Can you provide separated transfer sheets for our summer enrichment program?",
+      "examples": [
+        "Can I cut them separately and just put them in an envelope?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Yes, bulk orders = better pricing 💰\nPerfect for businesses, events & brands\nMessage now for special bulk discount!",
+      "aiReply": "Yes, we can provide separated transfer sheets for your summer enrichment program! Bulk orders do come with better pricing, making it perfect for your needs. Feel free to message us for a special bulk discount!"
+    },
+    {
+      "intent": "transfer_background",
+      "question": "Can you remove the background from the design?",
+      "examples": [
+        "Is the background clear?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Pls send me your final 2 desgins so we can prepare it for rprint-rady",
+      "aiReply": "Yes, we can remove the background from your design! Please send us your final two designs, and we'll prepare them for print-ready format."
+    },
+    {
+      "intent": "transfer_color_options",
+      "question": "What color options do you have for the font?",
+      "examples": [
+        "What colors are available?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Sizes \nS,M,L and 2X ?",
+      "aiReply": "Hi there! We offer a variety of font colors to choose from for your custom apparel. You can select from standard colors like black, white, red, blue, green, and many more. If you have a specific color in mind, feel free to let us know, and we'll do our best to accommodate your request. If you have any other questions or need assistance, just ask!"
+    },
+    {
+      "intent": "design_improvements",
+      "question": "Is there any way you can improve the designs?",
+      "examples": [
+        "Can you show me some of your work?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Which design would you like to have?",
+      "aiReply": "We would be happy to help improve your designs! Please let us know which specific design you have in mind, and any ideas or changes you would like to see. We're here to assist you!"
+    },
+    {
+      "intent": "design_placement",
+      "question": "What is the best placement for the logo?",
+      "examples": [
+        "Could you make the logo a bit larger for sizes XL, X2, X3?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Sure, Could you please let us know or mark exactly where you’d like the text ‘Las Vegas, NV’ to be placed under the logo",
+      "aiReply": "Sure! The best placement for your logo often depends on the type of apparel and your design preferences. Common placements include the left chest area for a subtle look, centered on the front for maximum visibility, or on the back for a more casual style. If you have a specific location in mind, please let us know or mark it on your design, and we can assist you further!"
+    },
+    {
+      "intent": "design_creation",
+      "question": "Can I create new designs for an upcoming concert?",
+      "examples": [
+        "If I make my own design, can I send it to you and order that?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "I suggest you try with our minimum size of sheet . Our design services are free and we can support you in that",
+      "aiReply": "Absolutely! You can create new designs for your upcoming concert. We offer free design services to assist you in bringing your vision to life. I recommend starting with our minimum size of sheet for your designs. If you have any specific ideas or requirements, feel free to share, and we'll be happy to help!"
+    },
+    {
+      "intent": "design_color",
+      "question": "Can you make the designs white?",
+      "examples": [
+        "Can you send color options?",
+        "Can you send shirt options?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "The color of the moon is black ? For black t-shirt ?",
+      "aiReply": "Yes, we can create designs in white! If you're looking to print on a black t-shirt, white designs will stand out beautifully. If you have specific ideas or designs in mind, feel free to share them with us!"
+    },
+    {
+      "intent": "design_size",
+      "question": "What is the size of the image on the shirt?",
+      "examples": [
+        "How big will the design be in front?",
+        "Can you do just the back?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Your mockup is ready you can check",
+      "aiReply": "Thank you for reaching out! The size of the image on the shirt typically depends on the design and placement you choose. If you have a specific mockup in mind, please let us know, and we can provide you with the exact dimensions. Feel free to check your mockup for details!"
+    },
+    {
+      "intent": "sample_request",
+      "question": "Can you show me a sample on the back of a letterman jacket?",
+      "examples": [
+        "Can I send them to you and you do a preview for me?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Perfect 👍\n\nAs soon as we receive the payment, I’ll let you know right away and we’ll start your order immediately \n\nWe’ll keep everything on priority for you",
+      "aiReply": "Hi there! 😊\n\nAbsolutely, we can provide a sample on the back of a letterman jacket. Once we receive your payment, I'll notify you right away, and we'll prioritize your order to get started immediately.\n\nIf you have any specific designs or ideas in mind, feel free to share them!\n\nLooking forward to working with you!"
+    },
+    {
+      "intent": "custom_design_request",
+      "question": "Can you adjust the design to include specific text and formatting?",
+      "examples": [
+        "Can you put 'Las Vegas, NV' under the logo patch?",
+        "Can you add www.covenantchurchhouma.com on the back?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "No charges for designing",
+      "aiReply": "Yes, we can adjust the design to include specific text and formatting at no additional charge. Please provide the details of the text and any specific formatting you have in mind, and we'll get started on it!"
+    },
+    {
+      "intent": "design_rights_request",
+      "question": "Can I have the rights to a design if I pay for it?",
+      "examples": [
+        "Can you recreate the images I designed onto vinyl?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Yes we do offer design services",
+      "aiReply": "Yes, when you pay for a design, you will have the rights to that design. We offer custom design services to create unique artwork tailored to your needs. If you have any specific ideas or requirements, feel free to share them!"
+    },
+    {
+      "intent": "design_recreation_request",
+      "question": "Can your company recreate 100 images and what would that price be like?",
+      "examples": [
+        "What is my quote for the above?",
+        "What is the price and how long for delivery?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Hi Jesse! Please let us know how we can help you.",
+      "aiReply": "Hi there! Yes, we can definitely help you recreate 100 images. To provide you with an accurate price, we would need to know more details about the images and the type of products you want them printed on. Please share any specifics, and we'll get back to you with a quote. Looking forward to assisting you!"
+    },
+    {
+      "intent": "design_examples",
+      "question": "Can I see some examples of your work?",
+      "examples": [
+        "Can you show me a picture to demonstrate the size on the back of a shirt?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Yes the design team is working on that",
+      "aiReply": "Absolutely! Our design team is currently compiling a portfolio of our recent work. In the meantime, you can check out our website and social media pages for examples of our custom apparel, including hoodies, t-shirts, jerseys, and more. If you have any specific styles or designs in mind, feel free to let us know!"
+    },
+    {
+      "intent": "design_proofs",
+      "question": "Can you show proofs of the design before I place an order?",
+      "examples": [
+        "Can you send me pictures of the shirts on models that I can use to build my website?",
+        "Can you send me an actual mockup of the actual gang sheet?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "We can deliver it to you",
+      "aiReply": "Absolutely! We can provide you with proofs of the design before you place your order. Just let us know the details of your design, and we'll send you a mockup for your approval. If you have any specific requests or questions, feel free to ask!"
+    },
+    {
+      "intent": "custom_designs",
+      "question": "What designs can you create for the 4th of July?",
+      "examples": [
+        "Can you add some designs for cups and mugs?",
+        "Can you create a small gang sheet?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "How many pcs per design ,? I suggest 10 pcs per design ? Or do you need more or less ?",
+      "aiReply": "We can create a variety of designs for the 4th of July, including patriotic themes, fireworks, and custom text. To get started, could you please let us know how many pieces you need per design? A minimum of 10 pieces per design is suggested, but we can accommodate more or less depending on your needs!"
+    },
+    {
+      "intent": "design_size",
+      "question": "What is the maximum width for the designs?",
+      "examples": [
+        "What are the dimensions for the custom design?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "",
+      "aiReply": "The maximum width for designs at Decoinks is [insert maximum width here] inches. If you have any specific design in mind, feel free to share it with us, and we can assist you further!"
+    },
+    {
+      "intent": "design_options",
+      "question": "Can I order different colors of the same print?",
+      "examples": [
+        "Can I get t-shirts in the same color as the picture?",
+        "Can you put a design on the front of a shirt?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Do you have your design ready?",
+      "aiReply": "Yes, you can order different colors of the same print! Just let us know the colors you want for each item, and we can help you with the details. If you have your design ready, feel free to share it with us!"
+    },
+    {
+      "intent": "design_modifications",
+      "question": "Can you put the logo on black t-shirts with white color?",
+      "examples": [
+        "Can you do glow?",
+        "Can you switch the designs between shirts and shorts?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Hi Ikin! Please let us know how we can help you.",
+      "aiReply": "Hi there! Yes, we can definitely print your logo in white on black t-shirts. If you have any specific design or quantity in mind, feel free to share, and we'll be happy to assist you further!"
+    },
+    {
+      "intent": "design_protection",
+      "question": "Can you help me protect my design for t-shirts before I post it on Facebook?",
+      "examples": [
+        "If I change the colors, would it change the price?"
+      ],
+      "category": "Design & Artwork",
+      "realReply": "Hi Garry! Please let us know how we can help you.",
+      "aiReply": "Hi Garry! We can definitely help you with that. To protect your design before posting it on Facebook, consider watermarking it or using lower resolution images. If you need further assistance or specific services related to your design, feel free to let us know!"
+    },
+    {
+      "intent": "returns_policy",
+      "question": "What is your returns policy?",
+      "examples": [
+        "Do you allow free samples?",
+        "Is there any way I can get my $230 back?",
+        "Can you disregard my unsubscribe request?"
+      ],
+      "category": "Returns & Issues",
+      "realReply": "Usually the standard size we use for print is 10.75 x 12 which makes  2 sheets in one feet , which make $2.5 per transfer . However the size you need is almost twice in length and width and so the cost is getting higher accordingly .",
+      "aiReply": "Thank you for reaching out! At Decoinks, we strive to ensure our customers are satisfied with their orders. Our returns policy allows for returns on defective items or errors made on our part. Unfortunately, we cannot accept returns for custom printed items due to their personalized nature. If you have any concerns about your order, please contact us within [insert timeframe] of receiving your items, and we'll be happy to assist you!"
+    },
+    {
+      "intent": "order_status",
+      "question": "What is the status of my order?",
+      "examples": [
+        "Am I going to get my order?",
+        "What are you going to do about the printing issue?",
+        "Did you get it?"
+      ],
+      "category": "Returns & Issues",
+      "realReply": "Great! Thanks for the update. Please send the payment when you're ready, and we'll get started right away!",
+      "aiReply": "Hi there! Thank you for reaching out. To check the status of your order, please provide your order number or the name associated with the order. Once I have that information, I can give you an update. Looking forward to hearing from you!"
+    },
+    {
+      "intent": "reprint_request",
+      "question": "Can you reprint my design?",
+      "examples": [
+        "Can you reprint the design and send it to me?",
+        "What should I do if my shirt has not been washed yet?",
+        "Can you send me the money back?"
+      ],
+      "category": "Returns & Issues",
+      "realReply": "yes we have desgining team",
+      "aiReply": "Yes, we can reprint your design! Our designing team is here to assist you with any adjustments or updates you may need. Please provide us with the details of your design, and we'll get started!"
+    },
+    {
+      "intent": "returns_instructions",
+      "question": "What should I do with returned items?",
+      "examples": [
+        "What should I do if I received returned shirts?",
+        "What should I do if the letters on my shirt look like the color is running down?",
+        "What if I receive the wrong item?"
+      ],
+      "category": "Returns & Issues",
+      "realReply": "Yes sure",
+      "aiReply": "If you have received an item that you would like to return, please follow these steps: 1. Ensure the item is in its original condition and packaging. 2. Contact our customer support team at [support email/phone number] to initiate the return process. 3. We will provide you with a return shipping label and further instructions. Please note that our return policy allows for returns within [insert return period, e.g., 30 days] of receipt. If you have any other questions or need assistance, feel free to reach out!"
+    },
+    {
+      "intent": "returns_and_issues",
+      "question": "What if I change my mind about my order?",
+      "examples": [
+        "Can you disregard all my information and designs immediately?",
+        "What if I change my mind about the design?",
+        "What if I receive the wrong item?"
+      ],
+      "category": "Returns & Issues",
+      "realReply": "If you place order now the shipping will be only $6 but if you place the order later that will increase to $10",
+      "aiReply": "If you change your mind about your order after it's been placed, please contact us as soon as possible. We can assist with cancellations or changes depending on the status of your order. Keep in mind that if you place your order now, the shipping cost is only $6, but if you decide to place it later, the shipping will increase to $10. Let us know how we can help!"
+    }
+  ]
+}

@@ -45,6 +45,12 @@ export async function chatJSON(system, user, { model = CHAT_MODEL, temperature =
   return JSON.parse(txt)
 }
 
+// Full multi-turn chat (pass an array of {role, content}) — for the AI assistant.
+export async function chatMessages(messages, { model = CHAT_MODEL, temperature = 0.4 } = {}) {
+  const d = await openai('/chat/completions', { model, messages, temperature })
+  return d.choices?.[0]?.message?.content?.trim() || ''
+}
+
 // Plain text completion (e.g. translations, freeform replies).
 export async function chatText(system, user, { model = CHAT_MODEL, temperature = 0.4 } = {}) {
   const d = await openai('/chat/completions', {
