@@ -370,17 +370,17 @@ export default function Dashboard() {
           <ul className="space-y-1">
             {[
               ['WhatsApp', 'bg-emerald-500', 'whatsapp', 8],
-              ['Instagram', 'bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600', 'ig', 3],
-              ['Facebook', 'bg-blue-600', 'fb', 2],
+              ['Instagram', 'bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600', 'instagram', 3],
+              ['Facebook', 'bg-blue-600', 'facebook', 2],
               ['Email', 'bg-slate-700', 'email', 1],
             ].map((ch) => (
-              <li key={ch[2]}><a href="#" className="sb-item flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5" data-tip={ch[0]}>
+              <li key={ch[2]}><Link to={`/connect-meta?connect=${ch[2]}`} className="sb-item flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5" data-tip={`Connect ${ch[0]}`}>
                 <span className="flex items-center gap-3 text-sm font-medium">
                   <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${ch[1]} text-white`}>{channelIcon(ch[0])}</span>
                   <span className="sb-label">{ch[0]}</span>
                 </span>
                 <span className="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">{ch[3]}</span>
-              </a></li>
+              </Link></li>
             ))}
           </ul>
 
@@ -1130,6 +1130,27 @@ function fmtDur(min) {
 // History tab — full message timeline: response times, agent SLA rating, 3-word
 // summary, media thumbnails + averages + stage/status. (Replaces old Timestamps + History.)
 function HistoryTab({ conv }) {
+  const toast = useToast()
+  const cid = conv?.id
+  const [intents, setIntents] = useState(conv?.message_intents || {})
+  const [genBusy, setGenBusy] = useState(false)
+  const autoRef = useRef('')
+  const summarizeMessages = async (manual) => {
+    if (!cid || genBusy) return
+    setGenBusy(true)
+    try { const r = await api.post(`/api/ai/message-intents/${encodeURIComponent(cid)}`, { force: !!manual }); setIntents(r.intents || {}); if (manual) toast('Message summaries updated', 'success') }
+    catch (ex) { if (manual) toast(ex.message || 'Failed', 'error') }
+    finally { setGenBusy(false) }
+  }
+  // Auto-generate once per conversation when opened (cached afterwards → instant + free)
+  useEffect(() => {
+    const cached = conv?.message_intents || {}
+    setIntents(cached)
+    if (cid && autoRef.current !== cid && Object.keys(cached).length === 0) {
+      autoRef.current = cid
+      summarizeMessages(false)
+    }
+  }, [cid]) // eslint-disable-line react-hooks/exhaustive-deps
   const msgs = (conv?.messages || []).filter((m) => m.dir === 'in' || m.dir === 'out')
   let prev = null
   const rows = msgs.map((m) => {
@@ -1205,7 +1226,10 @@ function HistoryTab({ conv }) {
       {/* Detailed timeline as a table */}
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
-          <div className="text-sm font-bold">Message timeline ({visibleRows.length}{slaFilter !== 'all' ? ` of ${rows.length}` : ''})</div>
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-bold">Message timeline ({visibleRows.length}{slaFilter !== 'all' ? ` of ${rows.length}` : ''})</div>
+            <button onClick={() => summarizeMessages(true)} disabled={genBusy} className="rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50">{genBusy ? 'Summarizing…' : '↻ AI summaries'}</button>
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {[['all', `All`, rows.length, 'bg-slate-100 text-slate-600'], ['ontime', 'On time', onTime, 'bg-emerald-50 text-emerald-700'], ['delayed', 'Delayed', delayedN, 'bg-amber-50 text-amber-700'], ['toodelayed', 'Too delayed', tooN, 'bg-rose-50 text-rose-700']].map(([id, lbl, n, cls]) => (
               <button key={id} onClick={() => setSlaFilter(id)} className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${slaFilter === id ? 'ring-2 ring-brand-400 ' + cls : cls + ' opacity-80 hover:opacity-100'}`}>{lbl} ({n})</button>
@@ -1230,7 +1254,9 @@ function HistoryTab({ conv }) {
               {visibleRows.map((r, i) => {
                 const isAgent = r.dir === 'out'
                 const s = r.resp && isAgent ? sla(r.resp.minutes) : null
-                const heading = words3(r.text) || (r.attachments?.length ? (r.attachments[0].type === 'image' ? '📷 Photo' : r.attachments[0].type === 'video' ? '🎥 Video' : '📎 Attachment') : '—')
+                const attLabel = r.attachments?.length ? (r.attachments[0].type === 'image' ? '📷 Photo' : r.attachments[0].type === 'video' ? '🎥 Video' : '📎 Attachment') : '—'
+                const hasText = r.text && r.text.trim() && r.text !== '[attachment]'
+                const heading = intents[r.id] || (genBusy && hasText ? '✨ summarizing…' : (words3(r.text) || attLabel))
                 return (
                   <tr key={i} className="align-top hover:bg-slate-50/60">
                     <td className="px-3 py-2.5">

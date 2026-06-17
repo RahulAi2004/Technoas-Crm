@@ -1,14 +1,32 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import SidebarCrm from '../components/SidebarCrm.jsx'
 import TopBarUser from '../components/TopBarUser.jsx'
 import BackButton from '../components/BackButton.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { api } from '../lib/api.js'
 
+const FB_SCOPE = 'pages_show_list,pages_messaging,pages_read_engagement,instagram_basic,instagram_manage_messages,business_management'
+function loadFacebookSDK(appId) {
+  return new Promise((resolve, reject) => {
+    const init = () => { try { window.FB.init({ appId, version: 'v21.0', cookie: true, xfbml: false }); resolve(window.FB) } catch (e) { reject(e) } }
+    if (window.FB) return init()
+    window.fbAsyncInit = init
+    if (!document.getElementById('facebook-jssdk')) {
+      const s = document.createElement('script')
+      s.id = 'facebook-jssdk'; s.src = 'https://connect.facebook.net/en_US/sdk.js'; s.async = true; s.defer = true
+      s.onerror = () => reject(new Error('Could not load Facebook SDK'))
+      document.body.appendChild(s)
+    }
+  })
+}
+
 export default function MetaConnect() {
   const toast = useToast()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const connectCh = params.get('connect')   // 'facebook' | 'instagram' | 'whatsapp'
+  const channelTitle = connectCh === 'facebook' ? 'Connect Facebook Messenger' : connectCh === 'instagram' ? 'Connect Instagram' : 'Connect Meta'
   const [status, setStatus] = useState(null)
   const [appId, setAppId] = useState('')
   const [appSecret, setAppSecret] = useState('')
@@ -18,6 +36,28 @@ export default function MetaConnect() {
 
   const refresh = () => api.get('/api/meta/status').then(setStatus).catch(() => setStatus({ connected: false }))
   useEffect(() => { refresh() }, [])
+
+  // "Continue with Facebook" — OAuth via FB JS SDK, then connect with the granted token.
+  const continueWithFacebook = async () => {
+    if (!appId.trim() || !appSecret.trim()) { toast('Pehle App ID aur App Secret bharo (token Facebook se aa jayega)', 'error'); return }
+    setBusy(true); setResult(null)
+    try {
+      const FB = await loadFacebookSDK(appId.trim())
+      FB.login((resp) => {
+        if (resp.status === 'connected' && resp.authResponse?.accessToken) {
+          ;(async () => {
+            try {
+              const r = await api.post('/api/meta/connect-app', { appId: appId.trim(), appSecret: appSecret.trim(), token: resp.authResponse.accessToken })
+              const sync = await api.post('/api/meta/sync').catch(() => ({}))
+              setResult({ ok: true, page: r.page, instagram: r.instagram, synced: sync?.newMessages, neverExpires: r.neverExpires })
+              toast(`Connected: ${r.page?.name || 'Page'} ✅`, 'success')
+              setToken(''); setAppSecret(''); refresh()
+            } catch (ex) { setResult({ ok: false, error: ex.message }); toast(ex.message || 'Connect failed', 'error') } finally { setBusy(false) }
+          })()
+        } else { toast('Facebook login cancelled', 'info'); setBusy(false) }
+      }, { scope: FB_SCOPE, return_scopes: true })
+    } catch (ex) { toast(ex.message || 'Could not load Facebook', 'error'); setBusy(false) }
+  }
 
   const connect = async (e) => {
     e.preventDefault()
@@ -71,7 +111,7 @@ export default function MetaConnect() {
             <div className="flex items-center gap-3">
               <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-xl font-bold">f</div>
               <div>
-                <h1 className="text-2xl font-extrabold tracking-tight">Connect Meta</h1>
+                <h1 className="text-2xl font-extrabold tracking-tight">{channelTitle}</h1>
                 <p className="text-sm text-slate-500">Facebook Messenger &amp; Instagram DMs — ek baar connect karo, token kabhi expire nahi hoga.</p>
               </div>
             </div>
@@ -116,6 +156,16 @@ export default function MetaConnect() {
                     <label className="mb-1 block text-xs font-semibold text-slate-600">2 · App Secret</label>
                     <input type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="App Secret (Settings → Basic → Show)" className={field} />
                   </div>
+
+                  {/* One-click Facebook OAuth */}
+                  <button type="button" onClick={continueWithFacebook} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1877F2] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#166fe0] disabled:opacity-60">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>
+                    {busy ? 'Connecting…' : 'Continue with Facebook'}
+                  </button>
+                  <p className="text-[11px] text-slate-500">App ID + App Secret bharke ye dabao — Facebook ka login + permissions popup khulega, aapka Page + Instagram khud connect ho jayega.</p>
+
+                  <div className="relative my-1"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"></div></div><div className="relative flex justify-center"><span className="bg-white px-2 text-[11px] font-semibold text-slate-400">OR paste a token manually</span></div></div>
+
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-slate-600">3 · Access Token (fresh User token)</label>
                     <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAT... (Graph API Explorer se naya User token)" className={field} />

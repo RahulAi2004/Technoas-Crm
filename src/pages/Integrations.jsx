@@ -1,12 +1,36 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import SidebarCrm from '../components/SidebarCrm.jsx'
 import TopBarUser from '../components/TopBarUser.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { api } from '../lib/api.js'
 
+// Load the Facebook JavaScript SDK once and init with the given App ID.
+const FB_SCOPE = 'pages_show_list,pages_messaging,pages_read_engagement,instagram_basic,instagram_manage_messages,business_management'
+function loadFacebookSDK(appId) {
+  return new Promise((resolve, reject) => {
+    const init = () => { try { window.FB.init({ appId, version: 'v21.0', cookie: true, xfbml: false }); resolve(window.FB) } catch (e) { reject(e) } }
+    if (window.FB) return init()
+    window.fbAsyncInit = init
+    if (!document.getElementById('facebook-jssdk')) {
+      const s = document.createElement('script')
+      s.id = 'facebook-jssdk'; s.src = 'https://connect.facebook.net/en_US/sdk.js'; s.async = true; s.defer = true
+      s.onerror = () => reject(new Error('Could not load Facebook SDK'))
+      document.body.appendChild(s)
+    }
+  })
+}
+
+const CONNECT_LABEL = {
+  facebook: { name: 'Facebook Messenger', blurb: 'Connect your Facebook Page to reply to Messenger chats from your inbox.' },
+  instagram: { name: 'Instagram', blurb: 'Connect your Instagram (linked to your Facebook Page) to reply to Instagram DMs.' },
+  whatsapp: { name: 'WhatsApp', blurb: 'Connect WhatsApp to receive and reply to WhatsApp chats.' },
+}
+
 export default function Integrations() {
   const toast = useToast()
+  const [params] = useSearchParams()
+  const connectCh = params.get('connect')   // 'facebook' | 'instagram' | 'whatsapp'
   const [status, setStatus] = useState(null)
   const [apiKey, setApiKey] = useState('')
   const [busy, setBusy] = useState(false)
@@ -45,6 +69,27 @@ export default function Integrations() {
     } catch (ex) {
       toast(ex.message || 'Failed to connect Meta', 'error')
     } finally { setMetaBusy(false) }
+  }
+
+  // "Continue with Facebook" — OAuth via the FB JS SDK, then connect using the granted token.
+  const continueWithFacebook = async () => {
+    if (!metaAppId.trim() || !metaAppSecret.trim()) { toast('Pehle App ID aur App Secret bharo (token Facebook se aa jayega)', 'error'); return }
+    setMetaBusy(true)
+    try {
+      const FB = await loadFacebookSDK(metaAppId.trim())
+      FB.login((resp) => {
+        if (resp.status === 'connected' && resp.authResponse?.accessToken) {
+          ;(async () => {
+            try {
+              const r = await api.post('/api/meta/connect-app', { appId: metaAppId.trim(), appSecret: metaAppSecret.trim(), token: resp.authResponse.accessToken })
+              await api.post('/api/meta/sync').catch(() => ({}))
+              toast(r.neverExpires ? `Connected: ${r.page?.name || 'Page'} — permanent ✅` : `Connected: ${r.page?.name || 'Page'}`, 'success')
+              setMetaAppSecret(''); refresh()
+            } catch (ex) { toast(ex.message || 'Connect failed', 'error') } finally { setMetaBusy(false) }
+          })()
+        } else { toast('Facebook login cancelled', 'info'); setMetaBusy(false) }
+      }, { scope: FB_SCOPE, return_scopes: true })
+    } catch (ex) { toast(ex.message || 'Could not load Facebook', 'error'); setMetaBusy(false) }
   }
 
   const disconnectMeta = async () => {
@@ -106,14 +151,24 @@ export default function Integrations() {
           <h1 className="text-2xl font-extrabold tracking-tight">Integrations</h1>
           <p className="text-sm text-slate-500">Connect external channels so messages flow into your inbox.</p>
 
+          {connectCh && CONNECT_LABEL[connectCh] && (
+            <div className="mt-5 flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50/60 p-4">
+              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-base font-bold text-white ${connectCh === 'instagram' ? 'bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600' : connectCh === 'whatsapp' ? 'bg-emerald-500' : 'bg-blue-600'}`}>{connectCh === 'facebook' ? 'f' : connectCh === 'instagram' ? '◎' : '✆'}</span>
+              <div>
+                <div className="text-sm font-bold text-brand-800">Connect {CONNECT_LABEL[connectCh].name}</div>
+                <div className="text-xs text-slate-600">{CONNECT_LABEL[connectCh].blurb}{connectCh !== 'whatsapp' ? ' Use the Meta card below.' : ''}</div>
+              </div>
+            </div>
+          )}
+
           {/* ---- Meta (Messenger + Instagram) card ---- */}
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+          <section className={`mt-6 rounded-2xl border bg-white p-5 ${connectCh === 'facebook' || connectCh === 'instagram' ? 'border-brand-300 ring-2 ring-brand-200' : 'border-slate-200'}`}>
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
                 <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-xl font-bold">f</div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold">Meta — Messenger &amp; Instagram</h2>
+                    <h2 className="text-lg font-bold">{connectCh === 'facebook' ? 'Connect Facebook Messenger' : connectCh === 'instagram' ? 'Connect Instagram' : 'Meta — Messenger & Instagram'}</h2>
                     {meta?.connected
                       ? <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700">● Connected</span>
                       : <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">○ Not connected</span>}
@@ -160,6 +215,16 @@ export default function Integrations() {
                     />
                   </div>
                 </div>
+
+                {/* One-click OAuth */}
+                <button type="button" onClick={continueWithFacebook} disabled={metaBusy} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1877F2] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#166fe0] disabled:opacity-60">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>
+                  {metaBusy ? 'Connecting…' : 'Continue with Facebook'}
+                </button>
+                <p className="text-[11px] text-slate-500">App ID + App Secret bharke ye dabao — Facebook ka login + permissions popup khulega, phir aapka Page + Instagram khud connect ho jayega.</p>
+
+                <div className="relative my-1"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"></div></div><div className="relative flex justify-center"><span className="bg-white px-2 text-[11px] font-semibold text-slate-400">OR paste a token manually</span></div></div>
+
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-600">3 · Access Token (Page / System User)</label>
                   <input
@@ -198,85 +263,7 @@ export default function Integrations() {
                 </div>
               </div>
             )}
-          </section>
-
-          {/* ---- ManyChat card ---- */}
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 text-white text-xl font-bold">M</div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold">ManyChat</h2>
-                    {status?.connected
-                      ? <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700">● Connected</span>
-                      : <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">○ Not connected</span>}
-                  </div>
-                  <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                    Connect your ManyChat account to receive WhatsApp / Instagram / Facebook conversations directly in your Technocas inbox and reply from here. Replies go back through ManyChat → Meta.
-                  </p>
-                </div>
-              </div>
-              {status?.connected && (
-                <button onClick={disconnect} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50">Disconnect</button>
-              )}
-            </div>
-
-            {/* Connected info */}
-            {status?.connected && (
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] text-slate-500">API Key</div><div className="font-mono text-sm">{status.keyMasked}</div></div>
-                <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] text-slate-500">Page / Bot</div><div className="text-sm font-semibold">{status.page?.name || '—'}</div></div>
-                <div className="rounded-lg bg-slate-50 p-3"><div className="text-[11px] text-slate-500">Connected</div><div className="text-sm">{status.connectedAt ? new Date(status.connectedAt).toLocaleString() : '—'}</div></div>
-              </div>
-            )}
-
-            {/* Connect form */}
-            {!status?.connected && (
-              <form onSubmit={connect} className="mt-4 space-y-3">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-600">ManyChat API Key</label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="123456789:abcdef0123456789abcdef..."
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-mono outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500">Get this from ManyChat dashboard → <em>Settings → API</em>. Requires ManyChat <strong>Pro</strong>.</p>
-                </div>
-                <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
-                  {busy ? 'Verifying...' : 'Connect ManyChat'}
-                </button>
-              </form>
-            )}
-
-            {/* Webhook + test sender */}
-            {status?.connected && (
-              <div className="mt-5 space-y-4">
-                <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-xs">
-                  <div className="mb-1 font-semibold text-slate-700">Incoming messages webhook</div>
-                  <p className="mb-2 text-slate-500">In ManyChat → Automation → External Triggers (or Webhooks) → set URL to:</p>
-                  <code className="block break-all rounded bg-white px-2 py-1.5 font-mono text-[12px]">
-                    {`${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/manychat`}
-                  </code>
-                  <p className="mt-2 text-slate-500">Trigger this on "User replies / sends a message" — incoming messages will land in your inbox automatically.</p>
-                </div>
-
-                <form onSubmit={sendTest} className="rounded-lg border border-slate-200 p-3">
-                  <div className="mb-2 text-xs font-bold">Send a test message</div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_2fr_auto]">
-                    <input value={testSubId} onChange={(e) => setTestSubId(e.target.value)} placeholder="Subscriber ID (from ManyChat)" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                    <input value={testText} onChange={(e) => setTestText(e.target.value)} placeholder="Message text" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                    <button disabled={busy} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">Send</button>
-                  </div>
-                  <p className="mt-1 text-[11px] text-slate-500">You can find a subscriber ID in ManyChat → Audience → click any subscriber → URL contains the ID.</p>
-                </form>
-              </div>
-            )}
-          </section>
-
-          {/* ---- Other channels (placeholders) ---- */}
+          </section>{/* ---- Other channels (placeholders) ---- */}
           <section className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[
               { name:'WhatsApp Business API',   blurb:'Direct Cloud API integration (no ManyChat)', bg:'bg-emerald-500' },

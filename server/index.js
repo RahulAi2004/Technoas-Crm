@@ -1430,10 +1430,13 @@ app.post('/api/ai/ask', authRequired, async (req, res) => {
     matched = matched.slice(0, 3)
     let entityCtx = ''
     for (const c of matched) {
-      const cm = allMsgs.filter((m) => m.conversation_id === c.id).slice(-25)
+      const all = allMsgs.filter((m) => m.conversation_id === c.id && (m.dir === 'in' || m.dir === 'out'))
+      const cm = all.slice(-150)   // full (capped) so we can count/list what the customer asked
       const lead = leads.find((l) => l.conversation_id === c.id) || {}
-      entityCtx += `\n\n=== CUSTOMER: ${c.name} (${c.channel || '-'}) ===\nPhone: ${c.phone || '-'} | Company: ${c.company || '-'} | Status: ${c.status || '-'} | Assigned: ${c.assigned_to || '-'} | Lead stage: ${lead.pipeline || lead.status || '-'} | Lead value: ${lead.value ?? '-'}\nConversation:\n` +
-        cm.map((m) => `${m.dir === 'in' ? 'Customer' : m.dir === 'out' ? 'Agent' : 'Note'}: ${m.text}`).join('\n')
+      const cust = custs.find((x) => x.conversation_id === c.id) || {}
+      const inCount = all.filter((m) => m.dir === 'in').length
+      entityCtx += `\n\n=== CUSTOMER: ${c.name} (${c.channel || '-'}) ===\nPhone: ${c.phone || '-'} | Company: ${c.company || '-'} | Status: ${c.status || '-'} | Assigned: ${c.assigned_to || '-'} | Lead stage: ${lead.pipeline || lead.status || '-'} | Lead value: $${lead.value ?? 0} | Spend: $${cust.spend ?? 0} | Orders: ${cust.orders ?? 0}\nTotal messages from this customer: ${inCount}. Full conversation (Customer = their messages/questions, Agent = our replies):\n` +
+        cm.map((m) => `${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.text}`).join('\n')
     }
 
     // 2) Semantic search over all messages (RAG)
@@ -1446,15 +1449,23 @@ app.post('/api/ai/ask', authRequired, async (req, res) => {
       } catch { /* non-fatal */ }
     }
 
-    const sys = `You are the AI assistant for Decoinks (a custom apparel print shop) CRM. You ONLY help with this business's CRM data — its customers, conversations, leads, messages and orders.
+    // 3) Full structured lists so the assistant can COUNT / FILTER / AGGREGATE
+    const orders = getAll('orders'), payments = getAll('payments')
+    const custCtx = custs.map((c) => `${c.name}${c.company ? ` (${c.company})` : ''} — spend $${c.spend || 0}, orders ${c.orders || 0}, tier ${c.tier || '-'}, type ${c.type || '-'}, status ${c.status || '-'}, ${c.channel || '-'}`).join('\n')
+    const leadCtx = leads.map((l) => `${l.name}${l.company ? ` (${l.company})` : ''} — value $${l.value || 0}, status ${l.status || '-'}, stage ${l.pipeline || '-'}, source ${l.source || '-'}, agent ${l.agent || '-'}`).join('\n')
+    const orderCtx = orders.length ? orders.map((o) => `${o.order_no || o.id} — customer ${o.customer || '-'}, total $${o.total ?? o.amount ?? 0}, status ${o.status || '-'}`).join('\n') : '(no orders recorded yet)'
+    const payCtx = payments.length ? payments.map((p) => `${p.invoice_no || p.id} — $${p.amount ?? 0}, ${p.status || '-'}`).join('\n') : '(no payments recorded yet)'
 
-STRICT RULES:
-1. Answer ONLY using the CRM DATA provided below. NEVER use outside or general knowledge, and NEVER invent, assume or guess facts. If the answer is not present in the provided data, clearly say you don't have that information in the CRM.
-2. SCOPE: Only answer questions about this CRM (customers, conversations, leads, messages, the shop's business). If the user asks anything UNRELATED — general knowledge, world facts, math, coding, news, opinions, etc. (e.g. "what is the population of the world") — politely REFUSE and say you can only answer questions about the CRM data. Do not answer such questions at all.
-3. When asked about a specific customer, give their details (channel, phone, company, status, lead stage) and summarize what was discussed — strictly from the data.
-4. Reply in EXACTLY the same language as the user's message, and mirror its structure (list → bullets, short question → short answer, details → organized sections).
-5. Be clear, concise and professional — no unnecessary preamble.`
-    const dataBlock = `CRM STATS: ${stats}\n${entityCtx || ''}\n\nRELEVANT MESSAGES (semantic search):\n${ragCtx || '(none)'}`
+    const sys = `You are a helpful AI assistant for the Decoinks CRM (a custom apparel print shop). You have access to TWO sources below and should analyse BOTH to answer: (1) STRUCTURED DATA — customers, leads, orders, payments (with spend, value, status, stage, source); (2) CHATS — the actual conversations/messages with customers.
+
+How to answer:
+- COUNT, FILTER, SUM and ANALYSE the lists yourself — e.g. "how many customers with spend over $200", "total pipeline value", "how many leads from Facebook", "how many leads are Won/converted". Always give a concrete number (even 0). Treat a customer's "spend" as their total order amount; never say "cannot determine" when the field is present.
+- For chat questions about a SPECIFIC customer (when their full conversation is included below) — answer from it: how many questions they asked (count their "Customer:" messages that are questions), WHICH questions they asked (list them), what was discussed, whether they paid, what's pending, next step.
+- For "who has paid / whose payment is pending" use the orders/payments + each customer's chat (look for payment confirmations). If there are no order/payment records, say so and use what the chats indicate.
+- For "how many leads converted to customers" use the leads' status/stage (e.g. Won / Customer) — give the count.
+- You can ALSO answer general questions using your own knowledge — no topic restrictions.
+- Combine data + chats when useful, then give the best, accurate answer. Reply in the user's language, mirror its structure, be clear and concise.`
+    const dataBlock = `CRM STATS: ${stats}\n\nALL CUSTOMERS (${custs.length}):\n${custCtx}\n\nALL LEADS (${leads.length}):\n${leadCtx}\n\nORDERS:\n${orderCtx}\n\nPAYMENTS:\n${payCtx}\n${entityCtx || ''}\n\nRELEVANT MESSAGES (semantic search):\n${ragCtx || '(none)'}`
     const messages = [
       { role: 'system', content: `${sys}\n\n--- CRM DATA ---\n${dataBlock}` },
       ...(Array.isArray(history) ? history : []).slice(-6).map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content || '') })),
@@ -1462,6 +1473,36 @@ STRICT RULES:
     ]
     const answer = await chatMessages(messages)
     res.json({ ok: true, answer, matched: matched.map((c) => c.name) })
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
+  }
+})
+
+// Per-message intent/summary (2-4 words) for the History timeline. Cached on the conversation.
+app.post('/api/ai/message-intents/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  const conv = findById('conversations', req.params.id)
+  if (!conv) return res.status(404).json({ error: 'conversation not found' })
+  const msgs = getAll('messages').filter((m) => m.conversation_id === req.params.id && (m.dir === 'in' || m.dir === 'out'))
+  if (!msgs.length) return res.json({ intents: {} })
+  const force = !!req.body?.force
+  const labels = force ? {} : { ...(conv.message_intents || {}) }
+  for (const m of msgs) {
+    if (!force && labels[m.id]) continue
+    if (!m.text || !m.text.trim() || m.text === '[attachment]') labels[m.id] = m.attachments?.length ? 'Shared media' : ''
+  }
+  const todo = msgs.filter((m) => m.text && m.text.trim() && m.text !== '[attachment]' && !labels[m.id])
+  const sys = `For each customer-support chat message (custom apparel print shop), write a SHORT 5-8 word summary describing what that message is actually saying/asking (its intent + key detail) — NOT the first words of the message. Examples: "Customer asking how long delivery takes", "Agent sharing the Father's Day design", "Customer confirming order of 50 hoodies", "Customer sharing their shipping address", "Agent quoting price of $78". Respond with ONLY JSON: { "labels": [string] } — one label per message, in the SAME order.`
+  try {
+    const CH = 60
+    for (let i = 0; i < todo.length; i += CH) {
+      const chunk = todo.slice(i, i + CH)
+      const out = await chatJSON(sys, chunk.map((m, j) => `${j + 1}. ${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.text}`).join('\n'))
+      const arr = Array.isArray(out.labels) ? out.labels : []
+      chunk.forEach((m, j) => { labels[m.id] = (arr[j] || '').trim() })
+    }
+    update('conversations', conv.id, { message_intents: labels })
+    res.json({ ok: true, intents: labels })
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
   }
