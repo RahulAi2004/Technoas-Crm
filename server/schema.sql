@@ -433,6 +433,8 @@ ALTER TABLE app.orders ADD COLUMN IF NOT EXISTS special_instructions TEXT;
 
 -- PAYMENTS: notes
 ALTER TABLE app.payments ADD COLUMN IF NOT EXISTS payment_notes TEXT;
+-- REQUIREMENTS: upsert key for the After-Session workflow
+ALTER TABLE app.requirements ADD COLUMN IF NOT EXISTS legacy_id TEXT UNIQUE;
 
 -- ---------- B) NEW tables (lead intelligence, sales, production, analytics) ----------
 CREATE TABLE IF NOT EXISTS app.lead_stage_history (

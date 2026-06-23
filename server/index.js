@@ -1622,6 +1622,124 @@ app.post('/api/ai/profiles/build', authRequired, async (req, res) => {
   console.log(`[profiles] build complete: ${done}/${todo.length}`)
 })
 
+// ============================================================
+// AFTER SESSION — end-of-day client data entry (AI recommend + validate + save to DB)
+// ============================================================
+const AS_NUM = new Set(['intent_score', 'purchase_probability', 'sentiment_score', 'complexity_score'])
+const asNum = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null }
+const asTxt = (v) => (v == null || v === '' ? null : String(v).slice(0, 4000))
+
+async function asTranscript(convLegacyId) {
+  const r = await dbQuery(`SELECT m.direction dir, m.body txt FROM app.messages m JOIN app.conversations c ON m.conversation_id=c.conversation_id WHERE c.legacy_id=$1 AND m.body<>'' ORDER BY m.created_at`, [convLegacyId])
+  return r.rows.map((m) => `${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.txt}`).join('\n').slice(0, 9000)
+}
+
+// 1) Clients active on a date (default today) — what the agent reviews end-of-session.
+app.get('/api/after-session/clients', authRequired, async (req, res) => {
+  try {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10))
+    const r = await dbQuery(
+      `SELECT co.legacy_id id, COALESCE(NULLIF(co.extra->>'name',''), cu.full_name) name, co.channel,
+        co.extra->'ai_profile'->>'products' need, co.extra->'ai_profile'->>'quantity' quantity,
+        (co.extra ? 'after_session_saved') saved, co.last_message_at
+       FROM app.conversations co LEFT JOIN app.customers cu ON cu.customer_id=co.customer_id
+       WHERE co.extra<>'{}'::jsonb AND (co.last_message_at::date=$1 OR co.created_at::date=$1)
+       ORDER BY co.last_message_at DESC NULLS LAST LIMIT 300`, [date])
+    res.json({ date, clients: r.rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// 2) Current saved field values for one client (to prefill the form).
+app.get('/api/after-session/client/:id', authRequired, async (req, res) => {
+  try {
+    const id = req.params.id
+    const c = (await dbQuery(`SELECT COALESCE(NULLIF(co.extra->>'name',''),cu.full_name) name, co.channel, co.sentiment_score, co.conversation_summary, co.conversation_insights,
+        co.extra->'ai_profile'->>'products' need, co.extra->'ai_profile'->>'quantity' quantity
+      FROM app.conversations co LEFT JOIN app.customers cu ON cu.customer_id=co.customer_id WHERE co.legacy_id=$1`, [id])).rows[0]
+    if (!c) return res.status(404).json({ error: 'client not found' })
+    const l = (await dbQuery(`SELECT intent_score, purchase_probability, lead_summary, profile_summary, ai_observations FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)`, [id])).rows[0] || {}
+    const rq = (await dbQuery(`SELECT requirement_summary, missing_information FROM app.requirements WHERE legacy_id=$1`, ['req:' + id])).rows[0] || {}
+    const aw = (await dbQuery(`SELECT artwork_analysis, reconstruction_notes, design_notes, complexity_score FROM app.artwork WHERE legacy_id=$1`, ['art:' + id])).rows[0] || {}
+    const sh = (await dbQuery(`SELECT transition_reason FROM app.lead_stage_history WHERE lead_id=(SELECT lead_id FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)) ORDER BY created_at DESC LIMIT 1`, [id])).rows[0] || {}
+    res.json({ name: c.name, channel: c.channel, values: { need: c.need, quantity: c.quantity, ...l, sentiment_score: c.sentiment_score, conversation_summary: c.conversation_summary, conversation_insights: c.conversation_insights, ...rq, ...aw, ...sh } })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+const AS_FIELDS_DOC = `{
+ "need": "what the customer wants (products)",
+ "quantity": "quantities/sizes ('' if none)",
+ "intent_score": 0, "purchase_probability": 0,
+ "lead_summary": "2-3 sentences for the sales team",
+ "profile_summary": "who the customer is",
+ "ai_observations": "one key sales insight",
+ "sentiment_score": 0,
+ "conversation_summary": "what happened in the chat",
+ "conversation_insights": "notable insight from the chat",
+ "requirement_summary": "the concrete requirement",
+ "missing_information": "info still needed to quote ('' if none)",
+ "artwork_analysis": "artwork notes ('' if no artwork)",
+ "reconstruction_notes": "if artwork must be recreated ('' if none)",
+ "design_notes": "design instructions ('' if none)",
+ "complexity_score": 0,
+ "transition_reason": "why the lead moved stage / current status reason"
+}`
+
+// 3) AI recommends values for all fields from the chat.
+app.post('/api/after-session/recommend/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured' })
+  try {
+    const t = await asTranscript(req.params.id)
+    if (!t) return res.json({ recommended: {} })
+    const out = await chatJSON(`You are filling an end-of-session CRM record for Decoinks (custom apparel + DTF print shop). From the conversation, fill ALL these fields accurately. Scores (intent_score, purchase_probability, sentiment_score, complexity_score) are 0-100 integers. Respond ONLY JSON with exactly these keys:\n${AS_FIELDS_DOC}`, t)
+    res.json({ recommended: out })
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+
+// 4) AI validates the agent's filled values against the chat → per-field {ok, note}.
+app.post('/api/after-session/validate/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured' })
+  try {
+    const t = await asTranscript(req.params.id)
+    const values = req.body?.values || {}
+    const out = await chatJSON(`You validate an agent's end-of-session CRM entries against the actual conversation. For EACH field, decide if the agent's value is consistent with the chat. Respond ONLY JSON: an object where each key is the field name and the value is {"ok": boolean, "note": "short reason only if wrong, else ''"}. Be strict: if a value contradicts or is unsupported by the chat, ok=false.\nCONVERSATION:\n${t}`,
+      `Agent's entered values:\n${JSON.stringify(values)}`)
+    res.json({ verdicts: out })
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+
+// 5) Save validated values into the proper structured tables.
+app.post('/api/after-session/save/:id', authRequired, async (req, res) => {
+  try {
+    const id = req.params.id
+    const v = req.body?.values || {}
+    // leads (intelligence)
+    await dbQuery(`UPDATE app.leads SET intent_score=$2, purchase_probability=$3, lead_summary=$4, profile_summary=$5, ai_observations=$6, updated_at=now()
+      WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)`,
+      [id, asNum(v.intent_score), asNum(v.purchase_probability), asTxt(v.lead_summary), asTxt(v.profile_summary), asTxt(v.ai_observations)])
+    // conversation + mark saved
+    await dbQuery(`UPDATE app.conversations SET sentiment_score=$2, conversation_summary=$3, conversation_insights=$4,
+      extra = extra || jsonb_build_object('after_session_saved', now()::text) WHERE legacy_id=$1`,
+      [id, asNum(v.sentiment_score), asTxt(v.conversation_summary), asTxt(v.conversation_insights)])
+    // requirements (upsert by req:<conv>)
+    await dbQuery(`INSERT INTO app.requirements (legacy_id, lead_id, requirement_summary, missing_information, quantity, created_at)
+      SELECT $1, (SELECT lead_id FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$2)), $3, $4, $5, now()
+      ON CONFLICT (legacy_id) DO UPDATE SET requirement_summary=EXCLUDED.requirement_summary, missing_information=EXCLUDED.missing_information, quantity=EXCLUDED.quantity, updated_at=now()`,
+      ['req:' + id, id, asTxt(v.requirement_summary), asTxt(v.missing_information), parseInt(v.quantity) || null])
+    // artwork (upsert by art:<conv>)
+    await dbQuery(`INSERT INTO app.artwork (legacy_id, artwork_analysis, reconstruction_notes, design_notes, complexity_score, created_at)
+      VALUES ($1, $2, $3, $4, $5, now())
+      ON CONFLICT (legacy_id) DO UPDATE SET artwork_analysis=EXCLUDED.artwork_analysis, reconstruction_notes=EXCLUDED.reconstruction_notes, design_notes=EXCLUDED.design_notes, complexity_score=EXCLUDED.complexity_score, updated_at=now()`,
+      ['art:' + id, asTxt(v.artwork_analysis), asTxt(v.reconstruction_notes), asTxt(v.design_notes), asNum(v.complexity_score)])
+    // lead_stage_history (append transition reason)
+    if (asTxt(v.transition_reason)) {
+      await dbQuery(`INSERT INTO app.lead_stage_history (lead_id, transition_reason, changed_by, created_at)
+        SELECT (SELECT lead_id FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)), $2, $3, now()`,
+        [id, asTxt(v.transition_reason), agentName(req)])
+    }
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Per-message intent/summary (2-4 words) for the History timeline. Cached on the conversation.
 app.post('/api/ai/message-intents/:id', authRequired, async (req, res) => {
   if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
