@@ -2,7 +2,9 @@ import express from 'express'
 import cors from 'cors'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { getAll, findById, insert, update, remove, getSetting, setSetting, deleteSetting, flush } from './db.js'
+import { getAll, findById, insert, update, remove, getSetting, setSetting, deleteSetting, flush, query as dbQuery } from './db.js'
+import pdfParse from 'pdf-parse'
+import mammoth from 'mammoth'
 import { ManyChatClient } from './manychat.js'
 import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
@@ -15,7 +17,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'technocas-dev-secret-change-in-pro
 
 const app = express()
 app.use(cors())
-app.use(express.json({ limit: '2mb' }))
+app.use(express.json({ limit: '25mb' }))   // large enough for base64 file uploads in the AI assistant
 
 function authRequired(req, res, next) {
   const header = req.headers.authorization || ''
@@ -1410,11 +1412,77 @@ app.post('/api/ai/notes/:id', authRequired, async (req, res) => {
 })
 
 // AI Assistant — chat with the whole CRM (DB + chats + semantic search over messages).
+// ---- AI assistant: file attachments (image/PDF/Word/text) + text-to-SQL over the DB ----
+// Extract usable content from uploaded files. Returns { texts:[{name,text}], images:[dataUrl] }.
+async function extractFiles(files) {
+  const texts = [], images = []
+  for (const f of (Array.isArray(files) ? files : []).slice(0, 6)) {
+    const name = f?.name || 'file', type = f?.type || ''
+    try {
+      const b64 = String(f?.data || '').replace(/^data:[^;]+;base64,/, '')
+      if (!b64) continue
+      if (type.startsWith('image/')) { images.push(`data:${type || 'image/png'};base64,${b64}`); continue }
+      const buf = Buffer.from(b64, 'base64')
+      if (type === 'application/pdf' || /\.pdf$/i.test(name)) {
+        const d = await pdfParse(buf); texts.push({ name, text: (d.text || '').slice(0, 12000) })
+      } else if (/\.docx$/i.test(name) || type.includes('officedocument.wordprocessingml')) {
+        const d = await mammoth.extractRawText({ buffer: buf }); texts.push({ name, text: (d.value || '').slice(0, 12000) })
+      } else if (type.startsWith('text/') || /\.(txt|csv|md|json)$/i.test(name)) {
+        texts.push({ name, text: buf.toString('utf8').slice(0, 12000) })
+      } else {
+        texts.push({ name, text: '(unsupported file type — could not read it)' })
+      }
+    } catch (e) { texts.push({ name, text: `(could not read file: ${e.message})` }) }
+  }
+  return { texts, images }
+}
+
+// Compact schema so the model can write correct SQL.
+const SQL_SCHEMA = `PostgreSQL schema "app" (every row's full text is also in its "extra" JSONB column):
+- app.customers(customer_id, legacy_id, full_name, email, phone, company, platform_primary AS channel, tier, total_spent, total_orders, payment_status, lifetime_revenue, customer_segment[one_time/repeat/reseller/wholesale/strategic], reseller_potential, language, industry, created_at)
+- app.conversations(conversation_id, legacy_id, customer_id, channel, status, sentiment_score 0-100, last_message_at, created_at)
+- app.messages(message_id, legacy_id, conversation_id, direction['in'=customer,'out'=agent,'note'], sender_type, body, message_type, sentiment, sent_at, created_at)
+- app.leads(lead_id, legacy_id, customer_id, conversation_id, stage, status, source, source_platform, campaign_name, intent_score 0-100, purchase_probability, temperature[hot/warm/cold], customer_type, industry, language, business_potential[A+/A/B/C/D], estimated_value, created_at)
+- app.orders(order_id, legacy_id, order_number, customer_id, products, items_count, total_amount, order_status, payment_status, created_at)
+- app.payments(payment_id, legacy_id, customer_id, order_id, amount, method, status, created_at)
+- app.customer_health(customer_id, health_score, clv, reorder_probability, churn_risk, segment)
+Joins: app.messages.conversation_id = app.conversations.conversation_id ; app.conversations.customer_id = app.customers.customer_id ; app.orders/leads/payments/customer_health.customer_id = app.customers.customer_id.`
+
+// Read-only guard: a single SELECT only, with a row cap.
+function safeSelect(sql) {
+  let s = String(sql || '').trim().replace(/;+\s*$/, '')
+  if (!/^select\b/i.test(s)) return null
+  if (/\b(insert|update|delete|drop|alter|truncate|grant|revoke|create|copy)\b/i.test(s) || s.includes(';')) return null
+  if (!/\blimit\b/i.test(s)) s += ' LIMIT 200'
+  return s
+}
+
+// If the question needs precise data, have the model write a SELECT, run it (read-only), return the result text.
+async function sqlAnswer(prompt) {
+  try {
+    const plan = await chatJSON(
+      `You write ONE read-only PostgreSQL SELECT to answer the user's question about their CRM using ONLY this schema. If SQL is not useful for the question, set needsSql=false. Respond ONLY JSON: {"needsSql": boolean, "sql": string}\n${SQL_SCHEMA}`,
+      prompt)
+    if (!plan?.needsSql || !plan?.sql) return ''
+    const sql = safeSelect(plan.sql)
+    if (!sql) return ''
+    const r = await dbQuery(sql)
+    return `EXACT DATA from the database (use this as the source of truth):\nQuery: ${sql}\nRows (${r.rows.length}): ${JSON.stringify(r.rows.slice(0, 100))}`
+  } catch (e) { return `(tried a DB query but it failed: ${e.message})` }
+}
+
 app.post('/api/ai/ask', authRequired, async (req, res) => {
-  const { prompt, history = [] } = req.body || {}
-  if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt required' })
+  const { prompt = '', history = [], files = [], docs = [] } = req.body || {}
+  const hasFiles = Array.isArray(files) && files.length > 0
+  if (!prompt.trim() && !hasFiles) return res.status(400).json({ error: 'prompt required' })
   if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
   try {
+    // attached files (image/PDF/Word/text) + a precise DB query if the question needs exact data
+    const { texts: fileTexts, images } = hasFiles ? await extractFiles(files) : { texts: [], images: [] }
+    // documents stay "in context" for the whole chat: previously-uploaded (docs) + newly uploaded (fileTexts)
+    const priorDocs = Array.isArray(docs) ? docs.filter((d) => d && d.text) : []
+    const allDocs = [...priorDocs, ...fileTexts].slice(-6)
+    const sqlCtx = prompt.trim() ? await sqlAnswer(prompt) : ''
     const convs = getAll('conversations'), custs = getAll('customers'), leads = getAll('leads'), allMsgs = getAll('messages')
     const stats = `Conversations: ${convs.length} · Customers: ${custs.length} · Leads: ${leads.length} · Messages: ${allMsgs.length}`
     const pl = prompt.toLowerCase()
@@ -1490,14 +1558,20 @@ How to answer:
 - "Who paid / pending" → use each customer's payment field + orders/payments + chat confirmations.
 - You can also answer general questions from your own knowledge — no topic restrictions.
 - Combine structured data + chats, then give the best accurate answer. Reply in the user's language, mirror its structure, be clear and concise.`
-    const dataBlock = `CRM STATS: ${stats}\n\nALL CUSTOMERS (${custs.length}) — each line includes chat stats (total msgs, msgs from customer, ~questions asked):\n${custCtx}\n\nALL LEADS (${leads.length}):\n${leadCtx}\n\nORDERS:\n${orderCtx}\n\nPAYMENTS:\n${payCtx}\n${entityCtx ? `\nFULL TRANSCRIPT(S) for the customer(s) named in the question:${entityCtx}` : ''}\n\nRELEVANT MESSAGES (semantic search across ALL conversations):\n${ragCtx || '(none)'}`
+    const fileCtx = allDocs.length ? `\n\nATTACHED FILES (the user uploaded these in this chat — use their content to answer, including follow-up questions):\n${allDocs.map((f) => `--- ${f.name} ---\n${f.text}`).join('\n\n')}` : ''
+    const dataBlock = `CRM STATS: ${stats}\n\nALL CUSTOMERS (${custs.length}) — each line includes chat stats (total msgs, msgs from customer, ~questions asked):\n${custCtx}\n\nALL LEADS (${leads.length}):\n${leadCtx}\n\nORDERS:\n${orderCtx}\n\nPAYMENTS:\n${payCtx}\n${entityCtx ? `\nFULL TRANSCRIPT(S) for the customer(s) named in the question:${entityCtx}` : ''}\n\nRELEVANT MESSAGES (semantic search across ALL conversations):\n${ragCtx || '(none)'}${sqlCtx ? `\n\n${sqlCtx}` : ''}${fileCtx}`
+    // user turn — attach images (if any) for vision
+    const userText = prompt.trim() || (fileTexts.length ? `Please review the attached file(s): ${fileTexts.map((f) => f.name).join(', ')}` : 'Please review the attached image(s).')
+    const userContent = images.length
+      ? [{ type: 'text', text: userText }, ...images.map((url) => ({ type: 'image_url', image_url: { url } }))]
+      : userText
     const messages = [
       { role: 'system', content: `${sys}\n\n--- CRM DATA ---\n${dataBlock}` },
       ...(Array.isArray(history) ? history : []).slice(-6).map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content || '') })),
-      { role: 'user', content: prompt.trim() },
+      { role: 'user', content: userContent },
     ]
     const answer = await chatMessages(messages)
-    res.json({ ok: true, answer, matched: matched.map((c) => c.name) })
+    res.json({ ok: true, answer, matched: matched.map((c) => c.name), extractedFiles: fileTexts })
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
   }

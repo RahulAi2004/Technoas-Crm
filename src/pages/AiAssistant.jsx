@@ -1,9 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import TopBarUser from '../components/TopBarUser.jsx'
 import BackButton from '../components/BackButton.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { api } from '../lib/api.js'
+
+// Render the assistant's markdown (headings, bold, lists, tables, code) cleanly.
+const mdComponents = {
+  h1: (p) => <h3 className="mb-1 mt-3 text-base font-bold" {...p} />,
+  h2: (p) => <h3 className="mb-1 mt-3 text-base font-bold" {...p} />,
+  h3: (p) => <h4 className="mb-1 mt-2 text-sm font-bold" {...p} />,
+  p: (p) => <p className="mb-2 leading-relaxed last:mb-0" {...p} />,
+  ul: (p) => <ul className="mb-2 ml-4 list-disc space-y-0.5" {...p} />,
+  ol: (p) => <ol className="mb-2 ml-4 list-decimal space-y-0.5" {...p} />,
+  li: (p) => <li className="leading-relaxed" {...p} />,
+  strong: (p) => <strong className="font-semibold" {...p} />,
+  a: (p) => <a className="text-brand-600 underline" target="_blank" rel="noreferrer" {...p} />,
+  code: (p) => <code className="rounded bg-slate-100 px-1 py-0.5 text-[12px]" {...p} />,
+  pre: (p) => <pre className="mb-2 overflow-x-auto rounded-lg bg-slate-100 p-2 text-[12px]" {...p} />,
+  table: (p) => <div className="mb-2 overflow-x-auto"><table className="min-w-full border-collapse text-[12px]" {...p} /></div>,
+  th: (p) => <th className="border border-slate-200 bg-slate-50 px-2 py-1 text-left font-semibold" {...p} />,
+  td: (p) => <td className="border border-slate-200 px-2 py-1" {...p} />,
+}
+function Md({ text }) {
+  return <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{text || ''}</ReactMarkdown>
+}
 
 export default function AiAssistant() {
   const toast = useToast()
@@ -15,6 +38,22 @@ export default function AiAssistant() {
   const endRef = useRef(null)
   const abortRef = useRef(null)
   const chatIdRef = useRef(null)   // current saved chat id
+  const [files, setFiles] = useState([])   // staged files (not yet sent)
+  const [docs, setDocs] = useState([])     // extracted text of uploaded docs — kept for the whole chat (follow-ups)
+  const fileRef = useRef(null)
+
+  const addFiles = (list) => {
+    Array.from(list || []).slice(0, 6).forEach((file) => {
+      if (file.size > 15 * 1024 * 1024) { toast(`${file.name} is too large (max 15MB)`, 'error'); return }
+      const reader = new FileReader()
+      reader.onload = () => {
+        const data = String(reader.result).split(',')[1] || ''
+        setFiles((f) => [...f, { name: file.name, type: file.type || '', size: file.size, data }])
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+  const removeFile = (i) => setFiles((f) => f.filter((_, idx) => idx !== i))
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, busy])
   const loadChats = () => api.get('/api/ai/chats').then(setChats).catch(() => {})
@@ -34,12 +73,16 @@ export default function AiAssistant() {
 
   const send = async () => {
     const q = input.trim()
-    if (!q || busy) return
-    const next = [...messages, { role: 'user', content: q }]
-    setMessages(next); setInput(''); setBusy(true)
+    if ((!q && files.length === 0) || busy) return
+    const atts = files
+    const userMsg = { role: 'user', content: q, attachments: atts.map((f) => ({ name: f.name, type: f.type })) }
+    const next = [...messages, userMsg]
+    setMessages(next); setInput(''); setFiles([]); setBusy(true)
     const ctrl = new AbortController(); abortRef.current = ctrl
     try {
-      const r = await api.post('/api/ai/ask', { prompt: q, history: next.slice(-8) }, { signal: ctrl.signal })
+      const history = next.slice(-8).map(({ attachments, ...m }) => m)   // don't resend file metadata as history
+      const r = await api.post('/api/ai/ask', { prompt: q, history, files: atts.map((f) => ({ name: f.name, type: f.type, data: f.data })), docs }, { signal: ctrl.signal })
+      if (r.extractedFiles?.length) setDocs((d) => [...d, ...r.extractedFiles])   // keep document text for follow-up questions
       const withReply = [...next, { role: 'assistant', content: r.answer || '—', matched: r.matched }]
       setMessages(withReply); persist(withReply)
     } catch (ex) {
@@ -52,9 +95,9 @@ export default function AiAssistant() {
 
   const stop = () => abortRef.current?.abort()
   const onKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }
-  const newChat = () => { abortRef.current?.abort(); chatIdRef.current = null; setMessages([]); setInput('') }
+  const newChat = () => { abortRef.current?.abort(); chatIdRef.current = null; setMessages([]); setInput(''); setFiles([]); setDocs([]) }
   const openChat = async (id) => {
-    try { const c = await api.get(`/api/ai/chats/${id}`); chatIdRef.current = c.id; setMessages(c.messages || []) }
+    try { const c = await api.get(`/api/ai/chats/${id}`); chatIdRef.current = c.id; setMessages(c.messages || []); setFiles([]); setDocs([]) }
     catch { toast('Could not open chat', 'error') }
   }
   const deleteChat = async (id, e) => {
@@ -123,8 +166,19 @@ export default function AiAssistant() {
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {m.role === 'assistant' && <span className="mr-2 mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-xs text-white">✨</span>}
-                  <div className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm shadow-sm ${m.role === 'user' ? 'rounded-tr-md bg-brand-600 text-white' : m.error ? 'rounded-tl-md bg-rose-50 text-rose-700 ring-1 ring-rose-200' : m.stopped ? 'rounded-tl-md bg-slate-100 italic text-slate-500' : 'rounded-tl-md bg-white text-slate-800 ring-1 ring-slate-100'}`}>
-                    {m.content}
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${m.role === 'user' ? 'rounded-tr-md bg-brand-600 text-white' : m.error ? 'rounded-tl-md bg-rose-50 text-rose-700 ring-1 ring-rose-200' : m.stopped ? 'rounded-tl-md bg-slate-100 italic text-slate-500' : 'rounded-tl-md bg-white text-slate-800 ring-1 ring-slate-100'}`}>
+                    {m.attachments?.length > 0 && (
+                      <div className="mb-1.5 flex flex-wrap gap-1">
+                        {m.attachments.map((a, j) => (
+                          <span key={j} className="inline-flex items-center gap-1 rounded-md bg-black/15 px-1.5 py-0.5 text-[11px]">
+                            {a.type?.startsWith('image/') ? '🖼️' : '📄'} <span className="max-w-[160px] truncate">{a.name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {m.role === 'assistant' && !m.error && !m.stopped
+                      ? <Md text={m.content} />
+                      : <span className="whitespace-pre-wrap">{m.content}</span>}
                     {m.matched?.length > 0 && <div className="mt-1.5 text-[11px] text-slate-400">📇 {m.matched.join(', ')}</div>}
                   </div>
                 </div>
@@ -143,18 +197,36 @@ export default function AiAssistant() {
             </div>
           )}
 
-          <div className="mb-4 flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-            <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={onKey} rows={1} placeholder="Ask anything about your customers, chats or leads…"
-              className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none" />
-            {busy ? (
-              <button onClick={stop} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-500 text-white hover:bg-rose-600" aria-label="Stop" title="Stop">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
-              </button>
-            ) : (
-              <button onClick={send} disabled={!input.trim()} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50" aria-label="Send">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
-              </button>
+          <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+            {files.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2 px-1">
+                {files.map((f, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                    {f.type.startsWith('image/') ? '🖼️' : '📄'}
+                    <span className="max-w-[150px] truncate">{f.name}</span>
+                    <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-rose-600" title="Remove">✕</button>
+                  </span>
+                ))}
+              </div>
             )}
+            <div className="flex items-end gap-2">
+              <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.docx,.txt,.csv,.md,.json" className="hidden"
+                onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
+              <button onClick={() => fileRef.current?.click()} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-slate-100" title="Attach image, PDF or Word">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+              </button>
+              <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={onKey} rows={1} placeholder="Ask anything, or attach an image / PDF / Word file…"
+                className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none" />
+              {busy ? (
+                <button onClick={stop} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-500 text-white hover:bg-rose-600" aria-label="Stop" title="Stop">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+                </button>
+              ) : (
+                <button onClick={send} disabled={!input.trim() && files.length === 0} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50" aria-label="Send">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
+                </button>
+              )}
+            </div>
           </div>
           <p className="mb-3 text-center text-[11px] text-slate-400">AI answers are based on your CRM data. Verify important details before acting.</p>
         </main>
