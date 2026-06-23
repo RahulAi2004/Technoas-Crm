@@ -159,7 +159,7 @@ export default function Receipts() {
               <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-bold">Receipt Preview</h3><button className="grid h-7 w-7 place-items-center rounded-md hover:bg-slate-100">✕</button></div>
               <div className="mb-3 flex items-center justify-between"><div className="text-xs"><div className="text-slate-500">Receipt No.</div><div className="font-semibold">{active.no}</div></div><span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">● Paid</span></div>
               <div className="rounded-lg border border-slate-200 bg-white p-3">
-                <div className="mb-3 inline-flex items-center gap-1.5 text-sm font-bold"><span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-indigo-400 to-indigo-600 text-white text-xs font-black">T</span>Technocas</div>
+                <div className="mb-3 inline-flex items-center gap-1.5 text-sm font-bold"><span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-indigo-400 to-indigo-600 text-white text-xs font-black">D</span>Decoinks</div>
                 <h4 className="mb-3 text-base font-extrabold">Receipt</h4>
                 <dl className="space-y-1.5 text-xs">
                   <div className="flex justify-between"><dt className="text-slate-500">Receipt No.</dt><dd className="font-semibold">{active.no}</dd></div>

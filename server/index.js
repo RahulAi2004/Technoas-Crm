@@ -1649,20 +1649,19 @@ app.get('/api/after-session/clients', authRequired, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// 2) Current saved field values for one client (to prefill the form).
+// 2) Current saved field values for one client (to prefill the form). Resilient: a single
+// missing column/table won't fail the whole load — each section is fetched independently.
 app.get('/api/after-session/client/:id', authRequired, async (req, res) => {
-  try {
-    const id = req.params.id
-    const c = (await dbQuery(`SELECT COALESCE(NULLIF(co.extra->>'name',''),cu.full_name) name, co.channel, co.sentiment_score, co.conversation_summary, co.conversation_insights,
-        co.extra->'ai_profile'->>'products' need, co.extra->'ai_profile'->>'quantity' quantity
-      FROM app.conversations co LEFT JOIN app.customers cu ON cu.customer_id=co.customer_id WHERE co.legacy_id=$1`, [id])).rows[0]
-    if (!c) return res.status(404).json({ error: 'client not found' })
-    const l = (await dbQuery(`SELECT intent_score, purchase_probability, lead_summary, profile_summary, ai_observations FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)`, [id])).rows[0] || {}
-    const rq = (await dbQuery(`SELECT requirement_summary, missing_information FROM app.requirements WHERE legacy_id=$1`, ['req:' + id])).rows[0] || {}
-    const aw = (await dbQuery(`SELECT artwork_analysis, reconstruction_notes, design_notes, complexity_score FROM app.artwork WHERE legacy_id=$1`, ['art:' + id])).rows[0] || {}
-    const sh = (await dbQuery(`SELECT transition_reason FROM app.lead_stage_history WHERE lead_id=(SELECT lead_id FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)) ORDER BY created_at DESC LIMIT 1`, [id])).rows[0] || {}
-    res.json({ name: c.name, channel: c.channel, values: { need: c.need, quantity: c.quantity, ...l, sentiment_score: c.sentiment_score, conversation_summary: c.conversation_summary, conversation_insights: c.conversation_insights, ...rq, ...aw, ...sh } })
-  } catch (e) { res.status(500).json({ error: e.message }) }
+  const id = req.params.id
+  const one = async (sql, params) => { try { return (await dbQuery(sql, params)).rows[0] || {} } catch (e) { console.warn('[after-session/client]', e.message); return {} } }
+  const c = await one(`SELECT COALESCE(NULLIF(co.extra->>'name',''),cu.full_name) name, co.channel, co.sentiment_score, co.conversation_summary, co.conversation_insights,
+      co.extra->'ai_profile'->>'products' need, co.extra->'ai_profile'->>'quantity' quantity
+    FROM app.conversations co LEFT JOIN app.customers cu ON cu.customer_id=co.customer_id WHERE co.legacy_id=$1`, [id])
+  const l = await one(`SELECT intent_score, purchase_probability, lead_summary, profile_summary, ai_observations FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)`, [id])
+  const rq = await one(`SELECT requirement_summary, missing_information FROM app.requirements WHERE legacy_id=$1`, ['req:' + id])
+  const aw = await one(`SELECT artwork_analysis, reconstruction_notes, design_notes, complexity_score FROM app.artwork WHERE legacy_id=$1`, ['art:' + id])
+  const sh = await one(`SELECT transition_reason FROM app.lead_stage_history WHERE lead_id=(SELECT lead_id FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)) ORDER BY created_at DESC LIMIT 1`, [id])
+  res.json({ name: c.name || id, channel: c.channel || null, values: { need: c.need, quantity: c.quantity, ...l, sentiment_score: c.sentiment_score, conversation_summary: c.conversation_summary, conversation_insights: c.conversation_insights, ...rq, ...aw, ...sh } })
 })
 
 const AS_FIELDS_DOC = `{

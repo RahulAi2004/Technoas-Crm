@@ -34,7 +34,7 @@ export default function Integrations() {
   const [status, setStatus] = useState(null)
   const [apiKey, setApiKey] = useState('')
   const [busy, setBusy] = useState(false)
-  const [testText, setTestText] = useState('Hello from Technocas CRM 👋')
+  const [testText, setTestText] = useState('Hello from Decoinks CRM 👋')
   const [testSubId, setTestSubId] = useState('')
 
   // ---- Meta (Messenger + Instagram) ----

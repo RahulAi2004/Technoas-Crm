@@ -36,8 +36,7 @@ export default function CreateAccount() {
       {/* Left brand panel */}
       <section className="relative hidden lg:flex flex-col justify-between overflow-hidden bg-gradient-to-br from-ink-900 via-ink-800 to-ink-900 text-white p-12">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-lg"><span className="text-lg font-black">T</span></div>
-          <span className="text-xl font-bold tracking-tight">Technocas CRM</span>
+          <img src="/logo.jpg" alt="Decoinks CRM" className="h-11 rounded-lg bg-white px-2.5 py-1 shadow-lg" />
         </div>
         <div className="space-y-6">
           <h1 className="text-6xl font-black leading-[0.95]">Create your<br/><span className="text-brand-500">agent account.</span></h1>
@@ -51,8 +50,7 @@ export default function CreateAccount() {
       <section className="flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md">
           <div className="lg:hidden mb-8 flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-lg"><span className="text-lg font-black">T</span></div>
-            <span className="text-xl font-bold tracking-tight">Technocas CRM</span>
+            <img src="/logo.jpg" alt="Decoinks CRM" className="h-10 rounded-lg" />
           </div>
 
           {done ? (

@@ -38,8 +38,7 @@ export default function Login() {
       {/* Left: brand panel */}
       <section className="relative hidden lg:flex flex-col justify-between overflow-hidden bg-gradient-to-br from-ink-900 via-ink-800 to-ink-900 text-white p-12">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-lg"><span className="text-lg font-black">T</span></div>
-          <span className="text-xl font-bold tracking-tight">Technocas CRM</span>
+          <img src="/logo.jpg" alt="Decoinks CRM" className="h-11 rounded-lg bg-white px-2.5 py-1 shadow-lg" />
         </div>
 
         <div className="space-y-6">
@@ -69,12 +68,11 @@ export default function Login() {
       <section className="flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md">
           <div className="lg:hidden mb-8 flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-lg"><span className="text-lg font-black">T</span></div>
-            <span className="text-xl font-bold tracking-tight">Technocas CRM</span>
+            <img src="/logo.jpg" alt="Decoinks CRM" className="h-10 rounded-lg" />
           </div>
 
           <h2 className="text-4xl font-extrabold tracking-tight">Welcome back</h2>
-          <p className="mt-2 text-slate-500">Sign in to your Technocas CRM account to continue.</p>
+          <p className="mt-2 text-slate-500">Sign in to your Decoinks CRM account to continue.</p>
 
           <div className="mt-5 rounded-xl border border-brand-500/30 bg-brand-50/60 p-3 text-xs text-slate-700">
             <div className="mb-1 inline-flex items-center gap-1.5 font-semibold text-brand-700">
@@ -150,7 +148,7 @@ export default function Login() {
           </form>
 
           <p className="mt-6 text-center text-sm text-slate-600">New agent? <Link to="/create-account" className="font-semibold text-brand-600 hover:text-brand-700">Create an account</Link></p>
-          <p className="mt-3 text-center text-xs text-slate-500">Protected by Technocas · By signing in you accept our Terms of Service.</p>
+          <p className="mt-3 text-center text-xs text-slate-500">Protected by Decoinks · By signing in you accept our Terms of Service.</p>
         </div>
       </section>
     </main>

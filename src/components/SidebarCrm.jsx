@@ -15,9 +15,9 @@ export default function SidebarCrm({ active }) {
     <aside className="flex flex-col bg-ink-900 text-slate-300">
       <Link to="/dashboard" className="flex h-16 items-center gap-2 px-5">
         <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600">
-          <span className="text-sm font-black text-white">T</span>
+          <span className="text-sm font-black text-white">D</span>
         </div>
-        <span className="text-lg font-bold text-white">Technocas</span>
+        <img src="/logo.jpg" alt="Decoinks" className="h-7 rounded bg-white px-1.5" />
       </Link>
 
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-6">

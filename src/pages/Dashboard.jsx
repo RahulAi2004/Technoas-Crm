@@ -313,9 +313,9 @@ export default function Dashboard() {
       <aside className="flex flex-col bg-ink-900 text-slate-300">
         <div className="sb-brand flex h-16 items-center gap-2 px-5">
           <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600">
-            <span className="text-sm font-black text-white">T</span>
+            <span className="text-sm font-black text-white">D</span>
           </div>
-          <span className="sb-brand-text text-lg font-bold text-white">Technocas</span>
+          <img src="/logo.jpg" alt="Decoinks" className="sb-brand-text h-7 rounded bg-white px-1.5" />
           <button onClick={() => setSbCollapsed(true)} className="sb-brand-text ml-auto grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Collapse sidebar">
             <svg id="sb-toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform .25s ease' }}><path d="m15 18-6-6 6-6"/></svg>
           </button>
