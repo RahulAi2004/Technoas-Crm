@@ -45,7 +45,8 @@ if (process.argv[1].endsWith('build-intelligence.js')) {
   // lifetime revenue per customer (legacy id)
   const rev = {}; for (const r of (await pool.query(`SELECT c.legacy_id clid, COALESCE(SUM(o.total_amount),0) tot FROM app.orders o JOIN app.customers c ON o.customer_id = c.customer_id GROUP BY 1`)).rows) rev[r.clid] = Number(r.tot) || 0
 
-  const todo = convs.filter((c) => (byConv[c.id] || []).length && !c.intelligence_at)
+  // stale-aware: re-score when a conversation has MORE messages than when last scored (new chats too)
+  const todo = convs.filter((c) => { const n = (byConv[c.id] || []).length; return n > 0 && (c.intelligence_msg_count || 0) < n })
   console.log(`conversations: ${convs.length}, to score: ${todo.length} (rest already done)`)
 
   const results = await pMap(todo, async (conv) => {
@@ -53,12 +54,12 @@ if (process.argv[1].endsWith('build-intelligence.js')) {
     const transcript = cm.map((m) => `${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.txt}`).join('\n').slice(0, 9000)
     const ltv = rev[`cust:${conv.id}`] || 0
     const out = await chatJSON(SYS, `Order history total: $${ltv}\n\nConversation:\n${transcript}`)
-    return { conv, out, ltv }
+    return { conv, out, ltv, count: (byConv[conv.id] || []).length }
   }, 5)
 
   let saved = 0
   for (const r of results.filter(Boolean)) {
-    const { conv, out, ltv } = r
+    const { conv, out, ltv, count } = r
     const cLid = `cust:${conv.id}`
     try {
       // 1) customer
@@ -80,8 +81,8 @@ if (process.argv[1].endsWith('build-intelligence.js')) {
       // 3) conversation (sentiment + summary + mark done)
       await pool.query(
         `UPDATE app.conversations SET sentiment_score=$2, conversation_summary=$3,
-         extra = extra || jsonb_build_object('intelligence_at', now()::text) WHERE legacy_id=$1`,
-        [conv.id, clamp(out.sentiment_score), str(out.lead_summary)])
+         extra = extra || jsonb_build_object('intelligence_at', now()::text, 'intelligence_msg_count', $4::int) WHERE legacy_id=$1`,
+        [conv.id, clamp(out.sentiment_score), str(out.lead_summary), count])
       // 4) customer_health (upsert keyed by customer_id)
       await pool.query(
         `INSERT INTO app.customer_health (customer_id, health_score, clv, reorder_probability, churn_risk, segment, customer_analysis, updated_at)

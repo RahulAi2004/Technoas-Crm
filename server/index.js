@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken'
 import { getAll, findById, insert, update, remove, getSetting, setSetting, deleteSetting, flush, query as dbQuery } from './db.js'
 import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
+import { spawn } from 'node:child_process'
 import { ManyChatClient } from './manychat.js'
 import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
@@ -1767,4 +1768,24 @@ app.use((err, req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`✅ Technocas CRM API running on http://localhost:${PORT}`)
   startMetaPolling()
+  startIntelligenceRefresh()
 })
+
+// Auto-refresh AI profiles + lead intelligence for NEW/CHANGED chats (stale-aware scripts).
+// Runs ~90s after boot, then every 20 min — so new customers/messages get scored automatically.
+function startIntelligenceRefresh() {
+  if (!aiConfigured()) return
+  let refreshing = false
+  const runScript = (file) => new Promise((resolve) => {
+    const p = spawn(process.execPath, [file], { cwd: process.cwd(), stdio: 'ignore', env: process.env })
+    p.on('close', () => resolve()); p.on('error', () => resolve())
+  })
+  const refresh = async () => {
+    if (refreshing) return
+    refreshing = true
+    try { await runScript('build-profiles.js'); await runScript('build-intelligence.js'); console.log('🔄 AI profiles + intelligence refreshed') }
+    catch { /* best effort */ } finally { refreshing = false }
+  }
+  setTimeout(refresh, 90_000)
+  setInterval(refresh, 20 * 60_000)
+}
