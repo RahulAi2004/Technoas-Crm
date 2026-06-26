@@ -533,6 +533,26 @@ async function upsertMetaConversation(channel, senderId, profile = {}) {
   return conv
 }
 
+// Delete a lead/conversation permanently — removes conversation + messages + lead +
+// customer + notes, deletes its Qdrant vectors, and tells the poller never to re-create it.
+app.post('/api/conversations/:id/delete', authRequired, async (req, res) => {
+  const id = req.params.id
+  try {
+    const msgs = getAll('messages').filter((m) => m.conversation_id === id)
+    if (qdrantConfigured() && msgs.length) {
+      try { await new QdrantClient().request(`/collections/${MSG_COLLECTION}/points/delete?wait=true`, { method: 'POST', body: { points: msgs.map((m) => pointId(m.id)) } }) } catch { /* best effort */ }
+    }
+    msgs.forEach((m) => remove('messages', m.id))
+    getAll('leads').filter((l) => l.conversation_id === id).forEach((l) => remove('leads', l.id))
+    getAll('customers').filter((c) => c.conversation_id === id).forEach((c) => remove('customers', c.id))
+    getAll('notes').filter((n) => n.related_id === id || n.conversation_id === id).forEach((n) => remove('notes', n.id))
+    remove('conversations', id)
+    const del = new Set(getSetting('deleted_conversations') || []); del.add(String(id))
+    setSetting('deleted_conversations', [...del])
+    res.json({ ok: true, deletedMessages: msgs.length })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Connection status (never returns the raw token)
 app.get('/api/meta/status', authRequired, (req, res) => {
   const token = getSetting('meta_page_token')
@@ -859,6 +879,7 @@ async function syncMetaConversations() {
         const other = parts.find(p => String(p.id) !== pageId && String(p.id) !== igId) || parts[0]
         if (!other) continue
         const convId = `${prefix}:${other.id}`
+        if ((getSetting('deleted_conversations') || []).includes(convId)) continue  // user deleted this lead — don't re-create
 
         let conv = findById('conversations', convId)
         if (!conv) {

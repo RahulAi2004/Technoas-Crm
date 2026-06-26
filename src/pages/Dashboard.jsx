@@ -74,6 +74,7 @@ export default function Dashboard() {
   const [currentId, setCurrentId] = useState(() => localStorage.getItem('currentConvId') || null)
   const [messages, setMessages] = useState([])
   const [loadingConvs, setLoadingConvs] = useState(true)
+  const [convMenuOpen, setConvMenuOpen] = useState(false)
   useEffect(() => { if (currentId) localStorage.setItem('currentConvId', currentId) }, [currentId])
 
   const convTs = (c) => c.last_ts || (c.created_at ? Date.parse(c.created_at) : 0) || 0
@@ -82,6 +83,19 @@ export default function Dashboard() {
     [conversationsRaw])
   const currentConv = conversations.find((c) => c.id === currentId) || null
   const conv = currentConv ? { ...currentConv, messages } : null
+
+  // Delete a lead permanently (conversation + messages + lead + customer); poller won't re-create it.
+  const deleteLead = async () => {
+    if (!conv?.id) return
+    setConvMenuOpen(false)
+    if (!window.confirm(`Delete lead "${conv.name}"?\n\nThe conversation, all messages, the lead and the customer will be permanently removed. This cannot be undone.`)) return
+    try {
+      await api.post(`/api/conversations/${encodeURIComponent(conv.id)}/delete`)
+      setConversationsRaw((cs) => cs.filter((c) => c.id !== conv.id))
+      setCurrentId(null); localStorage.removeItem('currentConvId')
+      toast('Lead deleted', 'success')
+    } catch (e) { toast(e.message || 'Delete failed', 'error') }
+  }
 
   // Fetch conversations (with polling for new ones from webhook)
   const fetchConvs = async () => {
@@ -692,7 +706,20 @@ export default function Dashboard() {
                     AI Supervisor
                   </button>
                 )}
-                <button className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 hover:bg-slate-50" aria-label="More"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+                <div className="relative">
+                  <button onClick={() => setConvMenuOpen((o) => !o)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 hover:bg-slate-50" aria-label="More"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+                  {convMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setConvMenuOpen(false)} />
+                      <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                        <button onClick={deleteLead} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          Delete lead
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
