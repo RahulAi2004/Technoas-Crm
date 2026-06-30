@@ -1557,18 +1557,6 @@ app.post('/api/ai/ask', authRequired, async (req, res) => {
     // documents stay "in context" for the whole chat: previously-uploaded (docs) + newly uploaded (fileTexts)
     const priorDocs = Array.isArray(docs) ? docs.filter((d) => d && d.text) : []
     const allDocs = [...priorDocs, ...fileTexts].slice(-6)
-    // Kick off the two network-bound steps in parallel (live SQL + semantic RAG) — they run
-    // while we build the structured context below, then we await both before composing the prompt.
-    const sqlP = prompt.trim() ? sqlAnswer(prompt, chatModel) : Promise.resolve('')
-    const aggP = withTimeout(dbAggregates(), 8000)   // live aggregate stats from PostgreSQL (in-memory fallback)
-    const ragP = (async () => {
-      if (!qdrantConfigured() || !prompt.trim()) return ''
-      try {
-        const [vec] = await embed(prompt)
-        const hits = await new QdrantClient().search('crm_messages', vec, { limit: 24 })
-        return (hits?.result || []).map((h) => h.payload?.text).filter(Boolean).join('\n---\n')
-      } catch { return '' }
-    })()
     const convs = getAll('conversations'), custs = getAll('customers'), leads = getAll('leads'), allMsgs = getAll('messages')
     const stats = `Conversations: ${convs.length} · Customers: ${custs.length} · Leads: ${leads.length} · Messages: ${allMsgs.length}`
     const pl = prompt.toLowerCase()
@@ -1585,25 +1573,67 @@ app.post('/api/ai/ask', authRequired, async (req, res) => {
       })
     }
     matched = matched.slice(0, 3)
+
+    // FAST PATH — "client ka chat script": if the user typed (basically) just one client's name,
+    // or asked for their chat/transcript, return the full conversation straight from the structured
+    // data — NO LLM call (near-zero cost). The AI never re-reads the whole chat like before.
+    if (!hasFiles && matched.length === 1) {
+      const c = matched[0]
+      const nameWords = (c.name || '').toLowerCase().split(/\s+/).filter(Boolean)
+      const leftover = pl.split(/[^a-z0-9]+/i).filter((w) => w && !nameWords.includes(w))
+      const justName = leftover.length === 0                                   // only the customer's name typed
+      const scriptKw = /\b(chat|chats|script|transcript|conversation|conversations|baat|baatein|baaten)\b/i.test(prompt)
+      if (justName || scriptKw) {
+        const all = allMsgs.filter((m) => m.conversation_id === c.id && (m.dir === 'in' || m.dir === 'out') && (m.text || '').trim())
+        const cust = custs.find((x) => x.conversation_id === c.id) || {}
+        const p = c.ai_profile
+        const head = [
+          `### ${c.name}${c.company ? ` — ${c.company}` : ''}`,
+          `**Channel:** ${c.channel || '-'} · **Phone:** ${c.phone || '-'} · **Spend:** $${cust.spend ?? 0} · **Orders:** ${cust.orders ?? 0} · **Messages:** ${all.length}`,
+          p?.summary ? `**Summary:** ${p.summary}` : '',
+          p ? `**Stage:** ${p.leadStage || '-'} · **Payment:** ${p.paymentStatus || '-'} · **Products:** ${p.products || '-'}${p.quantity ? ` (${p.quantity})` : ''} · **Next step:** ${p.nextStep || '-'}` : '',
+        ].filter(Boolean).join('\n\n')
+        const lines = all.map((m) => `**${m.dir === 'in' ? 'Customer' : 'Agent'}:** ${m.text}`)
+        const MAX = 600
+        const shown = lines.length > MAX ? lines.slice(-MAX) : lines
+        const note = lines.length > MAX ? `\n\n_(showing the last ${MAX} of ${lines.length} messages)_` : ''
+        const answer = all.length ? `${head}\n\n---\n\n${shown.join('\n\n')}${note}` : `${head}\n\n_(no messages found for this customer)_`
+        return res.json({ ok: true, answer, model: 'database (no AI)', matched: [c.name], extractedFiles: [] })
+      }
+    }
+
+    // 2) Not a pure script request → run the AI pipeline. Kick off the network-bound steps in
+    //    parallel (live SQL + semantic RAG + live aggregates) while we build the context below.
+    const sqlP = prompt.trim() ? sqlAnswer(prompt, chatModel) : Promise.resolve('')
+    const aggP = withTimeout(dbAggregates(), 8000)   // live aggregate stats from PostgreSQL (in-memory fallback)
+    const ragP = (async () => {
+      if (!qdrantConfigured() || !prompt.trim()) return ''
+      try {
+        const [vec] = await embed(prompt)
+        const hits = await new QdrantClient().search('crm_messages', vec, { limit: 24 })
+        return (hits?.result || []).map((h) => h.payload?.text).filter(Boolean).join('\n---\n')
+      } catch { return '' }
+    })()
+
     let entityCtx = ''
     for (const c of matched) {
       const all = allMsgs.filter((m) => m.conversation_id === c.id && (m.dir === 'in' || m.dir === 'out'))
       const inCount = all.filter((m) => m.dir === 'in').length
-      const lead = leads.find((l) => l.conversation_id === c.id) || {}
       const cust = custs.find((x) => x.conversation_id === c.id) || {}
       const p = c.ai_profile
       let block = `\n\n=== CUSTOMER: ${c.name} (${c.channel || '-'}) ===\nPhone: ${c.phone || '-'} | Company: ${c.company || '-'} | Spend: $${cust.spend ?? 0} | Orders: ${cust.orders ?? 0} | Total messages: ${all.length} (from customer: ${inCount})`
       if (p) {
         block += `\nPROFILE (pre-extracted digest — use this first):\nSummary: ${p.summary || '-'}\nProducts: ${p.products || '-'}${p.quantity ? ` (${p.quantity})` : ''}\nOrder total: $${p.orderTotal || 0} | Payment: ${p.paymentStatus || '-'} | Stage: ${p.leadStage || '-'} | Deadline: ${p.deadline || '-'} | Address: ${p.shippingAddress || '-'} | Sentiment: ${p.sentiment || '-'}\nQuestions the customer asked (${(p.questions || []).length}):\n${(p.questions || []).map((q, i) => `${i + 1}. ${q}`).join('\n') || '-'}\nKey notes: ${(p.keyNotes || []).join('; ') || '-'}\nNext step: ${p.nextStep || '-'}`
       }
-      // when exactly one customer is named, also attach the raw transcript for verbatim quotes
+      // Only a small RECENT slice for cost (the full chat is the no-AI fast path above). For verbatim
+      // quotes the digest's pre-extracted questions usually suffice; tell the model how to get more.
       if (matched.length === 1) {
-        block += `\nFULL TRANSCRIPT (Customer = their messages, Agent = our replies):\n` + all.slice(-800).map((m) => `${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.text}`).join('\n')
+        block += `\nRECENT MESSAGES (last 60 — for the FULL chat the user can type just "${c.name}" or "${c.name} chat"):\n` + all.slice(-60).map((m) => `${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.text}`).join('\n')
       }
       entityCtx += block
     }
 
-    // 2) Await the parallel SQL + semantic-search + live-aggregate results started above
+    // 3) Await the parallel SQL + semantic-search + live-aggregate results started above
     const [sqlCtx, ragCtx, liveAgg] = await Promise.all([sqlP, ragP, aggP])
 
     // 3) Aggregate stats: prefer LIVE PostgreSQL (source of truth); fall back to the in-memory
