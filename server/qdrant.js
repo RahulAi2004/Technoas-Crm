@@ -12,11 +12,12 @@ export class QdrantClient {
     if (!URL) throw new Error('QDRANT_URL not set in .env')
   }
 
-  async request(path, { method = 'GET', body } = {}) {
+  async request(path, { method = 'GET', body, timeoutMs = 2500 } = {}) {
     const res = await fetch(URL + path, {
       method,
       headers: { 'api-key': KEY, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(timeoutMs),   // fail fast if Qdrant is unreachable instead of hanging
     })
     const text = await res.text()
     let data = null

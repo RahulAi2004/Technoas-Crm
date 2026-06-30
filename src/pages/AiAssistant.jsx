@@ -41,6 +41,9 @@ export default function AiAssistant() {
   const [files, setFiles] = useState([])   // staged files (not yet sent)
   const [docs, setDocs] = useState([])     // extracted text of uploaded docs — kept for the whole chat (follow-ups)
   const fileRef = useRef(null)
+  const [modelList, setModelList] = useState([])  // available chat models (from backend)
+  const [model, setModel] = useState(() => localStorage.getItem('ai_model') || 'gpt-4o-mini')
+  const pickModel = (id) => { setModel(id); localStorage.setItem('ai_model', id) }
 
   const addFiles = (list) => {
     Array.from(list || []).slice(0, 6).forEach((file) => {
@@ -58,6 +61,17 @@ export default function AiAssistant() {
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, busy])
   const loadChats = () => api.get('/api/ai/chats').then(setChats).catch(() => {})
   useEffect(() => { loadChats() }, [])
+  useEffect(() => {
+    api.get('/api/ai/status').then((d) => {
+      const list = d.chatModels || []
+      setModelList(list)
+      // if the saved model isn't available, fall back to the first ready one
+      if (list.length && !list.some((m) => m.id === model && m.ready)) {
+        const first = list.find((m) => m.ready) || list[0]
+        if (first) pickModel(first.id)
+      }
+    }).catch(() => {})
+  }, [])
 
   const persist = async (msgs) => {
     try {
@@ -81,9 +95,9 @@ export default function AiAssistant() {
     const ctrl = new AbortController(); abortRef.current = ctrl
     try {
       const history = next.slice(-8).map(({ attachments, ...m }) => m)   // don't resend file metadata as history
-      const r = await api.post('/api/ai/ask', { prompt: q, history, files: atts.map((f) => ({ name: f.name, type: f.type, data: f.data })), docs }, { signal: ctrl.signal })
+      const r = await api.post('/api/ai/ask', { prompt: q, history, files: atts.map((f) => ({ name: f.name, type: f.type, data: f.data })), docs, model }, { signal: ctrl.signal })
       if (r.extractedFiles?.length) setDocs((d) => [...d, ...r.extractedFiles])   // keep document text for follow-up questions
-      const withReply = [...next, { role: 'assistant', content: r.answer || '—', matched: r.matched }]
+      const withReply = [...next, { role: 'assistant', content: r.answer || '—', matched: r.matched, model: r.model }]
       setMessages(withReply); persist(withReply)
     } catch (ex) {
       const msg = ex.name === 'AbortError' ? { role: 'assistant', content: 'Stopped.', stopped: true } : { role: 'assistant', content: ex.message || 'Failed to answer', error: true }
@@ -179,7 +193,12 @@ export default function AiAssistant() {
                     {m.role === 'assistant' && !m.error && !m.stopped
                       ? <Md text={m.content} />
                       : <span className="whitespace-pre-wrap">{m.content}</span>}
-                    {m.matched?.length > 0 && <div className="mt-1.5 text-[11px] text-slate-400">📇 {m.matched.join(', ')}</div>}
+                    {(m.matched?.length > 0 || m.model) && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-400">
+                        {m.matched?.length > 0 && <span>📇 {m.matched.join(', ')}</span>}
+                        {m.model && <span>· {modelList.find((x) => x.id === m.model)?.label || m.model}</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -227,6 +246,20 @@ export default function AiAssistant() {
                 </button>
               )}
             </div>
+            {modelList.length > 0 && (
+              <div className="mt-1 flex items-center gap-1.5 px-1" title="Choose which AI model answers">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M12 2a3 3 0 0 0-3 3 3 3 0 0 0-3 3 3 3 0 0 0 0 6 3 3 0 0 0 3 3 3 3 0 0 0 6 0 3 3 0 0 0 3-3 3 3 0 0 0 0-6 3 3 0 0 0-3-3 3 3 0 0 0-3-3Z"/></svg>
+                <span className="text-[11px] text-slate-400">Model</span>
+                <select value={model} onChange={(e) => pickModel(e.target.value)}
+                  className="cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-xs font-semibold text-slate-600 outline-none hover:bg-slate-50 focus:border-brand-400">
+                  {modelList.map((m) => (
+                    <option key={m.id} value={m.id} disabled={!m.ready}>
+                      {m.label}{m.ready ? '' : ' — needs API key'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <p className="mb-3 text-center text-[11px] text-slate-400">AI answers are based on your CRM data. Verify important details before acting.</p>
         </main>

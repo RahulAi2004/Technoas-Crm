@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process'
 import { ManyChatClient } from './manychat.js'
 import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
-import { aiConfigured, aiModels, embed, chatJSON, chatText, chatMessages } from './ai.js'
+import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -1072,7 +1072,7 @@ app.get('/api/qdrant/status', authRequired, async (req, res) => {
 // AI Supervisor — real analysis (OpenAI) with Qdrant RAG
 // ============================================================
 app.get('/api/ai/status', authRequired, (req, res) => {
-  res.json({ configured: aiConfigured(), models: aiModels(), qdrant: qdrantConfigured() })
+  res.json({ configured: aiConfigured(), anthropic: anthropicConfigured(), models: aiModels(), chatModels: chatModels(), qdrant: qdrantConfigured() })
 })
 
 // ============================================================
@@ -1479,40 +1479,99 @@ function safeSelect(sql) {
   return s
 }
 
-// If the question needs precise data, have the model write a SELECT, run it (read-only), return the result text.
-async function sqlAnswer(prompt) {
+// Give the SELECTED model live, read-only access to PostgreSQL: it can run several SELECT
+// queries, see the results, and refine across a few rounds — full "check & query" power.
+async function sqlAnswer(prompt, model) {
+  let results = ''
+  for (let round = 0; round < 2; round++) {
+    let plan
+    try {
+      plan = await chatJSON(
+        `You answer questions about a CRM by querying its LIVE PostgreSQL database. You may run read-only SELECT queries, see the results, then decide whether you need more data. Use ONLY this schema. Prefer SQL whenever the question needs exact numbers, counts, lists, filters, or specific records.
+Respond ONLY JSON: {"queries": string[] (0-4 read-only SELECT statements to run now), "done": boolean (true once you have enough data to answer)}.
+${SQL_SCHEMA}${results ? `\n\nResults so far:${results}` : ''}`,
+        prompt, { model })
+    } catch (e) { results += `\n(query planning failed: ${e.message})`; break }
+    const qs = Array.isArray(plan?.queries) ? plan.queries.slice(0, 4) : []
+    for (const raw of qs) {
+      const sql = safeSelect(raw)
+      if (!sql) continue
+      try { const r = await dbQuery(sql); results += `\nQuery: ${sql}\nRows (${r.rows.length}): ${JSON.stringify(r.rows.slice(0, 100))}` }
+      catch (e) { results += `\nQuery: ${sql}\nERROR: ${e.message}` }
+    }
+    if (!qs.length || plan?.done) break
+  }
+  return results.trim() ? `EXACT DATA from the database (queried live — use this as the source of truth):${results}` : ''
+}
+
+// Resolve a promise but give up (→ null) after ms — keeps a flaky/slow DB from blocking the request.
+const withTimeout = (p, ms) => Promise.race([Promise.resolve(p).catch(() => null), new Promise((r) => setTimeout(() => r(null), ms))])
+
+// LIVE aggregate stats straight from PostgreSQL (source of truth, always current — not the
+// boot-time in-memory snapshot). Returns formatted text, or null if the DB is unreachable.
+async function dbAggregates() {
+  const rows = async (s) => (await dbQuery(s)).rows
+  const grp = (r, k) => r.map((x) => `${x[k] || '-'}: ${x.n}`).join(', ') || '-'
   try {
-    const plan = await chatJSON(
-      `You write ONE read-only PostgreSQL SELECT to answer the user's question about their CRM using ONLY this schema. If SQL is not useful for the question, set needsSql=false. Respond ONLY JSON: {"needsSql": boolean, "sql": string}\n${SQL_SCHEMA}`,
-      prompt)
-    if (!plan?.needsSql || !plan?.sql) return ''
-    const sql = safeSelect(plan.sql)
-    if (!sql) return ''
-    const r = await dbQuery(sql)
-    return `EXACT DATA from the database (use this as the source of truth):\nQuery: ${sql}\nRows (${r.rows.length}): ${JSON.stringify(r.rows.slice(0, 100))}`
-  } catch (e) { return `(tried a DB query but it failed: ${e.message})` }
+    const [tot, cPay, cTier, cSeg, cPlat, lSrc, lStat, lStage, top] = await Promise.all([
+      rows(`SELECT
+        (SELECT count(*) FROM app.customers) customers,
+        (SELECT count(*) FROM app.leads) leads,
+        (SELECT count(*) FROM app.orders) orders,
+        (SELECT count(*) FROM app.payments) payments,
+        (SELECT count(*) FROM app.conversations) conversations,
+        (SELECT coalesce(sum(total_spent),0) FROM app.customers) total_spend,
+        (SELECT coalesce(sum(estimated_value),0) FROM app.leads) lead_value,
+        (SELECT coalesce(sum(total_amount),0) FROM app.orders) order_total,
+        (SELECT coalesce(sum(amount),0) FROM app.payments) paid_total`),
+      rows(`SELECT coalesce(payment_status,'-') payment_status, count(*) n FROM app.customers GROUP BY 1 ORDER BY 2 DESC`),
+      rows(`SELECT coalesce(tier,'-') tier, count(*) n FROM app.customers GROUP BY 1 ORDER BY 2 DESC`),
+      rows(`SELECT coalesce(customer_segment,'-') seg, count(*) n FROM app.customers GROUP BY 1 ORDER BY 2 DESC`),
+      rows(`SELECT coalesce(platform_primary,'-') ch, count(*) n FROM app.customers GROUP BY 1 ORDER BY 2 DESC`),
+      rows(`SELECT coalesce(source_platform,'-') src, count(*) n FROM app.leads GROUP BY 1 ORDER BY 2 DESC`),
+      rows(`SELECT coalesce(status,'-') status, count(*) n FROM app.leads GROUP BY 1 ORDER BY 2 DESC`),
+      rows(`SELECT coalesce(stage,'-') stage, count(*) n FROM app.leads GROUP BY 1 ORDER BY 2 DESC`),
+      rows(`SELECT full_name, total_spent, total_orders FROM app.customers ORDER BY total_spent DESC NULLS LAST LIMIT 10`),
+    ])
+    const t = tot[0]
+    return `(LIVE from PostgreSQL — source of truth)
+CUSTOMERS: ${t.customers} | total spent $${t.total_spend} | by payment → ${grp(cPay, 'payment_status')} | by tier → ${grp(cTier, 'tier')} | by segment → ${grp(cSeg, 'seg')} | by channel → ${grp(cPlat, 'ch')}
+LEADS: ${t.leads} | total est. value $${t.lead_value} | by source → ${grp(lSrc, 'src')} | by status → ${grp(lStat, 'status')} | by stage → ${grp(lStage, 'stage')}
+ORDERS: ${t.orders} | total $${t.order_total} | PAYMENTS: ${t.payments} | total $${t.paid_total} | CONVERSATIONS: ${t.conversations}
+TOP SPENDERS: ${top.map((c) => `${c.full_name} ($${c.total_spent}, ${c.total_orders} orders)`).join('; ')}`
+  } catch { return null }
 }
 
 app.post('/api/ai/ask', authRequired, async (req, res) => {
-  const { prompt = '', history = [], files = [], docs = [] } = req.body || {}
+  const { prompt = '', history = [], files = [], docs = [], model } = req.body || {}
   const hasFiles = Array.isArray(files) && files.length > 0
   if (!prompt.trim() && !hasFiles) return res.status(400).json({ error: 'prompt required' })
-  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  // pick the model: requested one (if known) else the OpenAI default. embeddings/RAG always need OpenAI.
+  const chatModel = chatModels().some((m) => m.id === model) ? model : aiModels().chat
+  const useAnthropic = providerOf(chatModel) === 'anthropic'
+  if (useAnthropic && !anthropicConfigured()) return res.status(400).json({ error: 'Claude is not configured — set ANTHROPIC_API_KEY to use Claude models' })
+  if (!useAnthropic && !aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
   try {
     // attached files (image/PDF/Word/text) + a precise DB query if the question needs exact data
     const { texts: fileTexts, images } = hasFiles ? await extractFiles(files) : { texts: [], images: [] }
     // documents stay "in context" for the whole chat: previously-uploaded (docs) + newly uploaded (fileTexts)
     const priorDocs = Array.isArray(docs) ? docs.filter((d) => d && d.text) : []
     const allDocs = [...priorDocs, ...fileTexts].slice(-6)
-    const sqlCtx = prompt.trim() ? await sqlAnswer(prompt) : ''
+    // Kick off the two network-bound steps in parallel (live SQL + semantic RAG) — they run
+    // while we build the structured context below, then we await both before composing the prompt.
+    const sqlP = prompt.trim() ? sqlAnswer(prompt, chatModel) : Promise.resolve('')
+    const aggP = withTimeout(dbAggregates(), 8000)   // live aggregate stats from PostgreSQL (in-memory fallback)
+    const ragP = (async () => {
+      if (!qdrantConfigured() || !prompt.trim()) return ''
+      try {
+        const [vec] = await embed(prompt)
+        const hits = await new QdrantClient().search('crm_messages', vec, { limit: 24 })
+        return (hits?.result || []).map((h) => h.payload?.text).filter(Boolean).join('\n---\n')
+      } catch { return '' }
+    })()
     const convs = getAll('conversations'), custs = getAll('customers'), leads = getAll('leads'), allMsgs = getAll('messages')
     const stats = `Conversations: ${convs.length} · Customers: ${custs.length} · Leads: ${leads.length} · Messages: ${allMsgs.length}`
     const pl = prompt.toLowerCase()
-    // per-conversation message aggregates so the AI can count msgs/questions for EVERY customer (not just named ones)
-    const byConv = {}
-    for (const m of allMsgs) if (m.dir === 'in' || m.dir === 'out') (byConv[m.conversation_id] ||= []).push(m)
-    const isQ = (t) => /[?]|\b(how|what|when|where|why|which|can|do|does|is|are|price|cost|quote|delivery|shipping|kitna|kaise|kya|kab|kahan|kitne)\b/i.test(t || '')
-    const aggFor = (cid) => { const ms = byConv[cid] || []; const inMs = ms.filter((m) => m.dir === 'in'); return { total: ms.length, inCount: inMs.length, q: inMs.filter((m) => isQ(m.text)).length } }
 
     // 1) Match conversations by name mentioned in the prompt (ignore common stop-words so
     //    "do YOU have..." doesn't falsely match a customer named "Wood You Dream").
@@ -1544,44 +1603,38 @@ app.post('/api/ai/ask', authRequired, async (req, res) => {
       entityCtx += block
     }
 
-    // 2) Semantic search over all messages (RAG)
-    let ragCtx = ''
-    if (qdrantConfigured()) {
-      try {
-        const [vec] = await embed(prompt)
-        const hits = await new QdrantClient().search('crm_messages', vec, { limit: 24 })
-        ragCtx = (hits?.result || []).map((h) => h.payload?.text).filter(Boolean).join('\n---\n')
-      } catch { /* non-fatal */ }
-    }
+    // 2) Await the parallel SQL + semantic-search + live-aggregate results started above
+    const [sqlCtx, ragCtx, liveAgg] = await Promise.all([sqlP, ragP, aggP])
 
-    // 3) Full structured lists so the assistant can COUNT / FILTER / AGGREGATE
+    // 3) Aggregate stats: prefer LIVE PostgreSQL (source of truth); fall back to the in-memory
+    //    snapshot only if the DB is unreachable. Exact rows/records come from the live SQL above.
     const orders = getAll('orders'), payments = getAll('payments')
-    const convById = {}; for (const cv of convs) convById[cv.id] = cv
-    const custCtx = custs.map((c) => {
-      const a = aggFor(c.conversation_id)
-      const p = convById[c.conversation_id]?.ai_profile
-      const digest = p ? ` | ${(p.summary || '').slice(0, 140)} [products: ${p.products || '-'}; stage: ${p.leadStage || '-'}; pay: ${p.paymentStatus || '-'}; Q:${(p.questions || []).length}]` : ''
-      return `${c.name}${c.company ? ` (${c.company})` : ''} — spend $${c.spend || 0}, orders ${c.orders || 0}, payment ${c.payment_status || '-'}, tier ${c.tier || '-'}, status ${c.status || '-'}, ${c.channel || '-'}, msgs ${a.total} (questions ~${a.q})${digest}` }).join('\n')
-    const leadCtx = leads.map((l) => `${l.name}${l.company ? ` (${l.company})` : ''} — value $${l.value || 0}, status ${l.status || '-'}, stage ${l.pipeline || '-'}, source ${l.source || '-'}, agent ${l.agent || '-'}`).join('\n')
-    const orderCtx = orders.length ? orders.map((o) => `${o.order_no || o.id} — customer ${o.customer || '-'}, total $${o.total ?? o.amount ?? 0}, status ${o.status || '-'}`).join('\n') : '(no orders recorded yet)'
-    const payCtx = payments.length ? payments.map((p) => `${p.invoice_no || p.id} — $${p.amount ?? 0}, ${p.status || '-'}`).join('\n') : '(no payments recorded yet)'
+    const sumBy = (arr, f) => arr.reduce((s, x) => s + (Number(f(x)) || 0), 0)
+    const tally = (arr, f) => { const m = {}; for (const x of arr) { const k = (f(x) || '-'); m[k] = (m[k] || 0) + 1 } return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}: ${v}`).join(', ') || '-' }
+    const topSpenders = [...custs].sort((a, b) => (b.spend || 0) - (a.spend || 0)).slice(0, 10).map((c) => `${c.name} ($${c.spend || 0}, ${c.orders || 0} orders)`).join('; ')
+    const fallbackAgg = `(in-memory snapshot — DB unreachable)
+CUSTOMERS: ${custs.length} | total spend $${sumBy(custs, (c) => c.spend)} | by channel → ${tally(custs, (c) => c.channel)} | by payment → ${tally(custs, (c) => c.payment_status)} | by tier → ${tally(custs, (c) => c.tier)} | by status → ${tally(custs, (c) => c.status)}
+LEADS: ${leads.length} | total value $${sumBy(leads, (l) => l.value)} | by source → ${tally(leads, (l) => l.source)} | by status → ${tally(leads, (l) => l.status)} | by stage → ${tally(leads, (l) => l.pipeline)}
+ORDERS: ${orders.length} | total $${sumBy(orders, (o) => o.total ?? o.amount)} | PAYMENTS: ${payments.length} | total $${sumBy(payments, (p) => p.amount)}
+TOP SPENDERS: ${topSpenders}`
+    const aggCtx = liveAgg || fallbackAgg
 
-    const sys = `You are the AI assistant for the Decoinks CRM (a custom apparel print shop). You have FULL ACCESS to the company's CRM data — every customer, lead, order, payment, and all ${allMsgs.length} chat messages across ${convs.length} conversations. The data below is YOUR database; treat it as complete and authoritative.
+    const sys = `You are the AI assistant for the Decoinks CRM (a custom apparel print shop). You have FULL ACCESS to the company's PostgreSQL database — every customer, lead, order, payment, and all ${allMsgs.length} chat messages across ${convs.length} conversations. Treat the data below as complete and authoritative.
 
 What you are given below:
-- STRUCTURED DATA: the full list of ALL ${custs.length} customers and ALL ${leads.length} leads, each with spend, orders, payment status, tier, channel, AND chat stats (total messages, messages from the customer, approximate number of questions they asked). Plus all orders & payments.
+- AGGREGATE STATS: totals and breakdowns across ALL ${custs.length} customers, ${leads.length} leads, orders & payments (counts, sums, by channel/payment/tier/status/source/stage, top spenders).
+- EXACT DATA (live SQL): for questions needing specific numbers, lists, filters, or records, the system has ALREADY run read-only SQL queries against the live database and the rows are included below. This is your source of truth for anything not covered by the aggregate stats.
 - FULL TRANSCRIPTS: for any customer mentioned by name in the question, their complete conversation is included verbatim.
 - RELEVANT MESSAGES: the most semantically relevant messages to this question, pulled from across ALL conversations.
 
 How to answer:
-- NEVER say you "don't have the data" or "only have one conversation". You DO have data for every customer (see the full list with per-customer chat stats). If the user wants the full word-for-word transcript of a specific customer, answer from their stats and tell them to mention that customer's name so you include the full chat.
-- COUNT / FILTER / SUM / RANK the lists yourself — e.g. "how many customers with spend over $200", "which customer asked the most questions" (use the per-customer 'questions' count), "how many questions did <customer> ask", "total pipeline value", "how many leads from Facebook", "how many leads converted". Always give a concrete number (even 0). Treat "spend" as total order amount; never say "cannot determine" when the field is present.
+- NEVER say you "don't have the data". You have aggregate stats for everything, plus live SQL query results for the specifics of this question. If a specific number isn't in the aggregates, use the EXACT DATA (live SQL) rows.
+- Use the AGGREGATE STATS for totals/breakdowns ("how many customers", "by channel", "total spend", "how many leads from Facebook"). Use the EXACT DATA rows for specific lists/records ("which customer asked the most questions", "list customers with spend over $200", "show <customer>'s orders"). Always give a concrete number (even 0).
 - For a SPECIFIC customer whose full transcript is included — list/quote the actual questions they asked, what was discussed, whether they paid, what's pending, next step.
-- "Who paid / pending" → use each customer's payment field + orders/payments + chat confirmations.
 - You can also answer general questions from your own knowledge — no topic restrictions.
-- Combine structured data + chats, then give the best accurate answer. Reply in the user's language, mirror its structure, be clear and concise.`
+- Combine the stats + live data + chats, then give the best accurate answer. Reply in the user's language, mirror its structure, be clear and concise.`
     const fileCtx = allDocs.length ? `\n\nATTACHED FILES (the user uploaded these in this chat — use their content to answer, including follow-up questions):\n${allDocs.map((f) => `--- ${f.name} ---\n${f.text}`).join('\n\n')}` : ''
-    const dataBlock = `CRM STATS: ${stats}\n\nALL CUSTOMERS (${custs.length}) — each line includes chat stats (total msgs, msgs from customer, ~questions asked):\n${custCtx}\n\nALL LEADS (${leads.length}):\n${leadCtx}\n\nORDERS:\n${orderCtx}\n\nPAYMENTS:\n${payCtx}\n${entityCtx ? `\nFULL TRANSCRIPT(S) for the customer(s) named in the question:${entityCtx}` : ''}\n\nRELEVANT MESSAGES (semantic search across ALL conversations):\n${ragCtx || '(none)'}${sqlCtx ? `\n\n${sqlCtx}` : ''}${fileCtx}`
+    const dataBlock = `CRM STATS: ${stats}\n\nAGGREGATE STATS:\n${aggCtx}${entityCtx ? `\n\nFULL TRANSCRIPT(S) for the customer(s) named in the question:${entityCtx}` : ''}\n\nRELEVANT MESSAGES (semantic search across ALL conversations):\n${ragCtx || '(none)'}${sqlCtx ? `\n\n${sqlCtx}` : ''}${fileCtx}`
     // user turn — attach images (if any) for vision
     const userText = prompt.trim() || (fileTexts.length ? `Please review the attached file(s): ${fileTexts.map((f) => f.name).join(', ')}` : 'Please review the attached image(s).')
     const userContent = images.length
@@ -1592,8 +1645,8 @@ How to answer:
       ...(Array.isArray(history) ? history : []).slice(-6).map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content || '') })),
       { role: 'user', content: userContent },
     ]
-    const answer = await chatMessages(messages)
-    res.json({ ok: true, answer, matched: matched.map((c) => c.name), extractedFiles: fileTexts })
+    const answer = await chatMessages(messages, { model: chatModel })
+    res.json({ ok: true, answer, model: chatModel, matched: matched.map((c) => c.name), extractedFiles: fileTexts })
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
   }
