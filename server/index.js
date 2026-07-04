@@ -1479,9 +1479,26 @@ function safeSelect(sql) {
   return s
 }
 
+// FULL live schema — introspected from the database so the AI can query EVERY table/column
+// in "app" (not just a hand-picked few). Refreshed at boot; falls back to the compact schema.
+let DB_SCHEMA_TEXT = SQL_SCHEMA
+async function refreshDbSchema() {
+  try {
+    const r = await dbQuery(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='app' ORDER BY table_name, ordinal_position`)
+    const byTable = {}
+    for (const row of r.rows) (byTable[row.table_name] ||= []).push(row.column_name)
+    const lines = Object.entries(byTable).map(([t, cols]) => `- app.${t}(${cols.join(', ')})`)
+    if (lines.length) {
+      DB_SCHEMA_TEXT = `PostgreSQL schema "app" — you have FULL read-only access to EVERY table below. Each table also has an "extra" JSONB column holding the original raw record.\n${lines.join('\n')}\n\nKey joins: app.messages.conversation_id = app.conversations.conversation_id ; app.conversations.customer_id = app.customers.customer_id ; app.leads/orders/payments/customer_health.customer_id = app.customers.customer_id.\nNotes: app.messages holds ALL chat messages (direction 'in'=customer, 'out'=agent, 'note'=internal); body = the message text. Use ILIKE for text search. To read a customer's chat, join messages -> conversations -> customers.`
+      console.log(`🗂️  AI DB schema loaded: ${lines.length} tables in "app"`)
+    }
+  } catch (e) { console.warn('[schema] introspection failed, using compact schema:', e.message) }
+}
+
 // Give the SELECTED model live, read-only access to PostgreSQL: it can run several SELECT
 // queries, see the results, and refine across a few rounds — full "check & query" power.
 async function sqlAnswer(prompt, model) {
+  if (DB_SCHEMA_TEXT === SQL_SCHEMA) refreshDbSchema()   // lazy load full schema on first use
   let results = ''
   for (let round = 0; round < 2; round++) {
     let plan
@@ -1489,7 +1506,7 @@ async function sqlAnswer(prompt, model) {
       plan = await chatJSON(
         `You answer questions about a CRM by querying its LIVE PostgreSQL database. You may run read-only SELECT queries, see the results, then decide whether you need more data. Use ONLY this schema. Prefer SQL whenever the question needs exact numbers, counts, lists, filters, or specific records.
 Respond ONLY JSON: {"queries": string[] (0-4 read-only SELECT statements to run now), "done": boolean (true once you have enough data to answer)}.
-${SQL_SCHEMA}${results ? `\n\nResults so far:${results}` : ''}`,
+${DB_SCHEMA_TEXT}${results ? `\n\nResults so far:${results}` : ''}`,
         prompt, { model })
     } catch (e) { results += `\n(query planning failed: ${e.message})`; break }
     const qs = Array.isArray(plan?.queries) ? plan.queries.slice(0, 4) : []
@@ -1579,11 +1596,17 @@ app.post('/api/ai/ask', authRequired, async (req, res) => {
     // data — NO LLM call (near-zero cost). The AI never re-reads the whole chat like before.
     if (!hasFiles && matched.length === 1) {
       const c = matched[0]
+      const nameInPrompt = pl.includes((c.name || '').toLowerCase())          // the FULL name was actually typed
       const nameWords = (c.name || '').toLowerCase().split(/\s+/).filter(Boolean)
       const leftover = pl.split(/[^a-z0-9]+/i).filter((w) => w && !nameWords.includes(w))
-      const justName = leftover.length === 0                                   // only the customer's name typed
+      // analytical / aggregation questions must NOT dump a transcript — send them to the SQL path
+      const analytical = /\b(how many|how much|count|kitne|kitna|list|which|who|mention|search|find|average|avg|total|sum|top|compare|report|group|per|number of|questions?)\b/i.test(prompt)
+      const justName = nameInPrompt && leftover.length === 0                    // only the customer's name typed
       const scriptKw = /\b(chat|chats|script|transcript|conversation|conversations|baat|baatein|baaten)\b/i.test(prompt)
-      if (justName || scriptKw) {
+      const scriptWords = new Set(['chat', 'chats', 'script', 'transcript', 'conversation', 'conversations', 'ki', 'ka', 'ke', 'dikhao', 'dikha', 'show', 'open', 'full', 'poori', 'puri', 'saari', 'sari', 'baat', 'baatein', 'baaten', 'messages', 'history', 'the', 'me', 'us'])
+      const contentLeftover = leftover.filter((w) => !scriptWords.has(w))
+      const scriptRequest = nameInPrompt && scriptKw && contentLeftover.length <= 1   // e.g. "<name> chat", "<name> ki poori chat"
+      if (!analytical && (justName || scriptRequest)) {
         const all = allMsgs.filter((m) => m.conversation_id === c.id && (m.dir === 'in' || m.dir === 'out') && (m.text || '').trim())
         const cust = custs.find((x) => x.conversation_id === c.id) || {}
         const p = c.ai_profile
@@ -1988,6 +2011,7 @@ app.use((err, req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`✅ Technocas CRM API running on http://localhost:${PORT}`)
+  refreshDbSchema()            // give the AI assistant the full live DB schema
   startMetaPolling()
   startIntelligenceRefresh()
 })
