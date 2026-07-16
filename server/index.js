@@ -11,6 +11,7 @@ import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
+import { captureSourceArtworks, listArtworks, getArtworkFile } from './artwork-capture.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -1126,6 +1127,8 @@ function ingestMessage(msg) {
 function saveMessage(row) {
   const m = insert('messages', row)
   ingestMessage(m)
+  // customer ke bheje artworks auto-capture → app.customer_artwork (SRC-ART-YY-NNNN), fire-and-forget
+  captureSourceArtworks(m).catch(() => {})
   return m
 }
 
@@ -2072,6 +2075,27 @@ const DEFAULT_QUICK_ACTIONS = {
   ],
 }
 const cleanItems = (a) => (Array.isArray(a) ? a : []).map((x) => ({ label: String(x?.label || '').trim(), msg: String(x?.msg || '').trim() })).filter((x) => x.label)
+
+// ---- Customer-sent (SOURCE) artworks — SRC-ART-YY-NNNN, stored in PostgreSQL ----
+app.get('/api/artworks', authRequired, async (req, res) => {
+  try {
+    const rows = await listArtworks({
+      lead_id: req.query.lead_id, customer_id: req.query.customer_id,
+      conversation_id: req.query.conversation_id, folder: req.query.folder, limit: req.query.limit,
+    })
+    res.json(rows)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.get('/api/artworks/:id/file', authRequired, async (req, res) => {
+  try {
+    const f = await getArtworkFile(req.params.id)
+    if (!f) return res.status(404).json({ error: 'not found' })
+    if (!f.image_data) return res.status(410).json({ error: 'image bytes not stored (source URL had expired)' })
+    res.set('Content-Type', `image/${f.file_type === 'jpg' ? 'jpeg' : f.file_type}`)
+    res.set('Content-Disposition', `inline; filename="${f.artwork_no}.${f.file_type}"`)
+    res.send(f.image_data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
 
 app.get('/api/quick-actions', authRequired, (req, res) => {
   res.json(getSetting('quick_actions') || DEFAULT_QUICK_ACTIONS)
