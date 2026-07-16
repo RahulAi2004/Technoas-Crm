@@ -88,14 +88,14 @@ export default function Settings() {
   ]
 
   return (
-    <div className="h-screen overflow-hidden grid" style={{ gridTemplateColumns: '240px 1fr' }}>
+    <div className="crm-shell h-screen overflow-hidden grid">
       <SidebarCrm active="settings" />
       <div className="flex h-screen flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <div className="flex items-center gap-3 text-slate-700">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="flex min-w-0 shrink items-center gap-3 text-slate-700">
             <BackButton />
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600">⚙️</span>
-            <div><h1 className="text-lg font-bold leading-tight">Settings</h1><p className="text-[11px] text-slate-500">Profile, security &amp; connections.</p></div>
+            <div><h1 className="truncate text-lg font-bold leading-tight">Settings</h1><p className="hidden truncate text-[11px] text-slate-500 sm:block">Profile, security &amp; connections.</p></div>
           </div>
           <TopBarUser />
         </header>

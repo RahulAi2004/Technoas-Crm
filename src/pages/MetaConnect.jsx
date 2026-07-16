@@ -91,10 +91,10 @@ export default function MetaConnect() {
   const field = 'w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-mono outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20'
 
   return (
-    <div className="h-screen overflow-hidden grid" style={{ gridTemplateColumns: '240px 1fr' }}>
+    <div className="crm-shell h-screen overflow-hidden grid">
       <SidebarCrm active="connect-meta" />
       <div className="flex h-screen flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
           <div className="flex items-center gap-3">
             <BackButton />
             <nav className="flex items-center gap-2 text-sm">

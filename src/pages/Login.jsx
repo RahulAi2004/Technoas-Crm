@@ -74,18 +74,7 @@ export default function Login() {
           <h2 className="text-4xl font-extrabold tracking-tight">Welcome back</h2>
           <p className="mt-2 text-slate-500">Sign in to your Decoinks CRM account to continue.</p>
 
-          <div className="mt-5 rounded-xl border border-brand-500/30 bg-brand-50/60 p-3 text-xs text-slate-700">
-            <div className="mb-1 inline-flex items-center gap-1.5 font-semibold text-brand-700">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-              Demo credentials
-            </div>
-            <div className="grid grid-cols-[80px_1fr] gap-x-3 gap-y-0.5">
-              <span className="text-slate-500">Email</span><code className="font-mono text-[12px]">info@technocas.com</code>
-              <span className="text-slate-500">Password</span><code className="font-mono text-[12px]">China@..@0077</code>
-            </div>
-          </div>
-
-          <form onSubmit={submit} className="mt-5 space-y-5" noValidate>
+          <form onSubmit={submit} className="mt-6 space-y-5" noValidate>
             {err && (
               <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>

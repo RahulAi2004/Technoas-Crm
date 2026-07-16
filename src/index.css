@@ -18,6 +18,49 @@ body {
 .sidebar-scroll::-webkit-scrollbar { width: 6px; }
 .sidebar-scroll::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 999px; }
 
+/* ===================== Responsive app shell =====================
+   Desktop: fixed 240px sidebar + content.
+   Mobile (<1024px): one column; the sidebar becomes an off-canvas drawer
+   toggled by body[data-nav="open"], with a fixed mobile header on top. */
+.crm-shell { grid-template-columns: 240px 1fr; }
+
+@media (max-width: 1023px) {
+  /* single column, and leave room for the fixed mobile header */
+  .crm-shell,
+  #app-shell,
+  #app-shell[data-collapsed="true"] { grid-template-columns: 1fr !important; padding-top: 3.5rem; }
+
+  /* sidebar -> off-canvas drawer */
+  .crm-sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 264px; z-index: 60;
+    transform: translateX(-100%); transition: transform .25s ease;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  }
+  body[data-nav="open"] .crm-sidebar { transform: none; }
+  body[data-nav="open"] { overflow: hidden; }
+
+  /* backdrop only exists while the drawer is open — otherwise it would swallow every tap */
+  .crm-nav-overlay { display: none; position: fixed; inset: 0; z-index: 55; background: rgba(15, 23, 42, .55); }
+  body[data-nav="open"] .crm-nav-overlay { display: block; }
+  .crm-mobile-header {
+    position: fixed; top: 0; left: 0; right: 0; height: 3.5rem; z-index: 50;
+    display: flex; align-items: center; gap: .75rem; padding: 0 .75rem;
+    background: #0f172a; color: #fff;
+  }
+  /* Inbox panels: one panel at a time on phones (list -> chat -> AI), never squeezed side-by-side.
+     #panels[data-mobile] is set by Dashboard from the selected conversation + AI toggle. */
+  #panels { grid-template-columns: 1fr !important; }
+  #panels > * { min-width: 0; }
+  #panels[data-mobile="list"] > *:not(#panel-list) { display: none !important; }
+  #panels[data-mobile="chat"] > *:not(#panel-chat) { display: none !important; }
+  #panels[data-mobile="ai"]   > *:not(#ai-panel)   { display: none !important; }
+}
+
+/* desktop: no mobile chrome, drawer is a normal column */
+@media (min-width: 1024px) {
+  .crm-mobile-header, .crm-nav-overlay { display: none !important; }
+}
+
 /* Collapsible sidebar */
 #app-shell { grid-template-columns: 240px 1fr; transition: grid-template-columns .25s ease; }
 #app-shell[data-collapsed="true"] { grid-template-columns: 72px 1fr; }

@@ -19,14 +19,14 @@ export default function FollowUps() {
   const items = useMemo(() => leads.filter((l) => OPEN.includes(l.status)), [leads])
 
   return (
-    <div className="h-screen overflow-hidden grid" style={{ gridTemplateColumns: '240px 1fr' }}>
+    <div className="crm-shell h-screen overflow-hidden grid">
       <SidebarCrm active="follow-ups" />
       <div className="flex h-screen flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <div className="flex items-center gap-3 text-slate-700">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="flex min-w-0 shrink items-center gap-3 text-slate-700">
             <BackButton />
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-50 text-amber-600">⏰</span>
-            <div><h1 className="text-lg font-bold leading-tight">Follow-Ups</h1><p className="text-[11px] text-slate-500">Leads waiting for your next touch.</p></div>
+            <span className="hidden h-9 w-9 place-items-center rounded-lg bg-amber-50 text-amber-600 sm:grid">⏰</span>
+            <div><h1 className="truncate text-lg font-bold leading-tight">Follow-Ups</h1><p className="hidden truncate text-[11px] text-slate-500 sm:block">Leads waiting for your next touch.</p></div>
           </div>
           <TopBarUser />
         </header>

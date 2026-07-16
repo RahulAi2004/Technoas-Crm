@@ -28,3 +28,33 @@ desktop.ini
 # Logs / temp
 *.log
 *.tmp
+
+# Generated exports with CUSTOMER DATA — never commit
+*.docx
+*.xlsx
+~$*
+customer-docs/
+server/allcustomers.json
+server/contacts.json
+server/flows10.json
+server/writestyles.json
+server/chats25.json
+server/cycles.json
+server/personas.json
+server/knowledge.json
+server/samples*.json
+Decoinks-Database-Schema.txt
+
+# Local tooling / scratch
+.claude/
+build-*.py
+apply-db-edits.py
+merge-invoice.py
+add-numbering.py
+*.png
+backups/
+__pycache__/
+merge-customer-docs.py
+Decoinks-Intern-Trainer-App-Prompt.md
+server/questions.json
+server/sample-source.json

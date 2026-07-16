@@ -15,14 +15,14 @@ export default function Campaigns() {
   const toast = useToast()
   const [items] = useState(SAMPLE)
   return (
-    <div className="h-screen overflow-hidden grid" style={{ gridTemplateColumns: '240px 1fr' }}>
+    <div className="crm-shell h-screen overflow-hidden grid">
       <SidebarCrm active="campaigns" />
       <div className="flex h-screen flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <div className="flex items-center gap-3 text-slate-700">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="flex min-w-0 shrink items-center gap-3 text-slate-700">
             <BackButton />
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-pink-50 text-pink-600">📣</span>
-            <div><h1 className="text-lg font-bold leading-tight">Campaigns</h1><p className="text-[11px] text-slate-500">Broadcast offers across your channels.</p></div>
+            <span className="hidden h-9 w-9 place-items-center rounded-lg bg-pink-50 text-pink-600 sm:grid">📣</span>
+            <div><h1 className="truncate text-lg font-bold leading-tight">Campaigns</h1><p className="hidden truncate text-[11px] text-slate-500 sm:block">Broadcast offers across your channels.</p></div>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => toast('Campaign builder — coming next', 'info')} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">+ New Campaign</button>
@@ -39,7 +39,7 @@ export default function Campaigns() {
           </div>
 
           <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>
                 <th className="px-3 py-3 text-left">Campaign</th><th className="px-3 py-3 text-left">Channel</th><th className="px-3 py-3 text-left">Audience</th><th className="px-3 py-3 text-left">Status</th><th className="px-3 py-3 text-left">Sent</th><th className="px-3 py-3 text-right">Actions</th>
               </tr></thead>

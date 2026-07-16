@@ -84,9 +84,9 @@ Two extra key/value tables: `settings (key, value)` and `meta_kv (key, value)`.
 |---|---|---|
 | **users** | 2 | `id, name, email, role, password_hash, created_at` |
 | **customers** | 12 | `id, name, company, email, phone, channel, tier, type, spend, orders, health, health_label, owner, loc, role, last_order, activity_days, activity_ago, avatar, initials, created_at` |
-| **conversations** | 113 | `id, name, phone, company, channel, source, status, status_bg, status_icon, unread, bookmarked, assigned_to, customer_id, last_ts, list_preview, list_time, avatar_bg, channel_bg, initials, profile_pic, meta_recipient_id, created_at` · **+ AI cache:** `summary, summary_count, summary_at` |
+| **conversations** | 113 | `id, name, phone, company, channel, source, status, status_bg, status_icon, unread, bookmarked, assigned_to, customer_id, last_ts, list_preview, list_time, avatar_bg, channel_bg, initials, profile_pic, meta_recipient_id, created_at` · (AI summaries moved to Qdrant `crm_summaries` on 2026-07-16 — any `summary*` keys left in old docs are stale legacy copies) |
 | **messages** | 1899 | `id, conversation_id, dir` (`in`/`out`/`note`)`, text, via, time, agent, created_at` |
-| **leads** | 113 | `id, name, company, agent, status, statusCls, score, units, value, product, pipeline, pipelineCls, badge, source, source_type, conversation_id, av, initials, created, createdTime, created_at` |
+| **leads** | 113 | `id, name, company, agent, status, statusCls, score, units, value, product, pipeline, pipelineCls, badge, source, source_type, conversation_id, av, initials, created, createdTime, created_at` · **Updated2 format (2026-07-16, per Decoinks-Database-Tables-Updated2.xlsx):** `app.leads` now also carries `lead_no` (auto `LEAD-000123` via trigger), `customer_name`, `conversation_primary_id`, `instagram_id`, `facebook_id`, `assigned_user_id`, `lead_stage`, `lead_status` (Active/Won/Lost/Dormant), `priority`, `source_platform`, `source_campaign`, `next_followup_date`, `last_contact_at`, `created_by`, `updated_by` + a 1:1 `app.lead_qualification` row (auto-created by trigger). See `server/schema-updated2.sql` + `server/triggers-updated2.sql`. |
 | **notes** | 3 | `id, customer_id, title, body, category, author, pinned, date, created_at` |
 | **receipts** | 8 | `id, receipt_no, order_no, customer, customer_orders, amount, method, method_icon, status, date, time, note, note2, created_at` |
 | **artworks** | 8 | `id, name, type, product, order_no, customers, date, fav, bg, created_at` |
@@ -109,6 +109,7 @@ Two extra key/value tables: `settings (key, value)` and `meta_kv (key, value)`.
 |---|---|---|---|
 | **`crm_messages`** | 1536 (cosine) | **Every chat message** is embedded → semantic search / AI memory. Auto-ingested on each message insert; 1757 existing backfilled. | `message_id, conversation_id, dir, via, time, text, created_at` |
 | **`documents`** | 1536 (cosine) | Knowledge-base snippets for RAG (used by AI analysis & recommended replies). | `text, title, category, language, author, access_level, doc_id` |
+| **`crm_summaries`** | 1536 (cosine) | **ALL AI summaries live HERE (only), not in Postgres** (since 2026-07-16). Two kinds: `conversation_summary` (the Summary tab — point id = md5-uuid of `summary:<conv>`) and `after_session` (lead/profile/requirement summary texts — `aftersession:<conv>`). Existing PG summaries were copied in; old PG columns are stale/legacy. | `kind, conversation_id, summary / lead_summary / profile_summary / ai_observations / conversation_summary / conversation_insights / requirement_summary, summary_count, summary_at` |
 
 Point IDs for messages = deterministic md5→UUID of the message id, so re-ingesting updates rather than duplicates.
 

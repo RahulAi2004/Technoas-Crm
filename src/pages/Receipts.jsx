@@ -68,19 +68,19 @@ export default function Receipts() {
   }, [query, data])
 
   return (
-    <div className="h-screen overflow-hidden grid" style={{ gridTemplateColumns: '240px 1fr' }}>
+    <div className="crm-shell h-screen overflow-hidden grid">
       <SidebarCrm active="receipts" />
       <div className="flex h-screen flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <div className="flex items-center gap-3 text-slate-700">
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600">📄</span>
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="flex min-w-0 shrink items-center gap-3 text-slate-700">
+            <span className="hidden h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600 sm:grid">📄</span>
             <div>
-              <h1 className="text-lg font-bold leading-tight">Receipts</h1>
-              <p className="text-[11px] text-slate-500">View and manage all payment receipts.</p>
+              <h1 className="truncate text-lg font-bold leading-tight">Receipts</h1>
+              <p className="hidden truncate text-[11px] text-slate-500 sm:block">View and manage all payment receipts.</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="relative"><span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><input type="search" placeholder="Search receipts by receipt no., order no., c..." className="w-80 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-12 text-sm" /><kbd className="pointer-events-none absolute inset-y-0 right-2 my-auto grid h-6 place-items-center rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-500">⌘K</kbd></div>
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-4">
+            <div className="relative min-w-0 flex-1 sm:flex-none"><span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><input type="search" placeholder="Search receipts by receipt no., order no., c..." className="w-full sm:w-80 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-12 text-sm" /><kbd className="pointer-events-none absolute inset-y-0 right-2 my-auto grid h-6 place-items-center rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-500">⌘K</kbd></div>
             <button className="relative grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
             <TopBarUser />
           </div>
@@ -118,7 +118,7 @@ export default function Receipts() {
               </div>
 
               <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[640px] text-sm">
                   <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                     <tr><th className="px-3 py-2 text-left"><input type="checkbox"/></th><th className="px-3 py-2 text-left">Receipt No.</th><th className="px-3 py-2 text-left">Order No.</th><th className="px-3 py-2 text-left">Customer</th><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Payment Method</th><th className="px-3 py-2 text-left">Amount</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Notes</th><th className="px-3 py-2 text-right">Actions</th></tr>
                   </thead>

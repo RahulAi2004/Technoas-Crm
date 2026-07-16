@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useToast } from './ToastContext.jsx'
+import MobileNav, { closeNav } from './MobileNav.jsx'
 
 export default function SidebarCrm({ active }) {
   const toast = useToast()
@@ -12,13 +13,24 @@ export default function SidebarCrm({ active }) {
       : 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5'
 
   return (
-    <aside className="flex flex-col bg-ink-900 text-slate-300">
-      <Link to="/dashboard" className="flex h-16 items-center gap-2 px-5">
-        <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600">
-          <span className="text-sm font-black text-white">D</span>
-        </div>
-        <img src="/logo.jpg" alt="Decoinks" className="h-7 rounded bg-white px-1.5" />
-      </Link>
+    <>
+    <MobileNav />
+    <aside className="crm-sidebar flex flex-col bg-ink-900 text-slate-300">
+      <div className="flex h-16 items-center justify-between pr-2">
+        <Link to="/dashboard" className="flex h-16 items-center gap-2 px-5">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600">
+            <span className="text-sm font-black text-white">D</span>
+          </div>
+          <img src="/logo.jpg" alt="Decoinks" className="h-7 rounded bg-white px-1.5" />
+        </Link>
+        {/* close drawer — mobile only */}
+        <button type="button" onClick={closeNav} aria-label="Close menu"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-white/10 lg:hidden">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
 
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-6">
         <ul className="space-y-1">
@@ -138,5 +150,6 @@ export default function SidebarCrm({ active }) {
         </ul>
       </nav>
     </aside>
+    </>
   )
 }

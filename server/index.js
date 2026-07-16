@@ -767,6 +767,14 @@ function ensureLeadForConversation(conv) {
     createdTime: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
     conversation_id: conv.id,
     source_type: 'meta',
+    // Updated2 format (Decoinks-Database-Tables-Updated2.xlsx `lead` table)
+    lead_stage: 'New Lead',
+    lead_status: 'Active',
+    priority: 'Medium',
+    source_platform: conv.channel || 'Meta',
+    instagram_id: /insta/i.test(conv.channel || '') ? (conv.meta_recipient_id || null) : null,
+    facebook_id: /face/i.test(conv.channel || '') ? (conv.meta_recipient_id || null) : null,
+    last_contact_at: conv.last_ts || conv.created_at || new Date().toISOString(),
   })
   return true
 }
@@ -1267,7 +1275,8 @@ app.post('/api/ai/verify-translation', authRequired, async (req, res) => {
   }
 })
 
-// Conversation summary — generated on demand, CACHED on the conversation doc, and
+// Conversation summary — generated on demand, saved ONLY in Qdrant (`crm_summaries`
+// collection — the single store for AI summaries; Postgres no longer caches them), and
 // updated INCREMENTALLY: only the NEW messages (since the saved summary) are sent
 // to the model, which merges them into the existing detailed summary.
 // Messages in the SAME order the chat shows them (array/insertion order). The bulk
@@ -1285,49 +1294,87 @@ const SUMMARY_FULL = `Summarize this customer conversation for an agent who is t
 }`
 const SUMMARY_UPDATE = `You maintain a running, DETAILED summary of a customer-support conversation so an agent taking over understands everything WITHOUT reading the whole chat. You are given the EXISTING summary (JSON) and ONLY the NEW messages since it was written. Merge the new messages into the summary: keep all still-relevant key points, ADD the new information, and update status and nextStep. Do not drop earlier facts that still matter. Respond with ONLY a JSON object: { "overview": string, "keyPoints": string[], "status": string, "nextStep": string }`
 
-// GET → return the CACHED summary (does NOT call the model). Reports how many new messages exist.
-app.get('/api/ai/summary/:id', authRequired, (req, res) => {
+// ---- Summary store: Qdrant ONLY (collection `crm_summaries`) ----
+const SUMMARY_COLLECTION = 'crm_summaries'
+let summaryCollectionReady = false
+async function ensureSummaryCollection(q) {
+  if (summaryCollectionReady) return
+  await q.ensureCollection(SUMMARY_COLLECTION, { size: 1536 })
+  try { await q.createPayloadIndex(SUMMARY_COLLECTION, 'conversation_id', 'keyword') } catch { /* already indexed */ }
+  try { await q.createPayloadIndex(SUMMARY_COLLECTION, 'kind', 'keyword') } catch { /* already indexed */ }
+  summaryCollectionReady = true
+}
+const summaryText = (s) => [s?.overview, ...(Array.isArray(s?.keyPoints) ? s.keyPoints : []), s?.status, s?.nextStep].filter(Boolean).join('\n')
+// Read the saved summary point for a conversation from Qdrant (null if none / unreachable).
+async function getSummaryPoint(convId) {
+  if (!qdrantConfigured()) return null
+  try {
+    const q = new QdrantClient()
+    await ensureSummaryCollection(q)
+    const [pt] = await q.retrieve(SUMMARY_COLLECTION, [pointId(`summary:${convId}`)])
+    return pt?.payload || null
+  } catch { return null }
+}
+// Save the summary to Qdrant (embedded so summaries are semantically searchable too).
+async function saveSummaryPoint(convId, summary, count, at) {
+  const q = new QdrantClient()
+  await ensureSummaryCollection(q)
+  let vec
+  try { [vec] = await embed(summaryText(summary).slice(0, 8000) || 'empty summary') }
+  catch { vec = new Array(1536).fill(0) }   // never lose the summary because embedding failed
+  await q.upsert(SUMMARY_COLLECTION, [{
+    id: pointId(`summary:${convId}`),
+    vector: vec,
+    payload: { kind: 'conversation_summary', conversation_id: String(convId), summary, summary_count: count, summary_at: at },
+  }])
+}
+
+// GET → return the saved summary from Qdrant (does NOT call the model). Reports how many new messages exist.
+app.get('/api/ai/summary/:id', authRequired, async (req, res) => {
   const conv = findById('conversations', req.params.id)
   if (!conv) return res.status(404).json({ error: 'conversation not found' })
   const total = sortedConvMsgs(req.params.id).length
   if (!total) return res.json({ empty: true })
-  const covered = conv.summary_count || 0
+  const saved = await getSummaryPoint(conv.id)
+  const covered = saved?.summary_count || 0
   res.json({
     ok: true,
-    cached: !!conv.summary,
-    summary: conv.summary || null,
-    summaryAt: conv.summary_at || null,
+    cached: !!saved?.summary,
+    summary: saved?.summary || null,
+    summaryAt: saved?.summary_at || null,
     coveredCount: covered,
     totalCount: total,
     newCount: Math.max(0, total - covered),
-    stale: !!conv.summary && total > covered,
+    stale: !!saved?.summary && total > covered,
   })
 })
 
-// POST → generate (first time, full) or update (incremental — only new messages) + SAVE to the conversation.
+// POST → generate (first time, full) or update (incremental — only new messages) + SAVE to Qdrant only.
 app.post('/api/ai/summary/:id', authRequired, async (req, res) => {
   if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  if (!qdrantConfigured()) return res.status(400).json({ error: 'Qdrant not configured — summaries are stored in Qdrant (set QDRANT_URL)' })
   const conv = findById('conversations', req.params.id)
   if (!conv) return res.status(404).json({ error: 'conversation not found' })
   const msgs = sortedConvMsgs(req.params.id)
   if (!msgs.length) return res.json({ empty: true })
 
-  const covered = conv.summary_count || 0
-  const hasCache = !!conv.summary
+  const saved = await getSummaryPoint(conv.id)
+  const covered = saved?.summary_count || 0
+  const hasCache = !!saved?.summary
   try {
     let summary, mode
     if (hasCache && msgs.length <= covered) {
-      summary = conv.summary; mode = 'unchanged'                 // nothing new
+      summary = saved.summary; mode = 'unchanged'                // nothing new
     } else if (hasCache && covered > 0) {
       const fresh = msgs.slice(covered).map(fmtMsg).join('\n')   // only the NEW messages
-      summary = await chatJSON(SUMMARY_UPDATE, `EXISTING SUMMARY:\n${JSON.stringify(conv.summary)}\n\nNEW MESSAGES:\n${fresh}`)
+      summary = await chatJSON(SUMMARY_UPDATE, `EXISTING SUMMARY:\n${JSON.stringify(saved.summary)}\n\nNEW MESSAGES:\n${fresh}`)
       mode = 'incremental'
     } else {
       summary = await chatJSON(SUMMARY_FULL, msgs.map(fmtMsg).join('\n'))  // first time, full
       mode = 'full'
     }
     const summaryAt = new Date().toISOString()
-    update('conversations', conv.id, { summary, summary_count: msgs.length, summary_at: summaryAt })
+    await saveSummaryPoint(conv.id, summary, msgs.length, summaryAt)
     res.json({ ok: true, mode, summary, coveredCount: msgs.length, totalCount: msgs.length, newCount: 0, summaryAt })
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
@@ -1788,7 +1835,12 @@ app.get('/api/after-session/client/:id', authRequired, async (req, res) => {
   const rq = await one(`SELECT requirement_summary, missing_information FROM app.requirements WHERE legacy_id=$1`, ['req:' + id])
   const aw = await one(`SELECT artwork_analysis, reconstruction_notes, design_notes, complexity_score FROM app.artwork WHERE legacy_id=$1`, ['art:' + id])
   const sh = await one(`SELECT transition_reason FROM app.lead_stage_history WHERE lead_id=(SELECT lead_id FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)) ORDER BY created_at DESC LIMIT 1`, [id])
-  res.json({ name: c.name || id, channel: c.channel || null, values: { need: c.need, quantity: c.quantity, ...l, sentiment_score: c.sentiment_score, conversation_summary: c.conversation_summary, conversation_insights: c.conversation_insights, ...rq, ...aw, ...sh } })
+  // AI summaries live in Qdrant now — Qdrant values win over any legacy Postgres copies.
+  const qs = await getAfterSessionSummaries(id)
+  const pick = (k, fb) => (qs[k] != null && qs[k] !== '' ? qs[k] : fb)
+  res.json({ name: c.name || id, channel: c.channel || null, values: { need: c.need, quantity: c.quantity, ...l, sentiment_score: c.sentiment_score, conversation_summary: c.conversation_summary, conversation_insights: c.conversation_insights, ...rq, ...aw, ...sh,
+    lead_summary: pick('lead_summary', l.lead_summary), profile_summary: pick('profile_summary', l.profile_summary), ai_observations: pick('ai_observations', l.ai_observations),
+    conversation_summary: pick('conversation_summary', c.conversation_summary), conversation_insights: pick('conversation_insights', c.conversation_insights), requirement_summary: pick('requirement_summary', rq.requirement_summary) } })
 })
 
 const AS_FIELDS_DOC = `{
@@ -1833,24 +1885,59 @@ app.post('/api/after-session/validate/:id', authRequired, async (req, res) => {
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 
+// Save the after-session AI summary texts to Qdrant ONLY (AI summaries live in Qdrant, not Postgres).
+async function saveAfterSessionSummaries(convId, v) {
+  const fields = {
+    lead_summary: asTxt(v.lead_summary), profile_summary: asTxt(v.profile_summary),
+    ai_observations: asTxt(v.ai_observations), conversation_summary: asTxt(v.conversation_summary),
+    conversation_insights: asTxt(v.conversation_insights), requirement_summary: asTxt(v.requirement_summary),
+  }
+  if (!Object.values(fields).some(Boolean)) return
+  const q = new QdrantClient()
+  await ensureSummaryCollection(q)
+  let vec
+  try { [vec] = await embed(Object.values(fields).filter(Boolean).join('\n').slice(0, 8000)) }
+  catch { vec = new Array(1536).fill(0) }
+  await q.upsert(SUMMARY_COLLECTION, [{
+    id: pointId(`aftersession:${convId}`),
+    vector: vec,
+    payload: { kind: 'after_session', conversation_id: String(convId), ...fields, saved_at: new Date().toISOString() },
+  }])
+}
+// Read them back from Qdrant (null-safe).
+async function getAfterSessionSummaries(convId) {
+  if (!qdrantConfigured()) return {}
+  try {
+    const q = new QdrantClient()
+    await ensureSummaryCollection(q)
+    const [pt] = await q.retrieve(SUMMARY_COLLECTION, [pointId(`aftersession:${convId}`)])
+    if (!pt?.payload) return {}
+    const { lead_summary, profile_summary, ai_observations, conversation_summary, conversation_insights, requirement_summary } = pt.payload
+    return { lead_summary, profile_summary, ai_observations, conversation_summary, conversation_insights, requirement_summary }
+  } catch { return {} }
+}
+
 // 5) Save validated values into the proper structured tables.
+// AI summary TEXTS go to Qdrant only; numeric scores + operational fields stay in Postgres.
 app.post('/api/after-session/save/:id', authRequired, async (req, res) => {
   try {
     const id = req.params.id
     const v = req.body?.values || {}
-    // leads (intelligence)
-    await dbQuery(`UPDATE app.leads SET intent_score=$2, purchase_probability=$3, lead_summary=$4, profile_summary=$5, ai_observations=$6, updated_at=now()
+    // AI summaries → Qdrant (single store for summaries)
+    await saveAfterSessionSummaries(id, v)
+    // leads (intelligence scores)
+    await dbQuery(`UPDATE app.leads SET intent_score=$2, purchase_probability=$3, updated_at=now()
       WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$1)`,
-      [id, asNum(v.intent_score), asNum(v.purchase_probability), asTxt(v.lead_summary), asTxt(v.profile_summary), asTxt(v.ai_observations)])
+      [id, asNum(v.intent_score), asNum(v.purchase_probability)])
     // conversation + mark saved
-    await dbQuery(`UPDATE app.conversations SET sentiment_score=$2, conversation_summary=$3, conversation_insights=$4,
+    await dbQuery(`UPDATE app.conversations SET sentiment_score=$2,
       extra = extra || jsonb_build_object('after_session_saved', now()::text) WHERE legacy_id=$1`,
-      [id, asNum(v.sentiment_score), asTxt(v.conversation_summary), asTxt(v.conversation_insights)])
-    // requirements (upsert by req:<conv>)
-    await dbQuery(`INSERT INTO app.requirements (legacy_id, lead_id, requirement_summary, missing_information, quantity, created_at)
-      SELECT $1, (SELECT lead_id FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$2)), $3, $4, $5, now()
-      ON CONFLICT (legacy_id) DO UPDATE SET requirement_summary=EXCLUDED.requirement_summary, missing_information=EXCLUDED.missing_information, quantity=EXCLUDED.quantity, updated_at=now()`,
-      ['req:' + id, id, asTxt(v.requirement_summary), asTxt(v.missing_information), parseInt(v.quantity) || null])
+      [id, asNum(v.sentiment_score)])
+    // requirements (upsert by req:<conv>) — summary text lives in Qdrant
+    await dbQuery(`INSERT INTO app.requirements (legacy_id, lead_id, missing_information, quantity, created_at)
+      SELECT $1, (SELECT lead_id FROM app.leads WHERE conversation_id=(SELECT conversation_id FROM app.conversations WHERE legacy_id=$2)), $3, $4, now()
+      ON CONFLICT (legacy_id) DO UPDATE SET missing_information=EXCLUDED.missing_information, quantity=EXCLUDED.quantity, updated_at=now()`,
+      ['req:' + id, id, asTxt(v.missing_information), parseInt(v.quantity) || null])
     // artwork (upsert by art:<conv>)
     await dbQuery(`INSERT INTO app.artwork (legacy_id, artwork_analysis, reconstruction_notes, design_notes, complexity_score, created_at)
       VALUES ($1, $2, $3, $4, $5, now())

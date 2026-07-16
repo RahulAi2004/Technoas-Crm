@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { signOut, currentUser } from '../lib/auth.js'
 import TopBarUser from '../components/TopBarUser.jsx'
+import MobileNav, { closeNav } from '../components/MobileNav.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { STATUS_OPTIONS } from '../data/conversations.js'
 import { api } from '../lib/api.js'
@@ -323,8 +324,9 @@ export default function Dashboard() {
 
   return (
     <div id="app-shell" className="grid h-screen" data-collapsed={sbCollapsed || undefined}>
+      <MobileNav />
       {/* ============ SIDEBAR ============ */}
-      <aside className="flex flex-col bg-ink-900 text-slate-300">
+      <aside className="crm-sidebar flex flex-col bg-ink-900 text-slate-300">
         <div className="sb-brand flex h-16 items-center gap-2 px-5">
           <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600">
             <span className="text-sm font-black text-white">D</span>
@@ -466,23 +468,23 @@ export default function Dashboard() {
 
       {/* ============ MAIN ============ */}
       <div className="flex h-screen flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <div className="flex items-center gap-3 text-slate-700">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="flex shrink-0 items-center gap-3 text-slate-700">
+            <svg className="hidden sm:block" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
             <span className="text-sm font-semibold">Inbox</span>
-            <span className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+            <span className="ml-2 hidden items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 sm:inline-flex">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Online
             </span>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="relative">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-4">
+            <div className="relative min-w-0 flex-1 sm:max-w-xs">
               <span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               </span>
-              <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search conversations..." className="w-80 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-12 text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20" />
-              <kbd className="pointer-events-none absolute inset-y-0 right-2 my-auto grid h-6 place-items-center rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-500">⌘K</kbd>
+              <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search conversations..." className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 sm:pr-12" />
+              <kbd className="pointer-events-none absolute inset-y-0 right-2 my-auto hidden h-6 place-items-center rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-500 sm:grid">⌘K</kbd>
             </div>
-            <button className="relative grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100" aria-label="Notifications">
+            <button className="relative hidden h-10 w-10 shrink-0 place-items-center rounded-full hover:bg-slate-100 sm:grid" aria-label="Notifications">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
               <span className="absolute -top-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white">6</span>
             </button>
@@ -490,9 +492,10 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <section ref={panelsRef} id="panels" className="grid flex-1 overflow-hidden" data-filters={filtersCollapsed ? 'collapsed' : 'expanded'} data-ai={aiOpen ? 'open' : 'closed'}>
+        {/* data-mobile drives the one-panel-at-a-time layout on phones (see index.css) */}
+        <section ref={panelsRef} id="panels" className="grid flex-1 overflow-hidden" data-filters={filtersCollapsed ? 'collapsed' : 'expanded'} data-ai={aiOpen ? 'open' : 'closed'} data-mobile={currentId ? 'chat' : 'list'}>
           {/* ===== Filters / List ===== */}
-          <div className="flex flex-col overflow-hidden border-r border-slate-200 bg-white">
+          <div id="panel-list" className="flex flex-col overflow-hidden border-r border-slate-200 bg-white">
             <div id="filters-header" className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
               <div className="fp-only-expanded relative">
                 <button onClick={() => setInboxMenuOpen((x) => !x)} className="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100">
@@ -631,7 +634,7 @@ export default function Dashboard() {
           <div id="resize-filters" className="resize-handle" role="separator" aria-orientation="vertical" onPointerDown={(e) => startDrag(e, '--col-filters', 220, 480, false, 'w-col-filters')} onDoubleClick={dblResetVar('--col-filters', 'w-col-filters')}></div>
 
           {/* ===== Middle ===== */}
-          <div className="flex h-full flex-col overflow-hidden bg-white">
+          <div id="panel-chat" className="flex h-full flex-col overflow-hidden bg-white">
             {!conv && (
               <div className="grid flex-1 place-items-center px-6 py-8">
                 <div className="w-full max-w-xl text-center">
@@ -665,8 +668,13 @@ export default function Dashboard() {
               </div>
             )}
             {conv && (<>
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-3 py-4 sm:px-5">
               <div className="flex min-w-0 items-start gap-3">
+                {/* back to the conversation list — phones only */}
+                <button type="button" onClick={() => setCurrentId(null)} aria-label="Back to conversations"
+                  className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
                 <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${conv.avatarBg} text-sm font-bold`}>{conv.initials}</span>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">

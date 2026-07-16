@@ -54,14 +54,14 @@ export default function Reports() {
   const maxMethod = Math.max(1, ...r.byMethod.map((x) => x[1]))
 
   return (
-    <div className="h-screen overflow-hidden grid" style={{ gridTemplateColumns: '240px 1fr' }}>
+    <div className="crm-shell h-screen overflow-hidden grid">
       <SidebarCrm active="reports" />
       <div className="flex h-screen flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <div className="flex items-center gap-3 text-slate-700">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="flex min-w-0 shrink items-center gap-3 text-slate-700">
             <BackButton />
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600">📊</span>
-            <div><h1 className="text-lg font-bold leading-tight">Reports</h1><p className="text-[11px] text-slate-500">Live analytics from your CRM data.</p></div>
+            <span className="hidden h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600 sm:grid">📊</span>
+            <div><h1 className="truncate text-lg font-bold leading-tight">Reports</h1><p className="hidden truncate text-[11px] text-slate-500 sm:block">Live analytics from your CRM data.</p></div>
           </div>
           <TopBarUser />
         </header>
@@ -96,7 +96,7 @@ export default function Reports() {
           <div className="mt-5 rounded-xl border border-slate-200 bg-white p-5">
             <h3 className="mb-3 text-sm font-bold">Top Customers by Lifetime Spend</h3>
             {r.topCustomers.length === 0 ? <p className="text-sm text-slate-400">No customer data.</p> : (
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead className="text-xs uppercase tracking-wide text-slate-500"><tr><th className="py-2 text-left">Customer</th><th className="py-2 text-left">Type</th><th className="py-2 text-left">Orders</th><th className="py-2 text-right">Spend</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {r.topCustomers.map((c) => (

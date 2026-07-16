@@ -63,6 +63,15 @@ export class QdrantClient {
     })
   }
 
+  // Fetch specific points by id (with payload, no vectors).
+  async retrieve(name, ids) {
+    const d = await this.request(`/collections/${encodeURIComponent(name)}/points`, {
+      method: 'POST',
+      body: { ids, with_payload: true, with_vector: false },
+    })
+    return d?.result || []
+  }
+
   // vector: number[]; returns nearest points with payload
   search(name, vector, { limit = 5, filter } = {}) {
     return this.request(`/collections/${encodeURIComponent(name)}/points/search`, {

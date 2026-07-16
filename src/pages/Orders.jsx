@@ -36,19 +36,19 @@ export default function Orders() {
   const totalValue = orders.reduce((a, o) => a + (o.amount || o.total || 0), 0)
 
   return (
-    <div className="h-screen overflow-hidden grid" style={{ gridTemplateColumns: '240px 1fr' }}>
+    <div className="crm-shell h-screen overflow-hidden grid">
       <SidebarCrm active="orders" />
       <div className="flex h-screen flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <div className="flex items-center gap-3 text-slate-700">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="flex min-w-0 shrink items-center gap-3 text-slate-700">
             <BackButton />
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600">🛒</span>
-            <div><h1 className="text-lg font-bold leading-tight">Orders</h1><p className="text-[11px] text-slate-500">All orders across customers.</p></div>
+            <span className="hidden h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600 sm:grid">🛒</span>
+            <div><h1 className="truncate text-lg font-bold leading-tight">Orders</h1><p className="hidden truncate text-[11px] text-slate-500 sm:block">All orders across customers.</p></div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="relative">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-4">
+            <div className="relative min-w-0 flex-1 sm:flex-none">
               <span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
-              <input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Search orders..." className="w-72 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-500 focus:bg-white" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Search orders..." className="w-full sm:w-72 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-500 focus:bg-white" />
             </div>
             <TopBarUser />
           </div>
@@ -71,7 +71,8 @@ export default function Orders() {
                 <button onClick={() => toast('New Order flow — coming next', 'info')} className="mt-4 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">+ New Order</button>
               </div>
             ) : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>
                   <th className="px-3 py-3 text-left">Order #</th><th className="px-3 py-3 text-left">Customer</th><th className="px-3 py-3 text-left">Products</th>
                   <th className="px-3 py-3 text-left">Amount</th><th className="px-3 py-3 text-left">Status</th><th className="px-3 py-3 text-left">Date</th>
@@ -89,6 +90,7 @@ export default function Orders() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </main>

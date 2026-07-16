@@ -34,7 +34,8 @@ export default function AiAssistant() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [chats, setChats] = useState([])
-  const [showHistory, setShowHistory] = useState(true)
+  // history is open on desktop, closed on phones (it overlays there)
+  const [showHistory, setShowHistory] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1024)
   const endRef = useRef(null)
   const abortRef = useRef(null)
   const chatIdRef = useRef(null)   // current saved chat id
@@ -124,7 +125,10 @@ export default function AiAssistant() {
     <div className="flex h-screen overflow-hidden bg-slate-50">
       {/* History sidebar */}
       {showHistory && (
-        <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
+        <>
+        {/* backdrop — phones only */}
+        <div onClick={() => setShowHistory(false)} className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden" aria-hidden="true" />
+        <aside className="fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white shadow-xl lg:static lg:z-auto lg:shadow-none">
           <div className="flex items-center justify-between border-b border-slate-200 px-3 py-3">
             <span className="text-sm font-bold">Chat history</span>
             <button onClick={newChat} className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">+ New</button>
@@ -143,6 +147,7 @@ export default function AiAssistant() {
             ))}
           </div>
         </aside>
+        </>
       )}
 
       {/* Main */}
@@ -157,7 +162,7 @@ export default function AiAssistant() {
               <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">✨</span>
               <div>
                 <h1 className="text-lg font-extrabold leading-none tracking-tight">AI Assistant</h1>
-                <p className="text-[11px] text-slate-500">Ask about customers, conversations & leads</p>
+                <p className="hidden truncate text-[11px] text-slate-500 sm:block">Ask about customers, conversations & leads</p>
               </div>
             </div>
           </div>

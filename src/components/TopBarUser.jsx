@@ -19,15 +19,16 @@ export default function TopBarUser() {
   const role = ROLE_LABEL[user.role] || user.role || ''
 
   return (
-    <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
-      <span className="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-xs font-bold text-white">{initialsOf(name)}</span>
-      <div className="text-xs leading-tight">
+    <div className="flex shrink-0 items-center gap-2 border-slate-200 pl-0 sm:gap-3 sm:border-l sm:pl-4">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-600 text-xs font-bold text-white">{initialsOf(name)}</span>
+      {/* name + role take too much room on a phone — avatar is enough there */}
+      <div className="hidden text-xs leading-tight sm:block">
         <div className="font-semibold">{name}</div>
         <div className="text-slate-500">{role}</div>
       </div>
       <button
         onClick={() => { signOut(); navigate('/', { replace: true }) }}
-        className="ml-2 grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 sm:ml-2"
         aria-label="Log out" title="Log out"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
