@@ -146,6 +146,7 @@ export function startUploadWorker(intervalMs = 60 * 1000) {
         total += batchOk
         console.log(`[nextcloud] uploaded ${batchOk}/${rows.length} (session total ${total})`)
         if (batchOk === 0) break   // pura batch fail -> NextCloud down/creds -> ruk jao (loop se bacho)
+        await new Promise((r) => setTimeout(r, 400))   // CRM/poller ko saans lene do (backend responsive rahe)
       }
     } catch (e) { console.warn('[nextcloud] worker error:', e.message) }
     finally { workerBusy = false }
