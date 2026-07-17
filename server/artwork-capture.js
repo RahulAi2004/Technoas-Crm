@@ -4,12 +4,9 @@
 // disk par bhi (best-effort; Docker mein volume mount karein to persist hoga).
 // Agent ke bheje mockups capture NAHI hote (sirf direction='in').
 import pg from 'pg'
-import fs from 'fs'
-import path from 'path'
 import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath } from './nextcloud.js'
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3, connectionTimeoutMillis: 20000, query_timeout: 60000 })
-const ARTWORK_DIR = process.env.ARTWORK_DIR || path.resolve('./artworks')
 const SRC_SUBFOLDER = 'references'   // customer ke bheje files (source/reference material)
 
 async function fetchBytes(url, timeoutMs = 8000) {
@@ -113,14 +110,9 @@ export async function storeArtwork({ ref, convRef, url, name }) {
      safeName(name) || null, ext, buf ? buf.length : null, url, buf])
   const rec = ins.rows[0]
   if (!rec) return null
-  // disk copy (best-effort) — folder = YYMMDD_First_Last
+  // Sirf 2 jagah: bytes PostgreSQL mein (upar ho chuka) + NextCloud pe upload.
+  // Local disk pe koi copy NAHI (user ki pref) — PG hi source of truth.
   if (buf) {
-    try {
-      const dir = path.join(ARTWORK_DIR, folder, SRC_SUBFOLDER)
-      fs.mkdirSync(dir, { recursive: true })
-      fs.writeFileSync(path.join(dir, `${rec.artwork_no}.${ext}`), buf)
-    } catch { /* disk optional — PG is the source of truth */ }
-    // NextCloud par chadhao + shareable link (best-effort; fail -> retry-worker baad mein karega)
     pushToNextcloud({ artwork_id: rec.artwork_id, artwork_no: rec.artwork_no, folder, file_type: ext, image_data: buf }).catch(() => {})
   }
   return rec.artwork_no
