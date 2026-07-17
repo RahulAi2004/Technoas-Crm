@@ -14,6 +14,7 @@ server/data.db-shm
 # Secrets / local DB store
 .env
 server/.env
+server/.env.backup
 server/data.json
 server/data.json.bak
 server/data.json.tmp
