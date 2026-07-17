@@ -6,6 +6,7 @@
 import pg from 'pg'
 import fs from 'fs'
 import path from 'path'
+import { ncConfigured, ncUploadAndShare } from './nextcloud.js'
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3, connectionTimeoutMillis: 20000, query_timeout: 60000 })
 const ARTWORK_DIR = process.env.ARTWORK_DIR || path.resolve('./artworks')
@@ -22,6 +23,59 @@ const safeName = (s) => String(s || '').replace(/[^\w\- .]/g, '').replace(/\s+/g
 const extOf = (url, name) => {
   const m = /\.(png|jpe?g|webp|gif)(\?|$)/i.exec(name || '') || /\.(png|jpe?g|webp|gif)(\?|$)/i.exec(url || '')
   return m ? m[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg'
+}
+
+// full_name → { first, last } (folder-safe, underscores)
+const partSafe = (s) => String(s || '').normalize('NFKD').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30)
+function splitName(full) {
+  const parts = String(full || 'Unknown').trim().split(/\s+/).filter(Boolean)
+  const first = partSafe(parts[0]) || 'Unknown'
+  const last = partSafe(parts.slice(1).join(' '))
+  return { first, last }
+}
+
+// customer ka STABLE folder: YYMMDD_Firstname_Lastname (YYMMDD = uske pehle message ki date).
+// Ek baar bana ke customers.folder par cache; collision -> _2, _3. Kabhi change nahi.
+async function folderForCustomer(customerId, fullName) {
+  if (!customerId) {
+    const { first, last } = splitName(fullName)
+    const ymd = new Date().toISOString().slice(2, 10).replace(/-/g, '')
+    return `${ymd}_${first}${last ? '_' + last : ''}`
+  }
+  const ex = await pool.query(`SELECT folder, full_name FROM app.customers WHERE customer_id = $1`, [customerId])
+  if (ex.rows[0]?.folder) return ex.rows[0].folder
+  const nm = fullName || ex.rows[0]?.full_name
+  const d = await pool.query(
+    `SELECT to_char(min(m.created_at), 'YYMMDD') ymd
+       FROM app.messages m JOIN app.conversations co ON co.conversation_id = m.conversation_id
+      WHERE co.customer_id = $1 AND m.direction = 'in'`, [customerId])
+  const ymd = d.rows[0]?.ymd || new Date().toISOString().slice(2, 10).replace(/-/g, '')
+  const { first, last } = splitName(nm)
+  const base = `${ymd}_${first}${last ? '_' + last : ''}`
+  let folder = base, n = 1
+  while (true) {                                            // collision -> _2, _3
+    const clash = await pool.query(`SELECT 1 FROM app.customers WHERE folder = $1 AND customer_id <> $2`, [folder, customerId])
+    if (!clash.rowCount) break
+    n++; folder = `${base}_${n}`
+  }
+  await pool.query(`UPDATE app.customers SET folder = $1 WHERE customer_id = $2 AND folder IS NULL`, [folder, customerId])
+  const after = await pool.query(`SELECT folder FROM app.customers WHERE customer_id = $1`, [customerId])
+  return after.rows[0]?.folder || folder
+}
+
+// ek artwork NextCloud par chadhao + shareable link save karo (best-effort; fail -> pending rehta hai)
+export async function pushToNextcloud(row) {
+  if (!ncConfigured()) return false
+  try {
+    const b = row.image_data || (await pool.query(`SELECT image_data FROM app.customer_artwork WHERE artwork_id = $1`, [row.artwork_id])).rows[0]?.image_data
+    if (!b) return false
+    const res = await ncUploadAndShare({ folder: row.folder, fileName: `${row.artwork_no}.${row.file_type || 'jpg'}`, bytes: b })
+    if (!res) return false
+    await pool.query(`UPDATE app.customer_artwork SET nextcloud_url = coalesce($1, nextcloud_url),
+        upload_status = CASE WHEN gdrive_url IS NOT NULL THEN 'done' ELSE 'nextcloud_ok' END
+      WHERE artwork_id = $2`, [res.url, row.artwork_id])
+    return true
+  } catch (e) { console.warn('[nextcloud] push failed:', e.message); return false }
 }
 
 // conversation (uuid ya legacy id) → customer + latest lead
@@ -46,7 +100,7 @@ export async function storeArtwork({ ref, convRef, url, name }) {
   const dupe = await pool.query(`SELECT 1 FROM app.customer_artwork WHERE message_ref = $1`, [ref])
   if (dupe.rowCount) return null
   const ctx = await resolveContext(convRef)
-  const folder = safeName(`${ctx?.lead_no || 'NO-LEAD'} ${ctx?.full_name || 'Unknown'}`)
+  const folder = await folderForCustomer(ctx?.customer_id, ctx?.full_name)   // YYMMDD_First_Last
   const buf = await fetchBytes(url)                       // null bhi chalega — record phir bhi banta hai
   const ext = extOf(url, name)
   const ins = await pool.query(
@@ -54,19 +108,43 @@ export async function storeArtwork({ ref, convRef, url, name }) {
        (lead_id, customer_id, conversation_id, message_ref, folder, file_name, file_type, file_size_bytes, source_url, image_data)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (message_ref) DO NOTHING
-     RETURNING artwork_no`,
+     RETURNING artwork_id, artwork_no`,
     [ctx?.lead_id || null, ctx?.customer_id || null, ctx?.conversation_id || null, ref, folder,
      safeName(name) || null, ext, buf ? buf.length : null, url, buf])
-  const no = ins.rows[0]?.artwork_no || null
-  // disk copy (best-effort) — folder = lead ka naam
-  if (no && buf) {
+  const rec = ins.rows[0]
+  if (!rec) return null
+  // disk copy (best-effort) — folder = YYMMDD_First_Last
+  if (buf) {
     try {
       const dir = path.join(ARTWORK_DIR, folder)
       fs.mkdirSync(dir, { recursive: true })
-      fs.writeFileSync(path.join(dir, `${no}.${ext}`), buf)
+      fs.writeFileSync(path.join(dir, `${rec.artwork_no}.${ext}`), buf)
     } catch { /* disk optional — PG is the source of truth */ }
+    // NextCloud par chadhao + shareable link (best-effort; fail -> retry-worker baad mein karega)
+    pushToNextcloud({ artwork_id: rec.artwork_id, artwork_no: rec.artwork_no, folder, file_type: ext, image_data: buf }).catch(() => {})
   }
-  return no
+  return rec.artwork_no
+}
+
+// RETRY WORKER — pending/nextcloud-less artworks ko NextCloud par chadhata hai (har N min).
+// Boot par index.js se ek baar start hota hai; NextCloud configured na ho to kuch nahi karta.
+let workerOn = false
+export function startUploadWorker(intervalMs = 5 * 60 * 1000) {
+  if (workerOn || !ncConfigured()) return
+  workerOn = true
+  const tick = async () => {
+    try {
+      const rows = (await pool.query(
+        `SELECT artwork_id, artwork_no, folder, file_type FROM app.customer_artwork
+          WHERE image_data IS NOT NULL AND nextcloud_url IS NULL
+          ORDER BY created_at DESC LIMIT 25`)).rows
+      for (const r of rows) await pushToNextcloud(r)
+      if (rows.length) console.log(`[nextcloud] retry-worker uploaded batch of ${rows.length}`)
+    } catch (e) { console.warn('[nextcloud] worker error:', e.message) }
+  }
+  setInterval(tick, intervalMs)
+  setTimeout(tick, 8000)   // boot ke thodi der baad pehla pass
+  console.log('🗂️  NextCloud upload worker started')
 }
 
 // LIVE HOOK — saveMessage se har naye message par (fire-and-forget)
@@ -90,7 +168,8 @@ export async function listArtworks({ lead_id, customer_id, conversation_id, fold
   vals.push(Math.min(Number(limit) || 100, 500))
   const r = await pool.query(
     `SELECT artwork_id, artwork_no, folder, file_type, file_size_bytes,
-            (image_data IS NOT NULL) AS has_image, lead_id, customer_id, created_at
+            (image_data IS NOT NULL) AS has_image, nextcloud_url, gdrive_url, upload_status,
+            lead_id, customer_id, created_at
        FROM app.customer_artwork
       ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
       ORDER BY created_at DESC LIMIT $${vals.length}`, vals)
