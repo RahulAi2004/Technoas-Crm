@@ -43,10 +43,11 @@ export async function ncShareLink(remotePath) {
   return m ? m[1].replace(/&amp;/g, '&') : null
 }
 
-// Full flow for one file → returns { url } or null
-export async function ncUploadAndShare({ folder, fileName, bytes }) {
+// Full flow for one file → returns { url } or null.
+// subfolder: customer-sent files 'references/' mein jaate hain (designer ka source material).
+export async function ncUploadAndShare({ folder, subfolder, fileName, bytes }) {
   if (!ncConfigured() || !bytes) return null
-  const parts = [...NC_ROOT.split('/').filter(Boolean), folder]
+  const parts = [...NC_ROOT.split('/').filter(Boolean), folder, ...(subfolder ? [subfolder] : [])]
   await ncEnsureFolder(parts)
   const remote = `${parts.join('/')}/${fileName}`
   if (!(await ncPut(remote, bytes))) return null

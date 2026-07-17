@@ -19,7 +19,7 @@ console.log('artworks with bytes:', list.length)
 
 let written = 0, skipped = 0, cleaned = 0, done = 0
 for (const r of list) {
-  const dir = path.join(ARTWORK_DIR, r.folder || 'NO-FOLDER')
+  const dir = path.join(ARTWORK_DIR, r.folder || 'NO-FOLDER', 'references')  // customer source files
   const file = path.join(dir, `${r.artwork_no}.${r.file_type || 'jpg'}`)
   // purani legacy-naam file hatao (agar hai)
   if (r.legacy_no) {

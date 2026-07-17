@@ -10,6 +10,7 @@ import { ncConfigured, ncUploadAndShare } from './nextcloud.js'
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3, connectionTimeoutMillis: 20000, query_timeout: 60000 })
 const ARTWORK_DIR = process.env.ARTWORK_DIR || path.resolve('./artworks')
+const SRC_SUBFOLDER = 'references'   // customer ke bheje files (source/reference material)
 
 async function fetchBytes(url, timeoutMs = 8000) {
   try {
@@ -69,7 +70,7 @@ export async function pushToNextcloud(row) {
   try {
     const b = row.image_data || (await pool.query(`SELECT image_data FROM app.customer_artwork WHERE artwork_id = $1`, [row.artwork_id])).rows[0]?.image_data
     if (!b) return false
-    const res = await ncUploadAndShare({ folder: row.folder, fileName: `${row.artwork_no}.${row.file_type || 'jpg'}`, bytes: b })
+    const res = await ncUploadAndShare({ folder: row.folder, subfolder: SRC_SUBFOLDER, fileName: `${row.artwork_no}.${row.file_type || 'jpg'}`, bytes: b })
     if (!res) return false
     await pool.query(`UPDATE app.customer_artwork SET nextcloud_url = coalesce($1, nextcloud_url),
         upload_status = CASE WHEN gdrive_url IS NOT NULL THEN 'done' ELSE 'nextcloud_ok' END
@@ -116,7 +117,7 @@ export async function storeArtwork({ ref, convRef, url, name }) {
   // disk copy (best-effort) — folder = YYMMDD_First_Last
   if (buf) {
     try {
-      const dir = path.join(ARTWORK_DIR, folder)
+      const dir = path.join(ARTWORK_DIR, folder, SRC_SUBFOLDER)
       fs.mkdirSync(dir, { recursive: true })
       fs.writeFileSync(path.join(dir, `${rec.artwork_no}.${ext}`), buf)
     } catch { /* disk optional — PG is the source of truth */ }
