@@ -43,14 +43,19 @@ export async function ncShareLink(remotePath) {
   return m ? m[1].replace(/&amp;/g, '&') : null
 }
 
-// Full flow for one file → returns { url } or null.
-// subfolder: customer-sent files 'references/' mein jaate hain (designer ka source material).
-export async function ncUploadAndShare({ folder, subfolder, fileName, bytes }) {
+// remote path banane ka helper (share-worker isse reconstruct karta hai)
+export function ncRemotePath(folder, subfolder, fileName) {
+  return [...NC_ROOT.split('/').filter(Boolean), folder, ...(subfolder ? [subfolder] : []), fileName].join('/')
+}
+
+// Upload one file (MKCOL + PUT). Share-link ALAG se banate hain (rate-limit se bachne ke liye).
+// share=false (default worker) → sirf upload, tez. Returns { remote } or null.
+export async function ncUploadAndShare({ folder, subfolder, fileName, bytes, share = false }) {
   if (!ncConfigured() || !bytes) return null
   const parts = [...NC_ROOT.split('/').filter(Boolean), folder, ...(subfolder ? [subfolder] : [])]
   await ncEnsureFolder(parts)
   const remote = `${parts.join('/')}/${fileName}`
   if (!(await ncPut(remote, bytes))) return null
-  const url = await ncShareLink(remote)             // link null bhi ho sakta hai (file phir bhi chadh gayi)
+  const url = share ? await ncShareLink(remote) : null
   return { url, remote }
 }

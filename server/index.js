@@ -11,7 +11,7 @@ import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
-import { captureSourceArtworks, listArtworks, getArtworkFile, startUploadWorker } from './artwork-capture.js'
+import { captureSourceArtworks, listArtworks, getArtworkFile, startUploadWorker, startShareWorker } from './artwork-capture.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -2125,7 +2125,8 @@ app.listen(PORT, () => {
   refreshDbSchema()            // give the AI assistant the full live DB schema
   startMetaPolling()
   startIntelligenceRefresh()
-  startUploadWorker()          // NextCloud upload/retry worker (no-op until NEXTCLOUD_* env set)
+  startUploadWorker()          // NextCloud file upload (fast)
+  startShareWorker()           // NextCloud share-links (slow, rate-limit-safe)
 })
 
 // Auto-refresh AI profiles + lead intelligence for NEW/CHANGED chats (stale-aware scripts).

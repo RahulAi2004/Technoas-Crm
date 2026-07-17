@@ -6,7 +6,7 @@
 import pg from 'pg'
 import fs from 'fs'
 import path from 'path'
-import { ncConfigured, ncUploadAndShare } from './nextcloud.js'
+import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath } from './nextcloud.js'
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3, connectionTimeoutMillis: 20000, query_timeout: 60000 })
 const ARTWORK_DIR = process.env.ARTWORK_DIR || path.resolve('./artworks')
@@ -70,11 +70,10 @@ export async function pushToNextcloud(row) {
   try {
     const b = row.image_data || (await pool.query(`SELECT image_data FROM app.customer_artwork WHERE artwork_id = $1`, [row.artwork_id])).rows[0]?.image_data
     if (!b) return false
-    const res = await ncUploadAndShare({ folder: row.folder, subfolder: SRC_SUBFOLDER, fileName: `${row.artwork_no}.${row.file_type || 'jpg'}`, bytes: b })
+    // sirf upload (tez) — share-link alag worker banata hai (rate-limit se bachne ke liye)
+    const res = await ncUploadAndShare({ folder: row.folder, subfolder: SRC_SUBFOLDER, fileName: `${row.artwork_no}.${row.file_type || 'jpg'}`, bytes: b, share: false })
     if (!res) return false
-    await pool.query(`UPDATE app.customer_artwork SET nextcloud_url = coalesce($1, nextcloud_url),
-        upload_status = CASE WHEN gdrive_url IS NOT NULL THEN 'done' ELSE 'nextcloud_ok' END
-      WHERE artwork_id = $2`, [res.url, row.artwork_id])
+    await pool.query(`UPDATE app.customer_artwork SET upload_status = 'nextcloud_ok' WHERE artwork_id = $1 AND upload_status = 'pending'`, [row.artwork_id])
     return true
   } catch (e) { console.warn('[nextcloud] push failed:', e.message); return false }
 }
@@ -162,6 +161,40 @@ export function startUploadWorker(intervalMs = 60 * 1000) {
   setInterval(drain, intervalMs)
   setTimeout(drain, 8000)
   console.log('🗂️  NextCloud upload worker started')
+}
+
+// SHARE-LINK WORKER — uploaded files ke liye NextCloud shareable link banata hai, DHEERE
+// (OCS share-API rate-limit karta hai). Adaptive: 429 aaye to ruk jao, warna ~1.2s gap.
+let shareOn = false
+export function startShareWorker() {
+  if (shareOn || !ncConfigured()) return
+  shareOn = true
+  const tick = async () => {
+    try {
+      const rows = (await pool.query(
+        `SELECT artwork_id, artwork_no, folder, file_type FROM app.customer_artwork
+          WHERE upload_status = 'nextcloud_ok' AND nextcloud_url IS NULL
+          ORDER BY created_at DESC LIMIT 30`)).rows
+      let made = 0, throttled = false
+      for (const r of rows) {
+        const remote = ncRemotePath(r.folder, SRC_SUBFOLDER, `${r.artwork_no}.${r.file_type || 'jpg'}`)
+        let url = null
+        try { url = await ncShareLink(remote) } catch { /* skip */ }
+        if (url) {
+          await pool.query(`UPDATE app.customer_artwork SET nextcloud_url = $1 WHERE artwork_id = $2`, [url, r.artwork_id])
+          made++
+          await new Promise((res) => setTimeout(res, 1200))   // gentle rate
+        } else {
+          throttled = true
+          await new Promise((res) => setTimeout(res, 8000))    // rate-limited -> back off
+        }
+      }
+      if (made || throttled) console.log(`[nextcloud] share-links made ${made}${throttled ? ' (some throttled, will retry)' : ''}`)
+    } catch (e) { console.warn('[nextcloud] share worker error:', e.message) }
+  }
+  setInterval(tick, 45 * 1000)   // har 45s ek pass
+  setTimeout(tick, 20000)        // upload worker ko pehle chalne do
+  console.log('🔗 NextCloud share-link worker started')
 }
 
 // LIVE HOOK — saveMessage se har naye message par (fire-and-forget)
