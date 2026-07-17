@@ -129,22 +129,38 @@ export async function storeArtwork({ ref, convRef, url, name }) {
 
 // RETRY WORKER — pending/nextcloud-less artworks ko NextCloud par chadhata hai (har N min).
 // Boot par index.js se ek baar start hota hai; NextCloud configured na ho to kuch nahi karta.
-let workerOn = false
-export function startUploadWorker(intervalMs = 5 * 60 * 1000) {
+let workerOn = false, workerBusy = false
+export function startUploadWorker(intervalMs = 60 * 1000) {
   if (workerOn || !ncConfigured()) return
   workerOn = true
-  const tick = async () => {
+  const drain = async () => {
+    if (workerBusy) return
+    workerBusy = true
     try {
-      const rows = (await pool.query(
-        `SELECT artwork_id, artwork_no, folder, file_type FROM app.customer_artwork
-          WHERE image_data IS NOT NULL AND nextcloud_url IS NULL
-          ORDER BY created_at DESC LIMIT 25`)).rows
-      for (const r of rows) await pushToNextcloud(r)
-      if (rows.length) console.log(`[nextcloud] retry-worker uploaded batch of ${rows.length}`)
+      let total = 0
+      while (true) {
+        // select by upload_status (NOT nextcloud_url) — file uploaded but share-link-null bhi 'nextcloud_ok'
+        const rows = (await pool.query(
+          `SELECT artwork_id, artwork_no, folder, file_type FROM app.customer_artwork
+            WHERE image_data IS NOT NULL AND upload_status = 'pending'
+            ORDER BY created_at DESC LIMIT 20`)).rows
+        if (!rows.length) break
+        let i = 0
+        const oks = await Promise.all(Array.from({ length: 5 }, async () => {   // 5 concurrent
+          let ok = 0
+          while (i < rows.length) { const r = rows[i++]; if (await pushToNextcloud(r)) ok++ }
+          return ok
+        }))
+        const batchOk = oks.reduce((a, b) => a + b, 0)
+        total += batchOk
+        console.log(`[nextcloud] uploaded ${batchOk}/${rows.length} (session total ${total})`)
+        if (batchOk === 0) break   // pura batch fail -> NextCloud down/creds -> ruk jao (loop se bacho)
+      }
     } catch (e) { console.warn('[nextcloud] worker error:', e.message) }
+    finally { workerBusy = false }
   }
-  setInterval(tick, intervalMs)
-  setTimeout(tick, 8000)   // boot ke thodi der baad pehla pass
+  setInterval(drain, intervalMs)
+  setTimeout(drain, 8000)
   console.log('🗂️  NextCloud upload worker started')
 }
 
