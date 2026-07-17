@@ -150,8 +150,12 @@ const deleteKv = (table, key) => enqueue(() => pool.query(`DELETE FROM ${table} 
 // ---- boot (resilient: retry so a brief remote-DB blip doesn't crash the backend) ----
 async function bootLoad(retries = 8) {
   for (let a = 1; a <= retries; a++) {
-    try { await ensureSchema(); return await loadAll() }
-    catch (e) {
+    try {
+      // ensureSchema sirf fresh DB par zaroori hai; established DB par CREATE fail (e.g. PG15
+      // "permission denied for schema public") ko non-fatal rakho — loadAll sirf SELECT karta hai.
+      try { await ensureSchema() } catch (e) { console.warn(`[db] ensureSchema skipped (non-fatal): ${e.message}`) }
+      return await loadAll()
+    } catch (e) {
       console.error(`[db] boot attempt ${a}/${retries} failed: ${e.message}`)
       if (a === retries) throw e
       await new Promise((r) => setTimeout(r, 5000))
