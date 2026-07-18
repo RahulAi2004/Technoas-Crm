@@ -455,8 +455,14 @@ app.get('/api/webhooks/manychat/events', authRequired, (req, res) => {
 // ============================================================
 // Meta integration (Facebook Messenger + Instagram DM) — direct Graph API
 // ============================================================
+// Always coerce to a clean string token (defends against JSONB quotes / object / whitespace)
+function metaToken() {
+  let t = getSetting('meta_page_token')
+  if (t && typeof t === 'object') t = t.access_token || t.token || ''
+  return String(t || '').replace(/^"+|"+$/g, '').replace(/\s+/g, '').trim()
+}
 function meta() {
-  const token = getSetting('meta_page_token')
+  const token = metaToken()
   if (!token) { const e = new Error('Meta not connected'); e.status = 400; throw e }
   return new MetaClient(token)
 }
@@ -854,7 +860,8 @@ const attachPreview = (atts) => atts?.length ? (atts[0].type === 'image' ? '📷
 
 let metaSyncRunning = false
 async function syncMetaConversations() {
-  const token = getSetting('meta_page_token')
+  const token = metaToken()
+  console.log(`[meta debug] token len=${token.length} head=${token.slice(0, 8)} tail=${token.slice(-4)}`)
   if (!token || metaSyncRunning) return { skipped: true }
   metaSyncRunning = true
   const pageId = String(getSetting('meta_page_id') || '')
@@ -869,7 +876,7 @@ async function syncMetaConversations() {
     try { return await client.getConversations(platform) }
     catch (e) {
       if (e.code === 190 && await tryRefreshMetaToken()) {
-        client = new MetaClient(getSetting('meta_page_token'))
+        client = new MetaClient(metaToken())
         return await client.getConversations(platform)
       }
       throw e
