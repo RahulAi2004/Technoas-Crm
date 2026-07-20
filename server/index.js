@@ -11,7 +11,7 @@ import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
-import { captureSourceArtworks, listArtworks, getArtworkFile, startUploadWorker, startShareWorker } from './artwork-capture.js'
+import { captureSourceArtworks, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker } from './artwork-capture.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -26,6 +26,16 @@ function authRequired(req, res, next) {
   const token = header.startsWith('Bearer ') ? header.slice(7) : null
   if (!token) return res.status(401).json({ error: 'Missing token' })
   try { req.user = jwt.verify(token, JWT_SECRET); next() }
+  catch { return res.status(401).json({ error: 'Invalid token' }) }
+}
+
+// Same as authRequired, but also accepts the token as ?t= — a browser <img> tag
+// cannot send an Authorization header. Only used for read-only image endpoints.
+function authImg(req, res, next) {
+  const header = req.headers.authorization || ''
+  const token = header.startsWith('Bearer ') ? header.slice(7) : (req.query.t || null)
+  if (!token) return res.status(401).json({ error: 'Missing token' })
+  try { req.user = jwt.verify(String(token), JWT_SECRET); next() }
   catch { return res.status(401).json({ error: 'Invalid token' }) }
 }
 
@@ -2093,14 +2103,31 @@ app.get('/api/artworks', authRequired, async (req, res) => {
     res.json(rows)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
-app.get('/api/artworks/:id/file', authRequired, async (req, res) => {
+function sendArtworkBytes(res, f) {
+  res.set('Content-Type', `image/${f.file_type === 'jpg' ? 'jpeg' : f.file_type}`)
+  res.set('Content-Disposition', `inline; filename="${f.artwork_no}.${f.file_type}"`)
+  res.set('Cache-Control', 'private, max-age=86400')
+  res.send(f.image_data)
+}
+
+app.get('/api/artworks/:id/file', authImg, async (req, res) => {
   try {
     const f = await getArtworkFile(req.params.id)
     if (!f) return res.status(404).json({ error: 'not found' })
     if (!f.image_data) return res.status(410).json({ error: 'image bytes not stored (source URL had expired)' })
-    res.set('Content-Type', `image/${f.file_type === 'jpg' ? 'jpeg' : f.file_type}`)
-    res.set('Content-Disposition', `inline; filename="${f.artwork_no}.${f.file_type}"`)
-    res.send(f.image_data)
+    sendArtworkBytes(res, f)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Chat fallback: jab Facebook ka CDN link expire ho jaye, chat isi se apni copy maangta hai.
+// ?name= wahi attachment name hai jo message mein saved hai (jaise "image-1793950308252607").
+app.get('/api/artwork-file', authImg, async (req, res) => {
+  try {
+    const name = String(req.query.name || '').trim()
+    if (!name) return res.status(400).json({ error: 'name required' })
+    const f = await getArtworkFileByName(name)
+    if (!f) return res.status(404).json({ error: 'not stored' })
+    sendArtworkBytes(res, f)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

@@ -5,7 +5,7 @@ import TopBarUser from '../components/TopBarUser.jsx'
 import MobileNav, { closeNav } from '../components/MobileNav.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { STATUS_OPTIONS } from '../data/conversations.js'
-import { api } from '../lib/api.js'
+import { api, getToken } from '../lib/api.js'
 
 // Normalize a conversation row from the server (snake_case) to the shape the JSX expects (camelCase).
 const normalizeConv = (c) => c && ({
@@ -26,6 +26,31 @@ const channelIcon = (channel) => {
   return null
 }
 
+// Facebook ke CDN link 2-3 hafte mein expire ho jate hain. Har image ki asli copy
+// hamare PostgreSQL + NextCloud mein saved hai, isliye link marne par apni copy dikhao.
+export function ourCopyUrl(att) {
+  if (!att?.name) return null
+  return `/api/artwork-file?name=${encodeURIComponent(att.name)}&t=${encodeURIComponent(getToken() || '')}`
+}
+
+// Chat image: pehle original link, wo fail ho to apni saved copy, wo bhi na ho to placeholder.
+function ChatImage({ att, className = 'max-h-64 max-w-full rounded-lg object-cover' }) {
+  const [stage, setStage] = useState('src')          // src -> ours -> gone
+  const fallback = ourCopyUrl(att)
+  if (stage === 'gone') return (
+    <div className="flex max-w-full items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
+      🖼️ <span>Image not available</span>
+    </div>
+  )
+  const src = stage === 'src' ? att.url : fallback
+  return (
+    <a href={src} target="_blank" rel="noreferrer" className="block">
+      <img src={src} alt={att.name || 'image'} loading="lazy" className={className}
+        onError={() => setStage((s) => (s === 'src' && fallback ? 'ours' : 'gone'))} />
+    </a>
+  )
+}
+
 // Render image/video/file attachments inside a chat bubble.
 function MsgAttachments({ items }) {
   if (!Array.isArray(items) || !items.length) return null
@@ -33,11 +58,7 @@ function MsgAttachments({ items }) {
     <div className="mb-1.5 space-y-1.5">
       {items.map((a, i) => {
         if (!a?.url) return null
-        if (a.type === 'image') return (
-          <a key={i} href={a.url} target="_blank" rel="noreferrer" className="block">
-            <img src={a.url} alt={a.name || 'image'} loading="lazy" className="max-h-64 max-w-full rounded-lg object-cover" />
-          </a>
-        )
+        if (a.type === 'image') return <ChatImage key={i} att={a} />
         if (a.type === 'video') return <video key={i} src={a.url} controls className="max-h-64 max-w-full rounded-lg" />
         return <a key={i} href={a.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-brand-600 underline">📎 {a.name || 'Attachment'}</a>
       })}
@@ -1317,7 +1338,7 @@ function HistoryTab({ conv }) {
                       {Array.isArray(r.attachments) && r.attachments.length ? (
                         <div className="flex flex-wrap gap-1">
                           {r.attachments.map((a, k) => a.type === 'image'
-                            ? <a key={k} href={a.url} target="_blank" rel="noreferrer"><img src={a.url} alt="" loading="lazy" className="h-10 w-10 rounded object-cover ring-1 ring-slate-200" /></a>
+                            ? <ChatImage key={k} att={a} className="h-10 w-10 rounded object-cover ring-1 ring-slate-200" />
                             : <a key={k} href={a.url} target="_blank" rel="noreferrer" className="text-base">{a.type === 'video' ? '🎥' : '📎'}</a>)}
                         </div>
                       ) : <span className="text-slate-300">—</span>}
@@ -1489,7 +1510,7 @@ function FilesTab({ conv }) {
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2">
                       {f.type === 'image'
-                        ? <a href={f.url} target="_blank" rel="noreferrer"><img src={f.url} alt="" loading="lazy" className="h-9 w-9 rounded object-cover ring-1 ring-slate-200" /></a>
+                        ? <ChatImage att={f} className="h-9 w-9 rounded object-cover ring-1 ring-slate-200" />
                         : <span className="grid h-9 w-9 place-items-center rounded bg-slate-100 text-base">{f.type === 'video' ? '🎥' : '📄'}</span>}
                       <span className="max-w-[140px] truncate text-slate-700">{f.name || `${typeLabel(f.type)} ${i + 1}`}</span>
                     </div>

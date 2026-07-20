@@ -225,3 +225,13 @@ export async function getArtworkFile(idOrNo) {
       WHERE artwork_id::text = $1 OR artwork_no = $1 LIMIT 1`, [String(idOrNo)])
   return r.rows[0] || null
 }
+
+// Chat attachment ka `name` (jaise "image-1793950308252607") se stored bytes dhoondo.
+// Facebook ke CDN link 2-3 hafte mein expire ho jate hain — tab chat apni copy maangta hai.
+export async function getArtworkFileByName(fileName) {
+  const r = await pool.query(
+    `SELECT artwork_no, file_type, image_data FROM app.customer_artwork
+      WHERE file_name = $1 AND image_data IS NOT NULL
+      ORDER BY created_at DESC LIMIT 1`, [String(fileName)])
+  return r.rows[0] || null
+}
