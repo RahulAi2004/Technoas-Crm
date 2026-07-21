@@ -4,7 +4,7 @@
 // NextCloud mein customer ke bheje files `references/` mein, hamare bheje mockups `sent/` mein.
 // Local disk par koi copy nahi.
 import pg from 'pg'
-import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath } from './nextcloud.js'
+import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath, ncEnsureCustomerFolders } from './nextcloud.js'
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3, connectionTimeoutMillis: 20000, query_timeout: 60000 })
 const SRC_SUBFOLDER = 'references'   // customer ke bheje files (source/reference material)
@@ -69,12 +69,20 @@ async function folderForCustomer(customerId, fullName) {
   return after.rows[0]?.folder || folder
 }
 
+// har folder ka dhaancha ek hi baar banana hai — process ke andar yaad rakho
+const foldersReady = new Set()
+
 // ek artwork NextCloud par chadhao + shareable link save karo (best-effort; fail -> pending rehta hai)
 export async function pushToNextcloud(row) {
   if (!ncConfigured()) return false
   try {
     const b = row.image_data || (await pool.query(`SELECT image_data FROM app.customer_artwork WHERE artwork_id = $1`, [row.artwork_id])).rows[0]?.image_data
     if (!b) return false
+    // pehli baar is customer ka folder chhuo to poora dhaancha bana do
+    if (row.folder && !foldersReady.has(row.folder)) {
+      await ncEnsureCustomerFolders(row.folder)
+      foldersReady.add(row.folder)
+    }
     // sirf upload (tez) — share-link alag worker banata hai (rate-limit se bachne ke liye)
     const res = await ncUploadAndShare({ folder: row.folder, subfolder: subfolderForRef(row.message_ref), fileName: `${row.artwork_no}.${row.file_type || 'jpg'}`, bytes: b, share: false })
     if (!res) return false

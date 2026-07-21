@@ -26,6 +26,21 @@ export async function ncEnsureFolder(pathParts) {
   }
 }
 
+// Har customer folder mein yahi dhaancha hota hai. `references` customer ki bheji
+// files ke liye hai (auto-fill); baaki team khud istemal karti hai.
+export const CUSTOMER_SUBFOLDERS = ['references', 'Artworks', 'Mockups', 'Gangsheets', 'Documents']
+
+export async function ncEnsureCustomerFolders(folder) {
+  if (!ncConfigured() || !folder) return false
+  const base = [...NC_ROOT.split('/').filter(Boolean), folder]
+  await ncEnsureFolder(base)
+  const path = base.join('/')
+  for (const sub of CUSTOMER_SUBFOLDERS) {
+    try { await req(davUrl(`${path}/${sub}`), { method: 'MKCOL' }) } catch { /* exists — ok */ }
+  }
+  return true
+}
+
 export async function ncPut(remotePath, bytes) {
   const res = await req(davUrl(remotePath), { method: 'PUT', body: bytes }, 60000)
   return res.status === 201 || res.status === 204 || res.ok
