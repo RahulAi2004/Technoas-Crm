@@ -94,7 +94,7 @@ export async function pushToNextcloud(row) {
 // conversation (uuid ya legacy id) → customer + latest lead
 async function resolveContext(convRef) {
   const r = await pool.query(
-    `SELECT co.conversation_id, co.customer_id, c.full_name, c.client_code, l.lead_id, l.lead_no
+    `SELECT co.conversation_id, co.customer_id, co.legacy_id, c.full_name, c.client_code, l.lead_id, l.lead_no
        FROM app.conversations co
        LEFT JOIN app.customers c ON c.customer_id = co.customer_id
        LEFT JOIN LATERAL (
@@ -104,7 +104,19 @@ async function resolveContext(convRef) {
        ) l ON true
       WHERE co.conversation_id::text = $1 OR co.legacy_id = $1
       LIMIT 1`, [String(convRef)])
-  return r.rows[0] || null
+  const ctx = r.rows[0] || null
+
+  // Naya customer aur uski pehli image ek saath aate hain, aur customer link write-queue se
+  // thodi der baad likha jata hai. Us race mein customer_id abhi NULL hota hai aur file
+  // "YYMMDD_Unknown" folder mein chali jati hai. customers.legacy_id hamesha
+  // 'cust:' + conversation ki legacy_id hoti hai — usi se seedha customer nikal lo.
+  if (ctx && !ctx.customer_id && ctx.legacy_id) {
+    const c = await pool.query(
+      `SELECT customer_id, full_name, client_code FROM app.customers WHERE legacy_id = $1 LIMIT 1`,
+      [`cust:${ctx.legacy_id}`])
+    if (c.rows[0]) Object.assign(ctx, c.rows[0])
+  }
+  return ctx
 }
 
 // Artwork number yahin bana lo — DB trigger sab ko '-SRC' de deta hai aur customer ki
