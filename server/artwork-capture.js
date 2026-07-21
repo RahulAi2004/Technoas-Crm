@@ -94,7 +94,7 @@ export async function pushToNextcloud(row) {
 // conversation (uuid ya legacy id) → customer + latest lead
 async function resolveContext(convRef) {
   const r = await pool.query(
-    `SELECT co.conversation_id, co.customer_id, c.full_name, l.lead_id, l.lead_no
+    `SELECT co.conversation_id, co.customer_id, c.full_name, c.client_code, l.lead_id, l.lead_no
        FROM app.conversations co
        LEFT JOIN app.customers c ON c.customer_id = co.customer_id
        LEFT JOIN LATERAL (
@@ -107,6 +107,18 @@ async function resolveContext(convRef) {
   return r.rows[0] || null
 }
 
+// Artwork number yahin bana lo — DB trigger sab ko '-SRC' de deta hai aur customer ki
+// series ka number kharch kar deta hai, jis se references/ mein gaps ban jate hain.
+// Trigger sirf tab lagta hai jab artwork_no NULL ho, isliye bhar kar bhejna hi kaafi hai.
+//   customer ki file -> AW-<CLIENT>-NNNN-SRC   (series: AW-<CLIENT>)
+//   hamari bheji     -> AW-<CLIENT>-NNNN-OUT   (series: AWOUT-<CLIENT>, alag counter)
+async function nextArtworkNo(clientCode, out) {
+  const code = clientCode || 'UNK00'
+  const key = `${out ? 'AWOUT' : 'AW'}-${code}`
+  const r = await pool.query(`SELECT app.next_series($1) AS n`, [key])
+  return `AW-${code}-${String(r.rows[0].n).padStart(4, '0')}-${out ? 'OUT' : 'SRC'}`
+}
+
 // Ek artwork store karo (dedupe by message_ref). Returns artwork_no ya null.
 export async function storeArtwork({ ref, convRef, url, name }) {
   if (!url || !ref) return null
@@ -116,14 +128,15 @@ export async function storeArtwork({ ref, convRef, url, name }) {
   const folder = await folderForCustomer(ctx?.customer_id, ctx?.full_name)   // YYMMDD_First_Last
   const buf = await fetchBytes(url)                       // null bhi chalega — record phir bhi banta hai
   const ext = extOf(url, name)
+  const artworkNo = await nextArtworkNo(ctx?.client_code, isOut(ref))
   const ins = await pool.query(
     `INSERT INTO app.customer_artwork
-       (lead_id, customer_id, conversation_id, message_ref, folder, file_name, file_type, file_size_bytes, source_url, image_data)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       (lead_id, customer_id, conversation_id, message_ref, folder, file_name, file_type, file_size_bytes, source_url, image_data, artwork_no)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (message_ref) DO NOTHING
      RETURNING artwork_id, artwork_no`,
     [ctx?.lead_id || null, ctx?.customer_id || null, ctx?.conversation_id || null, ref, folder,
-     safeName(name) || null, ext, buf ? buf.length : null, url, buf])
+     safeName(name) || null, ext, buf ? buf.length : null, url, buf, artworkNo])
   const rec = ins.rows[0]
   if (!rec) return null
   // Hamari bheji files filhaal SIRF PostgreSQL mein rakhni hain (user ki pref) — inhe
