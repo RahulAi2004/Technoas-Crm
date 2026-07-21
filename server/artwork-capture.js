@@ -14,7 +14,8 @@ const OUT_SUBFOLDER = 'sent'         // HUM ne bheje files (mockups, proofs, gan
 // pata chalta hai ('out:' = hamari bheji). Isse alag column ki zaroorat nahi padti aur
 // upload/share worker dono sahi subfolder bana lete hain.
 const OUT_REF = 'out:'
-export const subfolderForRef = (ref) => String(ref || '').startsWith(OUT_REF) ? OUT_SUBFOLDER : SRC_SUBFOLDER
+const isOut = (ref) => String(ref || '').startsWith(OUT_REF)
+export const subfolderForRef = (ref) => isOut(ref) ? OUT_SUBFOLDER : SRC_SUBFOLDER
 
 async function fetchBytes(url, timeoutMs = 8000) {
   try {
@@ -117,7 +118,13 @@ export async function storeArtwork({ ref, convRef, url, name }) {
      safeName(name) || null, ext, buf ? buf.length : null, url, buf])
   const rec = ins.rows[0]
   if (!rec) return null
-  // Sirf 2 jagah: bytes PostgreSQL mein (upar ho chuka) + NextCloud pe upload.
+  // Hamari bheji files filhaal SIRF PostgreSQL mein rakhni hain (user ki pref) — inhe
+  // 'pg_only' mark kar do taaki upload/share worker (jo 'pending' uthate hain) chhod dein.
+  if (isOut(ref)) {
+    await pool.query(`UPDATE app.customer_artwork SET upload_status = 'pg_only' WHERE artwork_id = $1`, [rec.artwork_id])
+    return rec.artwork_no
+  }
+  // Customer ki files: bytes PostgreSQL mein (upar ho chuka) + NextCloud pe upload.
   // Local disk pe koi copy NAHI (user ki pref) — PG hi source of truth.
   if (buf) {
     pushToNextcloud({ artwork_id: rec.artwork_id, artwork_no: rec.artwork_no, folder, file_type: ext, image_data: buf }).catch(() => {})
@@ -141,6 +148,7 @@ export function startUploadWorker(intervalMs = 60 * 1000) {
         const rows = (await pool.query(
           `SELECT artwork_id, artwork_no, folder, file_type, message_ref FROM app.customer_artwork
             WHERE image_data IS NOT NULL AND upload_status = 'pending'
+              AND message_ref NOT LIKE 'out:%'          -- hamari bheji files sirf PG mein
             ORDER BY created_at DESC LIMIT 20`)).rows
         if (!rows.length) break
         let i = 0
@@ -174,6 +182,7 @@ export function startShareWorker() {
       const rows = (await pool.query(
         `SELECT artwork_id, artwork_no, folder, file_type, message_ref FROM app.customer_artwork
           WHERE upload_status = 'nextcloud_ok' AND nextcloud_url IS NULL
+            AND message_ref NOT LIKE 'out:%'            -- hamari bheji files NextCloud pe hain hi nahi
           ORDER BY created_at DESC LIMIT 30`)).rows
       let made = 0, throttled = false
       for (const r of rows) {
