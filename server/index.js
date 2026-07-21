@@ -465,12 +465,19 @@ app.get('/api/webhooks/manychat/events', authRequired, (req, res) => {
 // ============================================================
 // Meta integration (Facebook Messenger + Instagram DM) — direct Graph API
 // ============================================================
+// Settings can come back double-encoded from JSONB ('"654786991062241"' instead of
+// '654786991062241'). Strip the stray quotes/whitespace before ANY comparison or API call —
+// a quoted page id silently broke in/out detection, marking our own replies as customer messages.
+const cleanSetting = (v) => String(v == null ? '' : v).replace(/^"+|"+$/g, '').replace(/\s+/g, '').trim()
+
 // Always coerce to a clean string token (defends against JSONB quotes / object / whitespace)
 function metaToken() {
   let t = getSetting('meta_page_token')
   if (t && typeof t === 'object') t = t.access_token || t.token || ''
-  return String(t || '').replace(/^"+|"+$/g, '').replace(/\s+/g, '').trim()
+  return cleanSetting(t)
 }
+const metaPageId = () => cleanSetting(getSetting('meta_page_id'))
+const metaIgId = () => cleanSetting((getSetting('meta_ig') || {}).id)
 function meta() {
   const token = metaToken()
   if (!token) { const e = new Error('Meta not connected'); e.status = 400; throw e }
@@ -505,7 +512,7 @@ async function tryRefreshMetaToken() {
   if (!userToken) return false
   metaRefreshing = true
   try {
-    await resolveAndStorePageToken(userToken, getSetting('meta_page_id'))
+    await resolveAndStorePageToken(userToken, metaPageId())
     console.log('🔑 refreshed Meta page token')
     return true
   } catch (e) { console.warn('[meta refresh] ' + e.message); return false }
@@ -576,7 +583,7 @@ app.get('/api/meta/status', authRequired, (req, res) => {
   res.json({
     connected: !!token,
     tokenMasked: token ? `••••${token.slice(-6)}` : null,
-    pageId: getSetting('meta_page_id') || null,
+    pageId: metaPageId() || null,
     pageName: getSetting('meta_page_name') || null,
     instagram: getSetting('meta_ig') || null,
     verifyToken: getSetting('meta_verify_token') || null,
@@ -636,7 +643,7 @@ app.post('/api/meta/connect-app', authRequired, async (req, res) => {
     // 2) derive the permanent Page token from the managed pages
     let page
     try {
-      page = await resolveAndStorePageToken(longToken, pageId || getSetting('meta_page_id'))
+      page = await resolveAndStorePageToken(longToken, pageId || metaPageId())
     } catch (e) {
       // Maybe they pasted a Page token directly (no /me/accounts). Verify + use it.
       const info = await new MetaClient(longToken).getPageInfo()
@@ -871,12 +878,10 @@ const attachPreview = (atts) => atts?.length ? (atts[0].type === 'image' ? '📷
 let metaSyncRunning = false
 async function syncMetaConversations() {
   const token = metaToken()
-  console.log(`[meta debug] token len=${token.length} head=${token.slice(0, 8)} tail=${token.slice(-4)}`)
   if (!token || metaSyncRunning) return { skipped: true }
   metaSyncRunning = true
-  const pageId = String(getSetting('meta_page_id') || '')
-  const ig = getSetting('meta_ig') || {}
-  const igId = String(ig.id || '')
+  const pageId = metaPageId()
+  const igId = metaIgId()
   let client = new MetaClient(token)
   const platforms = [['messenger', 'Facebook', 'fb'], ['instagram', 'Instagram', 'ig']]
   let newMessages = 0

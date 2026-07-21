@@ -86,6 +86,14 @@ async function ensureSchema() {
   }
 }
 
+// settings.value is JSONB on some deployments and TEXT on others (the remote DB has TEXT).
+// From a TEXT column pg hands back the raw JSON, unparsed — so '"654..."' arrived with its
+// quotes and every page-id comparison failed silently. Decode once, on the way in.
+function decodeKv(v) {
+  if (typeof v !== 'string') return v
+  try { return JSON.parse(v) } catch { return v }
+}
+
 async function loadAll() {
   const d = emptyDb()
   for (const t of ROW_TABLES) {
@@ -95,9 +103,9 @@ async function loadAll() {
     d[t] = rows.map((r) => r.doc)
   }
   const s = await pool.query(`SELECT key, value FROM settings`)
-  s.rows.forEach((r) => { d.settings[r.key] = r.value })
+  s.rows.forEach((r) => { d.settings[r.key] = decodeKv(r.value) })
   const a = await pool.query(`SELECT value FROM meta_kv WHERE key = '_autoinc'`)
-  if (a.rows[0]) d._autoinc = a.rows[0].value || {}
+  if (a.rows[0]) d._autoinc = decodeKv(a.rows[0].value) || {}
   return d
 }
 
