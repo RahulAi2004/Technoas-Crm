@@ -1,13 +1,20 @@
-// Auto-capture CUSTOMER-SENT (source) artworks → PostgreSQL.
-// Har inbound image: SRC-ART-<YY>-<NNNN> number (DB trigger), asli bytes app.customer_artwork.image_data
-// mein (Meta CDN links expire hote hain — PG hi source of truth hai), plus lead ke naam ka folder
-// disk par bhi (best-effort; Docker mein volume mount karein to persist hoga).
-// Agent ke bheje mockups capture NAHI hote (sirf direction='in').
+// Auto-capture chat artworks → PostgreSQL → NextCloud.
+// Har image ka number DB trigger deta hai; asli bytes app.customer_artwork.image_data mein
+// jate hain (Meta CDN links expire hote hain — PG hi source of truth hai).
+// NextCloud mein customer ke bheje files `references/` mein, hamare bheje mockups `sent/` mein.
+// Local disk par koi copy nahi.
 import pg from 'pg'
 import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath } from './nextcloud.js'
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3, connectionTimeoutMillis: 20000, query_timeout: 60000 })
 const SRC_SUBFOLDER = 'references'   // customer ke bheje files (source/reference material)
+const OUT_SUBFOLDER = 'sent'         // HUM ne bheje files (mockups, proofs, gang sheets)
+
+// Dono taraf ki files ek hi table mein hain; kis taraf ki hai ye message_ref ke prefix se
+// pata chalta hai ('out:' = hamari bheji). Isse alag column ki zaroorat nahi padti aur
+// upload/share worker dono sahi subfolder bana lete hain.
+const OUT_REF = 'out:'
+export const subfolderForRef = (ref) => String(ref || '').startsWith(OUT_REF) ? OUT_SUBFOLDER : SRC_SUBFOLDER
 
 async function fetchBytes(url, timeoutMs = 8000) {
   try {
@@ -68,7 +75,7 @@ export async function pushToNextcloud(row) {
     const b = row.image_data || (await pool.query(`SELECT image_data FROM app.customer_artwork WHERE artwork_id = $1`, [row.artwork_id])).rows[0]?.image_data
     if (!b) return false
     // sirf upload (tez) — share-link alag worker banata hai (rate-limit se bachne ke liye)
-    const res = await ncUploadAndShare({ folder: row.folder, subfolder: SRC_SUBFOLDER, fileName: `${row.artwork_no}.${row.file_type || 'jpg'}`, bytes: b, share: false })
+    const res = await ncUploadAndShare({ folder: row.folder, subfolder: subfolderForRef(row.message_ref), fileName: `${row.artwork_no}.${row.file_type || 'jpg'}`, bytes: b, share: false })
     if (!res) return false
     await pool.query(`UPDATE app.customer_artwork SET upload_status = 'nextcloud_ok' WHERE artwork_id = $1 AND upload_status = 'pending'`, [row.artwork_id])
     return true
@@ -132,7 +139,7 @@ export function startUploadWorker(intervalMs = 60 * 1000) {
       while (true) {
         // select by upload_status (NOT nextcloud_url) — file uploaded but share-link-null bhi 'nextcloud_ok'
         const rows = (await pool.query(
-          `SELECT artwork_id, artwork_no, folder, file_type FROM app.customer_artwork
+          `SELECT artwork_id, artwork_no, folder, file_type, message_ref FROM app.customer_artwork
             WHERE image_data IS NOT NULL AND upload_status = 'pending'
             ORDER BY created_at DESC LIMIT 20`)).rows
         if (!rows.length) break
@@ -165,12 +172,12 @@ export function startShareWorker() {
   const tick = async () => {
     try {
       const rows = (await pool.query(
-        `SELECT artwork_id, artwork_no, folder, file_type FROM app.customer_artwork
+        `SELECT artwork_id, artwork_no, folder, file_type, message_ref FROM app.customer_artwork
           WHERE upload_status = 'nextcloud_ok' AND nextcloud_url IS NULL
           ORDER BY created_at DESC LIMIT 30`)).rows
       let made = 0, throttled = false
       for (const r of rows) {
-        const remote = ncRemotePath(r.folder, SRC_SUBFOLDER, `${r.artwork_no}.${r.file_type || 'jpg'}`)
+        const remote = ncRemotePath(r.folder, subfolderForRef(r.message_ref), `${r.artwork_no}.${r.file_type || 'jpg'}`)
         let url = null
         try { url = await ncShareLink(remote) } catch { /* skip */ }
         if (url) {
@@ -190,13 +197,17 @@ export function startShareWorker() {
   console.log('🔗 NextCloud share-link worker started')
 }
 
-// LIVE HOOK — saveMessage se har naye message par (fire-and-forget)
+// LIVE HOOK — saveMessage se har naye message par (fire-and-forget).
+// Dono taraf ki images save hoti hain: customer ki -> references/, hamari -> sent/.
+// Meta ke CDN links kuch hafton mein expire ho jate hain, isliye hamare bheje mockups
+// ki apni copy bhi rakhni zaroori hai — warna proof-of-design kho jata hai.
 export async function captureSourceArtworks(m) {
   const dir = m.dir || m.direction
-  if (dir !== 'in') return                                 // sirf CUSTOMER ke bheje
+  if (dir !== 'in' && dir !== 'out') return                 // notes waghera skip
   const atts = (m.attachments || m.extra?.attachments || []).filter((a) => a && a.type === 'image' && a.url)
+  const prefix = dir === 'out' ? OUT_REF : ''
   for (let i = 0; i < atts.length; i++) {
-    try { await storeArtwork({ ref: `${m.id}#${i}`, convRef: m.conversation_id, url: atts[i].url, name: atts[i].name }) }
+    try { await storeArtwork({ ref: `${prefix}${m.id}#${i}`, convRef: m.conversation_id, url: atts[i].url, name: atts[i].name }) }
     catch (e) { console.warn('[artwork] capture failed:', e.message) }
   }
 }
