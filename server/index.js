@@ -12,6 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker } from './artwork-capture.js'
+import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwShadowStats } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -1042,6 +1043,43 @@ app.post('/api/conversations/:id/read', authRequired, (req, res) => {
   if (!conv) return res.status(404).json({ error: 'conversation not found' })
   broadcast({ type: 'conversation', conversation: conv })
   res.json(conv)
+})
+
+// ============================================================
+// Chatwoot integration — SHADOW MODE (Phase 2)
+// Meta integration ko koi haath nahi lagta. Chatwoot ka message_created webhook
+// yahan aata hai aur sirf public.chatwoot_shadow_messages mein save hota hai —
+// production inbox/agents ko kuch nahi dikhta. Dono copies baad mein compare
+// hoti hain (chatwoot-compare.mjs). Flags ke liye dekhein server/chatwoot.js.
+// ============================================================
+app.post('/api/integrations/chatwoot/webhook', async (req, res) => {
+  try {
+    // optional shared secret: set ho to Chatwoot webhook URL mein ?t=<secret> zaroori
+    const secret = process.env.CHATWOOT_WEBHOOK_SECRET || ''
+    if (secret && String(req.query.t || '') !== secret) return res.status(403).json({ error: 'bad secret' })
+    const out = await cwStoreShadow(req.body || {})
+    res.json({ ok: true, ...out })                    // Chatwoot ko hamesha jaldi 200 do
+  } catch (e) {
+    console.warn('[chatwoot] webhook error:', e.message)
+    res.json({ ok: false })                            // 200 hi do — warna Chatwoot retry-spam karega
+  }
+})
+
+// shadow table ka hisaab (testing ke dauran nazar rakhne ke liye)
+app.get('/api/integrations/chatwoot/status', authRequired, async (req, res) => {
+  try {
+    res.json({ enabled: cwEnabled(), shadow_mode: cwShadowMode(), send_enabled: cwSendEnabled(), stats: await cwShadowStats() })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Phase 5 pilot: sirf tab chalta hai jab CHATWOOT_SEND_ENABLED=true ho.
+// Normal Send button Meta hi use karta rahega — ye alag developer/test route hai.
+app.post('/api/integrations/chatwoot/send', authRequired, async (req, res) => {
+  try {
+    const { conversation_id, content } = req.body || {}
+    if (!conversation_id || !content) return res.status(400).json({ error: 'conversation_id and content required' })
+    res.json({ ok: true, message: await cwSendMessage(conversation_id, content) })
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 
 // ============================================================
