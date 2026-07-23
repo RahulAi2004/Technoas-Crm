@@ -101,6 +101,9 @@ export default function Dashboard() {
   useEffect(() => { if (currentId) localStorage.setItem('currentConvId', currentId) }, [currentId])
 
   const convTs = (c) => c.last_ts || (c.created_at ? Date.parse(c.created_at) : 0) || 0
+  // "YYYY-MM-DD" -> local din ki shuruaat / aakhri millisecond (browser ke timezone mein)
+  const dayStartLocal = (s) => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d, 0, 0, 0, 0).getTime() }
+  const dayEndLocal = (s) => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999).getTime() }
   const conversations = useMemo(
     () => conversationsRaw.map(normalizeConv).sort((a, b) => convTs(b) - convTs(a)),
     [conversationsRaw])
@@ -191,8 +194,10 @@ export default function Dashboard() {
     if (filters.agent && c.assigned_to !== filters.agent) return false
     if (filters.status && c.status !== filters.status) return false
     if (filters.tag && !(Array.isArray(c.tags) && c.tags.includes(filters.tag))) return false
-    if (filters.from && convTs(c) < Date.parse(filters.from)) return false
-    if (filters.to && convTs(c) > Date.parse(filters.to) + 86399999) return false
+    // Date input "YYYY-MM-DD" ko LOCAL din ke hisaab se lo (Date.parse ise UTC maanta hai,
+    // jis se UTC+5 me boundary khisak kar aaj ke chats kat jate the).
+    if (filters.from && convTs(c) < dayStartLocal(filters.from)) return false
+    if (filters.to && convTs(c) > dayEndLocal(filters.to)) return false
     if (search) {
       const q = search.toLowerCase()
       const hay = `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.listPreview || ''}`.toLowerCase()
