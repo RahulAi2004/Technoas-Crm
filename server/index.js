@@ -237,6 +237,53 @@ crud('artworks',      'artworks',      { searchFields: ['name','type','product']
 crud('conversations', 'conversations', { searchFields: ['name','company','list_preview'] })
 
 // ============================================================
+// Customer FLAGS — user-defined labels (koi bhi naam + rang), customer par lagte hain.
+// Definitions settings mein (koi nayi table nahi — DB role app schema mein CREATE nahi kar sakta).
+// Kis customer par kaunse flag lage — wo customer ke apne doc mein `flags: [id,...]` array hai
+// (PATCH /api/customers/:id se save hota hai, isliye alag assign endpoint ki zaroorat nahi).
+// ============================================================
+const slug = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+const getFlags = () => getSetting('customer_flags') || []
+
+app.get('/api/flags', authRequired, (req, res) => res.json(getFlags()))
+
+app.post('/api/flags', authRequired, (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  const color = String(req.body?.color || 'slate').trim()
+  if (!name) return res.status(400).json({ error: 'name required' })
+  const flags = getFlags()
+  let id = slug(name) || `flag-${flags.length + 1}`
+  if (flags.some((f) => f.id === id)) id = `${id}-${Date.now().toString(36).slice(-4)}`  // naam takraye to unique
+  const flag = { id, name, color, created_at: new Date().toISOString() }
+  setSetting('customer_flags', [...flags, flag])
+  res.status(201).json(flag)
+})
+
+app.patch('/api/flags/:id', authRequired, (req, res) => {
+  const flags = getFlags()
+  const i = flags.findIndex((f) => f.id === req.params.id)
+  if (i < 0) return res.status(404).json({ error: 'flag not found' })
+  if (req.body?.name != null) flags[i].name = String(req.body.name).trim() || flags[i].name
+  if (req.body?.color != null) flags[i].color = String(req.body.color).trim() || flags[i].color
+  setSetting('customer_flags', flags)
+  res.json(flags[i])
+})
+
+app.delete('/api/flags/:id', authRequired, (req, res) => {
+  const flags = getFlags()
+  if (!flags.some((f) => f.id === req.params.id)) return res.status(404).json({ error: 'flag not found' })
+  setSetting('customer_flags', flags.filter((f) => f.id !== req.params.id))
+  // har customer se ye flag hata do taaki koi orphan id na bache
+  let cleaned = 0
+  for (const c of getAll('customers')) {
+    if (Array.isArray(c.flags) && c.flags.includes(req.params.id)) {
+      update('customers', c.id, { flags: c.flags.filter((x) => x !== req.params.id) }); cleaned++
+    }
+  }
+  res.json({ ok: true, removed_from_customers: cleaned })
+})
+
+// ============================================================
 // Messages nested under a conversation
 // ============================================================
 app.get('/api/conversations/:id/messages', authRequired, (req, res) => {

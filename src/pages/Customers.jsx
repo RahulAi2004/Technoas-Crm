@@ -5,6 +5,7 @@ import TopBarUser from '../components/TopBarUser.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { CUSTOMERS as FALLBACK, tierClass, typeClass, healthClass, fmt$ } from '../data/customers.js'
 import { api } from '../lib/api.js'
+import { FlagBadges, FlagChip, ManageFlagsModal } from '../components/CustomerFlags.jsx'
 
 const channelChip = (channel) => {
   if (channel === 'WhatsApp')
@@ -22,8 +23,13 @@ export default function Customers() {
   const [query, setQuery] = useState('')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [flags, setFlags] = useState([])            // flag definitions
+  const [flagFilter, setFlagFilter] = useState('')  // '' = sab; warna flag id
+  const [manageOpen, setManageOpen] = useState(false)
   const toast = useToast()
   const navigate = useNavigate()
+
+  const loadFlags = () => api.get('/api/flags').then(setFlags).catch(() => setFlags([]))
 
   useEffect(() => {
     let cancelled = false
@@ -34,20 +40,28 @@ export default function Customers() {
         if (!cancelled) { setData(FALLBACK); toast('Using offline data — backend not reachable', 'info') }
       })
       .finally(() => { if (!cancelled) setLoading(false) })
+    loadFlags()
     return () => { cancelled = true }
   }, [])
+
+  // Kisi customer par flags set/unset — foran UI update + backend save.
+  const setCustomerFlags = (id, next) => {
+    setData((prev) => (prev || []).map((c) => String(c.id) === String(id) ? { ...c, flags: next } : c))
+    api.patch(`/api/customers/${id}`, { flags: next }).catch(() => toast('Flag save nahi hua — dobara koshish karein', 'error'))
+  }
 
   const source = data || []
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return source
-    return source.filter(c =>
-      (c.name || '').toLowerCase().includes(q) ||
-      (c.company || '').toLowerCase().includes(q) ||
-      (c.loc || '').toLowerCase().includes(q) ||
-      (c.owner || '').toLowerCase().includes(q)
-    )
-  }, [query, source])
+    return source.filter(c => {
+      if (flagFilter && !(Array.isArray(c.flags) && c.flags.includes(flagFilter))) return false
+      if (!q) return true
+      return (c.name || '').toLowerCase().includes(q) ||
+        (c.company || '').toLowerCase().includes(q) ||
+        (c.loc || '').toLowerCase().includes(q) ||
+        (c.owner || '').toLowerCase().includes(q)
+    })
+  }, [query, source, flagFilter])
 
   return (
     <div className="crm-shell h-screen overflow-hidden grid">
@@ -107,8 +121,26 @@ export default function Customers() {
             </div>
           </div>
 
+          {/* Flags: filter chips + manage */}
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
+            <span className="text-xs font-semibold text-slate-500">Flags:</span>
+            <button onClick={() => setFlagFilter('')} className={`rounded-md px-2 py-1 text-xs font-semibold ${flagFilter === '' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>All</button>
+            {flags.map((f) => {
+              const active = flagFilter === f.id
+              return (
+                <button key={f.id} onClick={() => setFlagFilter(active ? '' : f.id)} className={active ? 'ring-2 ring-brand-500 rounded-md' : ''}>
+                  <FlagChip flag={f} />
+                </button>
+              )
+            })}
+            <button onClick={() => setManageOpen(true)} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-50">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+              Manage Flags
+            </button>
+          </div>
+
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm"><span className="font-semibold">{rows.length} customer{rows.length===1?'':'s'} found</span></div>
+            <div className="text-sm"><span className="font-semibold">{rows.length} customer{rows.length===1?'':'s'} found</span>{flagFilter && <span className="ml-2 text-xs text-slate-500">· filtered by flag</span>}</div>
             <div className="flex items-center gap-2">
               <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-50">Sort by: Last Activity <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg></button>
               <div className="flex overflow-hidden rounded-lg border border-slate-200">
@@ -151,6 +183,7 @@ export default function Customers() {
                             <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${tierClass(c.tier)}`}>{c.tier}</span>
                           </div>
                           <div className="text-xs text-slate-500">{c.loc}</div>
+                          <div className="mt-1"><FlagBadges allFlags={flags} value={c.flags || []} onChange={(next) => setCustomerFlags(c.id, next)} /></div>
                         </div>
                       </div>
                     </td>
@@ -205,6 +238,9 @@ export default function Customers() {
           </div>
         </main>
       </div>
+      {manageOpen && (
+        <ManageFlagsModal flags={flags} onClose={() => setManageOpen(false)} onChanged={loadFlags} />
+      )}
     </div>
   )
 }
