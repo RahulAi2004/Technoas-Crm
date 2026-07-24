@@ -12,7 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker } from './artwork-capture.js'
-import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
+import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -753,26 +753,45 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
   }
   if (!recipientId) return res.status(400).json({ error: 'recipientId or a known conversation required' })
 
+  // Transport routing: 'chatwoot' -> Chatwoot API (Meta app dev-mode ki pabandi se azad),
+  // fail ho to Meta par fallback. 'meta' (default) -> seedha Meta. Flip karna reversible hai.
+  const transport = String(getSetting('messaging_transport') || 'meta').toLowerCase()
+  let result, via = 'meta'
   try {
-    const result = await meta().sendText(recipientId, text)
-    const mid = result?.message_id
+    if (transport === 'chatwoot' && cwEnabled()) {
+      try {
+        result = await cwSendToPsid(recipientId, text)      // Chatwoot se
+        via = 'chatwoot'
+      } catch (cwErr) {
+        console.warn('[send] chatwoot fail, meta par fallback:', cwErr.message)
+        result = await meta().sendText(recipientId, text)   // fallback
+        via = 'meta'
+      }
+    } else {
+      result = await meta().sendText(recipientId, text)
+    }
+    // Chatwoot echo webhook wahi message dobara laayega — usi FB message id (mid/source_id)
+    // par upsert hota hai, isliye dupe nahi banta.
+    const mid = result?.message_id || (via === 'chatwoot' ? undefined : result?.message_id)
     const msg = saveMessage({
-      id: mid || undefined,            // use Meta's mid so the echo webhook upserts (no dupes)
+      id: mid || undefined,
       conversation_id: conv?.id || `${channel === 'Instagram' ? 'ig' : 'fb'}:${recipientId}`,
       dir: 'out',
       text,
       time: nowTime(),
-      via: 'meta',
-      agent: agentName(req),           // who (which CRM agent) sent this reply
+      via,
+      agent: agentName(req),
     })
     if (conv) update('conversations', conv.id, { list_preview: text, list_time: nowTime(), last_ts: Date.now() })
     broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })
-    res.json({ ok: true, message: msg, result })
+    res.json({ ok: true, via, message: msg, result })
   } catch (e) {
     res.status(e.status || 500).json({
       error: e.message, body: e.body,
       hint: (e.code === 10 || e.subcode === 2018278)
         ? 'Outside the 24-hour messaging window — the customer must message you first.'
+        : (e.status === 404 && transport === 'chatwoot')
+        ? 'Chatwoot ne is customer ki conversation abhi map nahi ki — reconcile chalne dein ya customer ka naya message aane par dobara try karein.'
         : undefined,
     })
   }
@@ -1125,6 +1144,18 @@ app.post('/api/integrations/chatwoot/reconcile', authRequired, async (req, res) 
     const hours = Number(req.body?.hours) || 12
     res.json({ ok: true, result: await cwReconcile({ sinceHours: hours }) })
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Messaging transport dekho / badlo — 'meta' | 'chatwoot'. Rollback bas isko wapas 'meta' karna.
+app.get('/api/integrations/messaging-transport', authRequired, (req, res) => {
+  res.json({ transport: String(getSetting('messaging_transport') || 'meta').toLowerCase() })
+})
+app.post('/api/integrations/messaging-transport', authRequired, (req, res) => {
+  const t = String(req.body?.transport || '').toLowerCase()
+  if (!['meta', 'chatwoot'].includes(t)) return res.status(400).json({ error: "transport 'meta' ya 'chatwoot' hona chahiye" })
+  setSetting('messaging_transport', t)
+  console.log(`[send] messaging transport -> ${t}`)
+  res.json({ ok: true, transport: t })
 })
 
 // Phase 5 pilot: sirf tab chalta hai jab CHATWOOT_SEND_ENABLED=true ho.
