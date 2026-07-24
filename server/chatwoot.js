@@ -47,7 +47,27 @@ export async function cwEnsureTable() {
   // source_id = Facebook/IG ka asli message id (m_...) — Meta se pukhta match ke liye.
   await pool.query(`ALTER TABLE public.chatwoot_shadow_messages ADD COLUMN IF NOT EXISTS source_id TEXT`)
   await pool.query(`CREATE INDEX IF NOT EXISTS ix_cw_shadow_source ON public.chatwoot_shadow_messages(source_id)`)
+  // PSID (Facebook user id) -> Chatwoot conversation id. Send routing isse conversation dhoondhta hai.
+  // psid = contact ke contact_inboxes[].source_id; reconcile ise ek-ek baar bharta hai.
+  await pool.query(`CREATE TABLE IF NOT EXISTS public.chatwoot_conv_contact (
+    chatwoot_conversation_id BIGINT PRIMARY KEY,
+    psid TEXT,
+    inbox_id BIGINT,
+    last_activity BIGINT,
+    updated_at TIMESTAMPTZ DEFAULT now()
+  )`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS ix_cw_conv_psid ON public.chatwoot_conv_contact(psid)`)
   tableReady = true
+}
+
+// PSID -> sabse recent Chatwoot conversation id (send routing ke liye)
+export async function cwConvForPsid(psid) {
+  if (!psid) return null
+  await cwEnsureTable()
+  const r = await pool.query(
+    `SELECT chatwoot_conversation_id FROM public.chatwoot_conv_contact
+      WHERE psid = $1 ORDER BY last_activity DESC NULLS LAST LIMIT 1`, [String(psid)])
+  return r.rows[0]?.chatwoot_conversation_id || null
 }
 
 // Chatwoot do jagah alag time deta hai: webhook = ISO/ms string, API = unix SECONDS.
@@ -129,18 +149,34 @@ async function cwApi(path, tries = 3) {
 // ========================================================================
 export async function cwReconcile({ sinceHours = 6, maxPages = 40 } = {}) {
   if (!cwEnabled()) return { skipped: 'integration disabled' }
+  await cwEnsureTable()
   const cutoff = Date.now() - sinceHours * 3600 * 1000
-  let scanned = 0, inserted = 0, dup = 0, convs = 0, page = 1
+  // pehle se mapped conversation ids — inka PSID dobara fetch nahi karna
+  const mapped = new Set((await pool.query(`SELECT chatwoot_conversation_id FROM public.chatwoot_conv_contact`)).rows.map((r) => String(r.chatwoot_conversation_id)))
+  let scanned = 0, inserted = 0, dup = 0, convs = 0, maps = 0, page = 1
   outer: for (; page <= maxPages; page++) {
     const j = await cwApi(`/conversations?status=all&sort_by=last_activity_at&page=${page}`)
     const list = j?.data?.payload || j?.payload || []
     if (!list.length) break
     for (const c of list) {
-      // last activity cutoff se purani -> aur peeche jane ki zaroorat nahi (sorted desc)
       const la = (c.last_activity_at || c.timestamp || 0) * 1000
-      if (la && la < cutoff) break outer
+      if (la && la < cutoff) break outer   // sorted desc -> aur peeche jana bekaar
       convs++
       const name = c.meta?.sender?.name || null
+      // PSID mapping — sirf naye conversations ke liye contact fetch (ek baar)
+      if (!mapped.has(String(c.id)) && c.meta?.sender?.id) {
+        try {
+          const cj = await cwApi(`/contacts/${c.meta.sender.id}`)
+          const psid = (cj?.payload || cj)?.contact_inboxes?.find((ci) => String(ci.inbox?.id) === String(c.inbox_id))?.source_id
+            || (cj?.payload || cj)?.contact_inboxes?.[0]?.source_id || null
+          await pool.query(
+            `INSERT INTO public.chatwoot_conv_contact (chatwoot_conversation_id, psid, inbox_id, last_activity, updated_at)
+             VALUES ($1,$2,$3,$4, now())
+             ON CONFLICT (chatwoot_conversation_id) DO UPDATE SET psid=EXCLUDED.psid, last_activity=EXCLUDED.last_activity, updated_at=now()`,
+            [c.id, psid, c.inbox_id, c.last_activity_at || null])
+          mapped.add(String(c.id)); if (psid) maps++
+        } catch { /* contact fetch fail -> agli baar */ }
+      }
       const mj = await cwApi(`/conversations/${c.id}/messages`)
       const msgs = mj?.payload || mj?.data || []
       for (const m of msgs) {
@@ -151,7 +187,7 @@ export async function cwReconcile({ sinceHours = 6, maxPages = 40 } = {}) {
       await new Promise((x) => setTimeout(x, 250))   // gentle rate
     }
   }
-  const out = { convs, scanned, inserted, dup, pages: page - 1 }
+  const out = { convs, scanned, inserted, dup, newMaps: maps, pages: page - 1 }
   console.log(`[chatwoot] reconcile: ${JSON.stringify(out)}`)
   return out
 }
@@ -182,6 +218,18 @@ export async function cwSendMessage(conversationId, content) {
   if (!res.ok) { const e = new Error(`Chatwoot send failed: ${res.status} ${JSON.stringify(j).slice(0, 200)}`); e.status = res.status; throw e }
   return j
 }
+
+// PSID (Facebook user id) se Chatwoot par bhejo — conversation khud resolve karta hai.
+// Send routing (index.js) isi ko call karta hai jab transport='chatwoot' ho.
+export async function cwSendToPsid(psid, content) {
+  const convId = await cwConvForPsid(psid)
+  if (!convId) { const e = new Error(`Chatwoot conversation nahi mili (psid ${psid}) — reconcile abhi map nahi kar paya`); e.status = 404; throw e }
+  const r = await cwSendMessage(convId, content)
+  return { ...r, chatwoot_conversation_id: convId }
+}
+
+// abhi kaunsa transport active hai (settings se, index.js set karta hai)
+export const cwSendEnabledFor = () => cwSendEnabled()
 
 // shadow table ka quick hisaab (status endpoint ke liye)
 export async function cwShadowStats() {
