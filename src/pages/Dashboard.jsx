@@ -6,6 +6,7 @@ import MobileNav, { closeNav } from '../components/MobileNav.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { STATUS_OPTIONS } from '../data/conversations.js'
 import { api, getToken } from '../lib/api.js'
+import { FlagBadges, FlagChip, ManageFlagsModal } from '../components/CustomerFlags.jsx'
 
 // Normalize a conversation row from the server (snake_case) to the shape the JSX expects (camelCase).
 const normalizeConv = (c) => c && ({
@@ -100,6 +101,9 @@ export default function Dashboard() {
   useEffect(() => { if (currentId) localStorage.setItem('currentConvId', currentId) }, [currentId])
 
   const convTs = (c) => c.last_ts || (c.created_at ? Date.parse(c.created_at) : 0) || 0
+  // "YYYY-MM-DD" -> local din ki shuruaat / aakhri millisecond (browser ke timezone mein)
+  const dayStartLocal = (s) => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d, 0, 0, 0, 0).getTime() }
+  const dayEndLocal = (s) => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999).getTime() }
   const conversations = useMemo(
     () => conversationsRaw.map(normalizeConv).sort((a, b) => convTs(b) - convTs(a)),
     [conversationsRaw])
@@ -164,6 +168,14 @@ export default function Dashboard() {
   const clearFilters = () => setFilters(emptyFilters)
   const activeFilterCount = Object.values(filters).filter(Boolean).length
 
+  // Customer flags/tags — definitions shared with the Customers page (/api/flags),
+  // yahan inbox mein conversation par lagte hain (conv.tags = [flagId,...]).
+  const [flags, setFlags] = useState([])
+  const [manageFlagsOpen, setManageFlagsOpen] = useState(false)
+  const loadFlags = () => api.get('/api/flags').then(setFlags).catch(() => setFlags([]))
+  useEffect(() => { loadFlags() }, [])
+  const setConvTags = (id, next) => patchConv(id, { tags: next })   // optimistic UI + API save dono patchConv mein
+
   const myName = currentUser()?.name
   const unassignedCount = conversations.filter((c) => !c.assigned_to).length
   const mentionCount = conversations.filter((c) => (c.listPreview || '').includes('@')).length
@@ -173,7 +185,6 @@ export default function Dashboard() {
   const channelOptions = [...new Set(conversations.map((c) => c.channel).filter(Boolean))].sort()
   const agentOptions = [...new Set(conversations.map((c) => c.assigned_to).filter(Boolean))].sort()
   const statusOptions = [...new Set(conversations.map((c) => c.status).filter(Boolean))].sort()
-  const tagOptions = [...new Set(conversations.flatMap((c) => Array.isArray(c.tags) ? c.tags : []).filter(Boolean))].sort()
 
   const visibleConvs = conversations.filter((c) => {
     if (view === 'unassigned' && c.assigned_to) return false
@@ -183,8 +194,10 @@ export default function Dashboard() {
     if (filters.agent && c.assigned_to !== filters.agent) return false
     if (filters.status && c.status !== filters.status) return false
     if (filters.tag && !(Array.isArray(c.tags) && c.tags.includes(filters.tag))) return false
-    if (filters.from && convTs(c) < Date.parse(filters.from)) return false
-    if (filters.to && convTs(c) > Date.parse(filters.to) + 86399999) return false
+    // Date input "YYYY-MM-DD" ko LOCAL din ke hisaab se lo (Date.parse ise UTC maanta hai,
+    // jis se UTC+5 me boundary khisak kar aaj ke chats kat jate the).
+    if (filters.from && convTs(c) < dayStartLocal(filters.from)) return false
+    if (filters.to && convTs(c) > dayEndLocal(filters.to)) return false
     if (search) {
       const q = search.toLowerCase()
       const hay = `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.listPreview || ''}`.toLowerCase()
@@ -605,10 +618,14 @@ export default function Dashboard() {
                       {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                  <div><label className="mb-1 block font-semibold text-slate-600">Tags</label>
-                    <select value={filters.tag} onChange={(e) => setFilter('tag', e.target.value)} disabled={!tagOptions.length} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 disabled:opacity-50">
-                      <option value="">{tagOptions.length ? 'All Tags' : 'No tags'}</option>
-                      {tagOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                  <div>
+                    <div className="mb-1 flex items-center justify-between">
+                      <label className="font-semibold text-slate-600">Tags</label>
+                      <button onClick={() => setManageFlagsOpen(true)} className="text-[11px] font-semibold text-brand-600 hover:underline">+ Manage</button>
+                    </div>
+                    <select value={filters.tag} onChange={(e) => setFilter('tag', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <option value="">All Tags</option>
+                      {flags.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
                   </div>
                 </div>
@@ -644,6 +661,11 @@ export default function Dashboard() {
                         <p className="truncate text-xs text-slate-600">{c.listPreview}</p>
                         {c.unread > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{c.unread}</span>}
                       </div>
+                      {Array.isArray(c.tags) && c.tags.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {c.tags.map((tid) => { const f = flags.find((x) => x.id === tid); return f ? <FlagChip key={tid} flag={f} /> : null })}
+                        </div>
+                      )}
                     </div>
                   </button>
                 )
@@ -718,6 +740,9 @@ export default function Dashboard() {
                     <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><span className={`grid h-4 w-4 place-items-center rounded-full ${conv.channelBg} text-white`}>{channelIcon(conv.channel)}</span> {conv.channel}</span>
                     <span className="whitespace-nowrap">{conv.phone}</span>
                     <span className="inline-flex items-center gap-1 whitespace-nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> {conv.company}</span>
+                  </div>
+                  <div className="mt-1.5">
+                    <FlagBadges allFlags={flags} value={Array.isArray(conv.tags) ? conv.tags : []} onChange={(next) => setConvTags(conv.id, next)} />
                   </div>
                 </div>
               </div>
@@ -874,6 +899,9 @@ export default function Dashboard() {
           </aside>
         </section>
       </div>
+      {manageFlagsOpen && (
+        <ManageFlagsModal flags={flags} onClose={() => setManageFlagsOpen(false)} onChanged={loadFlags} />
+      )}
     </div>
   )
 }

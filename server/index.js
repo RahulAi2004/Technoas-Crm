@@ -12,6 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker } from './artwork-capture.js'
+import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -234,6 +235,53 @@ crud('payments',      'payments',      { searchFields: ['invoice_no','order_no',
 crud('receipts',      'receipts',      { searchFields: ['receipt_no','order_no','customer','note2'] })
 crud('artworks',      'artworks',      { searchFields: ['name','type','product'] })
 crud('conversations', 'conversations', { searchFields: ['name','company','list_preview'] })
+
+// ============================================================
+// Customer FLAGS — user-defined labels (koi bhi naam + rang), customer par lagte hain.
+// Definitions settings mein (koi nayi table nahi — DB role app schema mein CREATE nahi kar sakta).
+// Kis customer par kaunse flag lage — wo customer ke apne doc mein `flags: [id,...]` array hai
+// (PATCH /api/customers/:id se save hota hai, isliye alag assign endpoint ki zaroorat nahi).
+// ============================================================
+const slug = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+const getFlags = () => getSetting('customer_flags') || []
+
+app.get('/api/flags', authRequired, (req, res) => res.json(getFlags()))
+
+app.post('/api/flags', authRequired, (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  const color = String(req.body?.color || 'slate').trim()
+  if (!name) return res.status(400).json({ error: 'name required' })
+  const flags = getFlags()
+  let id = slug(name) || `flag-${flags.length + 1}`
+  if (flags.some((f) => f.id === id)) id = `${id}-${Date.now().toString(36).slice(-4)}`  // naam takraye to unique
+  const flag = { id, name, color, created_at: new Date().toISOString() }
+  setSetting('customer_flags', [...flags, flag])
+  res.status(201).json(flag)
+})
+
+app.patch('/api/flags/:id', authRequired, (req, res) => {
+  const flags = getFlags()
+  const i = flags.findIndex((f) => f.id === req.params.id)
+  if (i < 0) return res.status(404).json({ error: 'flag not found' })
+  if (req.body?.name != null) flags[i].name = String(req.body.name).trim() || flags[i].name
+  if (req.body?.color != null) flags[i].color = String(req.body.color).trim() || flags[i].color
+  setSetting('customer_flags', flags)
+  res.json(flags[i])
+})
+
+app.delete('/api/flags/:id', authRequired, (req, res) => {
+  const flags = getFlags()
+  if (!flags.some((f) => f.id === req.params.id)) return res.status(404).json({ error: 'flag not found' })
+  setSetting('customer_flags', flags.filter((f) => f.id !== req.params.id))
+  // har customer se ye flag hata do taaki koi orphan id na bache
+  let cleaned = 0
+  for (const c of getAll('customers')) {
+    if (Array.isArray(c.flags) && c.flags.includes(req.params.id)) {
+      update('customers', c.id, { flags: c.flags.filter((x) => x !== req.params.id) }); cleaned++
+    }
+  }
+  res.json({ ok: true, removed_from_customers: cleaned })
+})
 
 // ============================================================
 // Messages nested under a conversation
@@ -1042,6 +1090,51 @@ app.post('/api/conversations/:id/read', authRequired, (req, res) => {
   if (!conv) return res.status(404).json({ error: 'conversation not found' })
   broadcast({ type: 'conversation', conversation: conv })
   res.json(conv)
+})
+
+// ============================================================
+// Chatwoot integration — SHADOW MODE (Phase 2)
+// Meta integration ko koi haath nahi lagta. Chatwoot ka message_created webhook
+// yahan aata hai aur sirf public.chatwoot_shadow_messages mein save hota hai —
+// production inbox/agents ko kuch nahi dikhta. Dono copies baad mein compare
+// hoti hain (chatwoot-compare.mjs). Flags ke liye dekhein server/chatwoot.js.
+// ============================================================
+app.post('/api/integrations/chatwoot/webhook', async (req, res) => {
+  try {
+    // optional shared secret: set ho to Chatwoot webhook URL mein ?t=<secret> zaroori
+    const secret = process.env.CHATWOOT_WEBHOOK_SECRET || ''
+    if (secret && String(req.query.t || '') !== secret) return res.status(403).json({ error: 'bad secret' })
+    const out = await cwStoreShadow(req.body || {})
+    res.json({ ok: true, ...out })                    // Chatwoot ko hamesha jaldi 200 do
+  } catch (e) {
+    console.warn('[chatwoot] webhook error:', e.message)
+    res.json({ ok: false })                            // 200 hi do — warna Chatwoot retry-spam karega
+  }
+})
+
+// shadow table ka hisaab (testing ke dauran nazar rakhne ke liye)
+app.get('/api/integrations/chatwoot/status', authRequired, async (req, res) => {
+  try {
+    res.json({ enabled: cwEnabled(), shadow_mode: cwShadowMode(), send_enabled: cwSendEnabled(), stats: await cwShadowStats() })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Manual reconcile trigger — API se chhoote messages abhi bhar do (server-down ke baad).
+app.post('/api/integrations/chatwoot/reconcile', authRequired, async (req, res) => {
+  try {
+    const hours = Number(req.body?.hours) || 12
+    res.json({ ok: true, result: await cwReconcile({ sinceHours: hours }) })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Phase 5 pilot: sirf tab chalta hai jab CHATWOOT_SEND_ENABLED=true ho.
+// Normal Send button Meta hi use karta rahega — ye alag developer/test route hai.
+app.post('/api/integrations/chatwoot/send', authRequired, async (req, res) => {
+  try {
+    const { conversation_id, content } = req.body || {}
+    if (!conversation_id || !content) return res.status(400).json({ error: 'conversation_id and content required' })
+    res.json({ ok: true, message: await cwSendMessage(conversation_id, content) })
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 
 // ============================================================
@@ -2166,6 +2259,7 @@ app.listen(PORT, () => {
   startIntelligenceRefresh()
   startUploadWorker()          // NextCloud file upload (fast)
   startShareWorker()           // NextCloud share-links (slow, rate-limit-safe)
+  startChatwootReconcile()     // Chatwoot: webhook ke gaps API se bharo (server-down safety)
 })
 
 // Auto-refresh AI profiles + lead intelligence for NEW/CHANGED chats (stale-aware scripts).
