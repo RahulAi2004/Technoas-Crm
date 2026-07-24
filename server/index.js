@@ -1021,6 +1021,20 @@ async function syncMetaConversations() {
           const exists = findById('messages', m.id)
           const fromId = String(m.from?.id || '')
           const dir = (fromId === pageId || fromId === igId) ? 'out' : 'in'
+          // DEDUP: agar ye outgoing message CRM ne abhi Chatwoot se bheja tha (numeric id,
+          // FB mid nahi), to poller ki copy mat banao — warna duplicate + "gayab-wapas" hota hai.
+          if (!exists && dir === 'out') {
+            const body = (m.message || '').trim()
+            const placeholder = getAll('messages').find((x) =>
+              x.conversation_id === convId && (x.dir === 'out' || x.direction === 'out') &&
+              !String(x.id).startsWith('m_') && (x.text || x.body || '').trim() === body &&
+              Date.now() - (Date.parse(x.created_at) || 0) < 15 * 60 * 1000)
+            if (placeholder) {
+              // placeholder ko asli FB mid de do (taaki aage ke polls bhi ise pehchaanein)
+              update('messages', placeholder.id, { mid: m.id })
+              continue
+            }
+          }
           const atts = metaAttachments(m.attachments)
           const stored = saveMessage({
             id: m.id,
