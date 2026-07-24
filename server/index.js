@@ -2292,9 +2292,17 @@ app.get('/api/artworks', authRequired, async (req, res) => {
     res.json(rows)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
+const MIME_BY_EXT = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+  pdf: 'application/pdf', doc: 'application/msword', txt: 'text/plain',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  zip: 'application/zip', ai: 'application/postscript', eps: 'application/postscript', psd: 'image/vnd.adobe.photoshop',
+}
 function sendArtworkBytes(res, f) {
-  res.set('Content-Type', `image/${f.file_type === 'jpg' ? 'jpeg' : f.file_type}`)
-  res.set('Content-Disposition', `inline; filename="${f.artwork_no}.${f.file_type}"`)
+  const ext = String(f.file_type || 'jpg').toLowerCase()
+  const mime = MIME_BY_EXT[ext] || (ext.length <= 4 ? `image/${ext}` : 'application/octet-stream')
+  res.set('Content-Type', mime)
+  res.set('Content-Disposition', `inline; filename="${f.artwork_no}.${ext}"`)
   res.set('Cache-Control', 'private, max-age=86400')
   res.send(f.image_data)
 }
