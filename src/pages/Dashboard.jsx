@@ -96,6 +96,8 @@ export default function Dashboard() {
   // Remember the last opened conversation so a reload continues where you left off.
   const [currentId, setCurrentId] = useState(() => localStorage.getItem('currentConvId') || null)
   const [messages, setMessages] = useState([])
+  // Optimistic sends jab tak server copy nahi aati: turant dikhein, poll inhe na giraye.
+  const [pending, setPending] = useState([])
   const [loadingConvs, setLoadingConvs] = useState(true)
   const [convMenuOpen, setConvMenuOpen] = useState(false)
   useEffect(() => { if (currentId) localStorage.setItem('currentConvId', currentId) }, [currentId])
@@ -141,7 +143,8 @@ export default function Dashboard() {
 
   // Fetch messages whenever current conversation changes; also poll for new incoming
   useEffect(() => {
-    if (!currentId) { setMessages([]); return }
+    if (!currentId) { setMessages([]); setPending([]); return }
+    setPending([])                          // nayi chat par purane optimistic saaf
     let cancelled = false
     const load = () => api.get(`/api/conversations/${encodeURIComponent(currentId)}/messages`)
       .then((rows) => {
@@ -151,6 +154,9 @@ export default function Dashboard() {
         setMessages((prev) =>
           (prev.length === rows.length && prev[prev.length - 1]?.id === rows[rows.length - 1]?.id)
             ? prev : rows)
+        // jis optimistic message ki server copy aa gayi, use hata do (warna duplicate)
+        setPending((p) => p.filter((pm) => !rows.some((r) =>
+          (r.dir === 'out' || r.direction === 'out') && (r.text || r.body || '').trim() === pm.text.trim())))
       })
       .catch(() => {})
     load()
@@ -218,41 +224,44 @@ export default function Dashboard() {
   const [mode, setMode] = useState('reply')
   const [draft, setDraft] = useState('')
   const chatRef = useRef(null)
-  useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, [messages.length, currentId])
+  useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, [messages.length, pending.length, currentId])
 
   const sendMessage = async (text, kind = mode) => {
     if (!text.trim() || !currentId) return
-    const direction = kind === 'note' ? 'note' : 'out'
     const time = nowTime()
 
-    // Optimistic UI
-    setMessages((m) => [...m, { id: `tmp-${Date.now()}`, dir: direction, text: text.trim(), time, agent: currentUser()?.name }])
-    setDraft('')
-
-    const isMeta = currentId.startsWith('fb:') || currentId.startsWith('ig:') || currentConv?.source === 'meta'
+    // Note alag rasta — wahi purana (chat bubble nahi banta)
     if (kind === 'note') {
-      // Internal note — save locally only
+      setMessages((m) => [...m, { id: `tmp-${Date.now()}`, dir: 'note', text: text.trim(), time, agent: currentUser()?.name }])
+      setDraft('')
       try { await api.post(`/api/conversations/${encodeURIComponent(currentId)}/messages`, { dir: 'note', text: text.trim(), time }); toast('Note saved', 'success') }
       catch (ex) { toast(`Save failed: ${ex.message}`, 'error') }
-    } else if (currentId.startsWith('mc:')) {
-      // ManyChat → Meta
-      try { await api.post('/api/manychat/send', { subscriberId: currentId.slice(3), text: text.trim() }); toast('Sent via ManyChat → Meta', 'success') }
-      catch (ex) { toast(`ManyChat send failed: ${ex.message}`, 'error') }
-    } else if (isMeta) {
-      // Deliver to the customer — backend routes via Chatwoot or Meta (messaging_transport).
-      try {
-        const r = await api.post('/api/meta/send', { conversationId: currentId, text: text.trim() })
-        toast(r?.via === 'chatwoot' ? 'Sent via Chatwoot' : 'Sent via Meta', 'success')
-      }
-      catch (ex) { toast(`Send failed: ${ex.message}`, 'error') }
-    } else {
-      // Plain CRM conversation — save locally
-      try { await api.post(`/api/conversations/${encodeURIComponent(currentId)}/messages`, { dir: direction, text: text.trim(), time }); toast('Message saved', 'success') }
-      catch (ex) { toast(`Save failed: ${ex.message}`, 'error') }
+      api.get(`/api/conversations/${encodeURIComponent(currentId)}/messages`).then(setMessages).catch(() => {})
+      return
     }
-    // Re-pull messages so tmp gets replaced with persisted row
-    api.get(`/api/conversations/${encodeURIComponent(currentId)}/messages`).then(setMessages).catch(() => {})
+
+    // Reply — optimistic bubble jo TURANT dikhe aur poll se na gire. Status: sending -> sent/failed.
+    const pid = `pending-${Date.now()}`
+    setPending((p) => [...p, { id: pid, dir: 'out', text: text.trim(), time, agent: currentUser()?.name, _status: 'sending', created_at: new Date().toISOString() }])
+    setDraft('')
+
+    const mark = (status, error) => setPending((p) => p.map((x) => x.id === pid ? { ...x, _status: status, _error: error } : x))
+    const isMeta = currentId.startsWith('fb:') || currentId.startsWith('ig:') || currentConv?.source === 'meta'
+    try {
+      if (currentId.startsWith('mc:')) {
+        await api.post('/api/manychat/send', { subscriberId: currentId.slice(3), text: text.trim() })
+      } else if (isMeta) {
+        await api.post('/api/meta/send', { conversationId: currentId, text: text.trim() })   // backend Chatwoot/Meta route karta hai
+      } else {
+        await api.post(`/api/conversations/${encodeURIComponent(currentId)}/messages`, { dir: 'out', text: text.trim(), time })
+      }
+      mark('sent')   // koi toast/label nahi — bubble mein hi tick
+    } catch (ex) {
+      mark('failed', ex.message)   // sirf fail hone par bubble ke neeche "Failed" dikhega
+    }
   }
+
+  const retrySend = (pm) => { setPending((p) => p.filter((x) => x.id !== pm.id)); sendMessage(pm.text, 'reply') }
 
   const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(draft) } }
 
@@ -790,16 +799,16 @@ export default function Dashboard() {
               <div className="flex min-h-0 flex-1 flex-col">
                 <div ref={chatRef} className="nice-scroll flex-1 overflow-y-auto bg-slate-50/40 px-6 py-5">
                   <div className="my-2 flex justify-center"><span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">May 12, 2024</span></div>
-                  {conv.messages.map((m, i) => {
-                    if (m.dir === 'sys') return <div key={i} className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500"><span>{m.time}</span>·<span>{m.text}</span></div>
+                  {[...conv.messages, ...pending].map((m, i) => {
+                    if (m.dir === 'sys') return <div key={m.id || i} className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500"><span>{m.time}</span>·<span>{m.text}</span></div>
                     if (m.dir === 'in') return (
-                      <div key={i} className="mt-4 flex items-start gap-2">
+                      <div key={m.id || i} className="mt-4 flex items-start gap-2">
                         <span className={`mt-1 grid h-8 w-8 place-items-center rounded-full ${conv.avatarBg} text-xs font-bold`}>{conv.initials}</span>
                         <div className="max-w-md rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 text-[10px] text-slate-400">{m.time}</div></div>
                       </div>
                     )
                     if (m.dir === 'note') return (
-                      <div key={i} className="mt-4 flex items-start justify-end gap-2">
+                      <div key={m.id || i} className="mt-4 flex items-start justify-end gap-2">
                         <div className="max-w-md rounded-2xl rounded-tr-md bg-amber-50 px-4 py-2.5 text-sm text-amber-900 shadow-sm ring-1 ring-amber-200">
                           <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">📝 Internal note{m.agent ? ` · ${m.agent}` : ''}</div>
                           <div>{m.text}</div>
@@ -807,19 +816,33 @@ export default function Dashboard() {
                         </div>
                       </div>
                     )
+                    const failed = m._status === 'failed'
+                    const sending = m._status === 'sending'
                     return (
-                      <div key={i} className="mt-4 flex flex-col items-end">
-                        {(m.agent || m.via === 'meta') && (
-                          <div className="mb-0.5 mr-10 text-[10px] font-semibold text-slate-500">
-                            {m.agent ? m.agent : 'via Meta (Business Suite)'}
-                          </div>
-                        )}
+                      <div key={m.id || i} className="mt-4 flex flex-col items-end">
+                        {m.agent && <div className="mb-0.5 mr-10 text-[10px] font-semibold text-slate-500">{m.agent}</div>}
                         <div className="flex items-start justify-end gap-2">
-                          <div className="max-w-md rounded-2xl rounded-tr-md bg-brand-50 px-4 py-2.5 text-sm text-brand-900 shadow-sm ring-1 ring-brand-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-500">{m.time}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 11 13 20"/></svg></div></div>
-                          <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-600 text-[10px] font-bold text-white" title={m.agent || 'via Meta'}>
+                          <div className={`max-w-md rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ring-1 ${failed ? 'bg-rose-50 text-rose-900 ring-rose-200' : 'bg-brand-50 text-brand-900 ring-brand-100'}`}>
+                            <MsgAttachments items={m.attachments} />{m.text}
+                            <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-500">
+                              {m.time}
+                              {sending
+                                ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin text-slate-400"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                                : failed
+                                ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                                : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 11 13 20"/></svg>}
+                            </div>
+                          </div>
+                          <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-600 text-[10px] font-bold text-white" title={m.agent || ''}>
                             {m.agent ? m.agent.split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase() : 'M'}
                           </span>
                         </div>
+                        {failed && (
+                          <div className="mr-10 mt-0.5 flex items-center gap-2 text-[10px] font-semibold text-rose-600">
+                            <span>Failed to send{m._error ? ` — ${m._error}` : ''}</span>
+                            <button onClick={() => retrySend(m)} className="rounded border border-rose-300 px-1.5 py-0.5 hover:bg-rose-50">Retry</button>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
