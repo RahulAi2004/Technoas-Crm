@@ -34,10 +34,11 @@ export function ourCopyUrl(att) {
   return `/api/artwork-file?name=${encodeURIComponent(att.name)}&t=${encodeURIComponent(getToken() || '')}`
 }
 
-// Chat image: pehle original link, wo fail ho to apni saved copy, wo bhi na ho to placeholder.
+// Chat image: pehle original link (agar ho), wo fail ho to apni PG copy, wo bhi na ho to placeholder.
+// url na ho to seedhe PG copy (hamari bheji files ka Chatwoot URL browser mein load nahi hota).
 function ChatImage({ att, className = 'max-h-64 max-w-full rounded-lg object-cover' }) {
-  const [stage, setStage] = useState('src')          // src -> ours -> gone
   const fallback = ourCopyUrl(att)
+  const [stage, setStage] = useState(att.url ? 'src' : (fallback ? 'ours' : 'gone'))
   if (stage === 'gone') return (
     <div className="flex max-w-full items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
       🖼️ <span>Image not available</span>
@@ -58,10 +59,11 @@ function MsgAttachments({ items }) {
   return (
     <div className="mb-1.5 space-y-1.5">
       {items.map((a, i) => {
-        if (!a?.url) return null
+        if (!a?.url && !a?.name) return null              // kuch bhi na ho to skip
         if (a.type === 'image') return <ChatImage key={i} att={a} />
-        if (a.type === 'video') return <video key={i} src={a.url} controls className="max-h-64 max-w-full rounded-lg" />
-        return <a key={i} href={a.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-brand-600 underline">📎 {a.name || 'Attachment'}</a>
+        if (a.type === 'video' && a.url) return <video key={i} src={a.url} controls className="max-h-64 max-w-full rounded-lg" />
+        const href = a.url || ourCopyUrl(a)               // file: url ya PG copy
+        return <a key={i} href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-brand-600 underline">📎 {a.name || 'Attachment'}</a>
       })}
     </div>
   )
