@@ -12,7 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker } from './artwork-capture.js'
-import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwShadowStats } from './chatwoot.js'
+import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -1144,6 +1144,14 @@ app.post('/api/integrations/chatwoot/webhook', async (req, res) => {
 app.get('/api/integrations/chatwoot/status', authRequired, async (req, res) => {
   try {
     res.json({ enabled: cwEnabled(), shadow_mode: cwShadowMode(), send_enabled: cwSendEnabled(), stats: await cwShadowStats() })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Manual reconcile trigger — API se chhoote messages abhi bhar do (server-down ke baad).
+app.post('/api/integrations/chatwoot/reconcile', authRequired, async (req, res) => {
+  try {
+    const hours = Number(req.body?.hours) || 12
+    res.json({ ok: true, result: await cwReconcile({ sinceHours: hours }) })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2279,6 +2287,7 @@ app.listen(PORT, () => {
   startIntelligenceRefresh()
   startUploadWorker()          // NextCloud file upload (fast)
   startShareWorker()           // NextCloud share-links (slow, rate-limit-safe)
+  startChatwootReconcile()     // Chatwoot: webhook ke gaps API se bharo (server-down safety)
 })
 
 // Auto-refresh AI profiles + lead intelligence for NEW/CHANGED chats (stale-aware scripts).
