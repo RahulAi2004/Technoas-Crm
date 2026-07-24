@@ -832,7 +832,11 @@ export default function Dashboard() {
               <div className="flex min-h-0 flex-1 flex-col">
                 <div ref={chatRef} className="nice-scroll flex-1 overflow-y-auto bg-slate-50/40 px-6 py-5">
                   <div className="my-2 flex justify-center"><span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">May 12, 2024</span></div>
-                  {[...conv.messages, ...pending].map((m, i) => {
+                  {[...conv.messages, ...pending]
+                    .map((m, idx) => ({ m, idx, ts: Date.parse(m.created_at) || 0 }))
+                    .sort((a, b) => (a.ts - b.ts) || (a.idx - b.idx))   // time se sort (stable) — recent hamesha neeche
+                    .map(({ m }) => m)
+                    .map((m, i) => {
                     if (m.dir === 'sys') return <div key={m.id || i} className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500"><span>{m.time}</span>·<span>{m.text}</span></div>
                     if (m.dir === 'in') return (
                       <div key={m.id || i} className="mt-4 flex items-start gap-2">
