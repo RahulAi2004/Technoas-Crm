@@ -12,7 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker } from './artwork-capture.js'
-import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
+import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -794,6 +794,47 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
         ? 'Chatwoot ne is customer ki conversation abhi map nahi ki — reconcile chalne dein ya customer ka naya message aane par dobara try karein.'
         : undefined,
     })
+  }
+})
+
+// Send a FILE/IMAGE to the customer (from the chat composer's attach button).
+// File base64 mein aata hai (AI-assistant jaise). Abhi Chatwoot ke raste bhejte hain.
+app.post('/api/meta/send-file', authRequired, async (req, res) => {
+  const { conversationId, fileName, fileType, dataBase64, text } = req.body || {}
+  if (!conversationId || !dataBase64) return res.status(400).json({ error: 'conversationId and file required' })
+  const conv = findById('conversations', conversationId)
+  const recipientId = conv?.meta_recipient_id || String(conversationId).split(':')[1]
+  if (!recipientId) return res.status(400).json({ error: 'unknown conversation' })
+
+  const b64 = String(dataBase64).replace(/^data:[^;]+;base64,/, '')
+  const buffer = Buffer.from(b64, 'base64')
+  const isImg = String(fileType || '').startsWith('image/')
+
+  const transport = String(getSetting('messaging_transport') || 'meta').toLowerCase()
+  try {
+    let result, via = 'meta'
+    if (transport === 'chatwoot' && cwEnabled()) {
+      result = await cwSendFileToPsid(recipientId, { buffer, fileName, mimeType: fileType, caption: text })
+      via = 'chatwoot'
+    } else {
+      // File send abhi sirf Chatwoot se (Meta app dev-mode). Transport chatwoot karein.
+      const e = new Error('File bhejne ke liye messaging transport Chatwoot hona chahiye'); e.status = 400; throw e
+    }
+    // Bheji file ki apni copy PG mein rakho (user pref: hamari files sirf PostgreSQL).
+    const att = result?.attachments?.[0]
+    const url = att?.data_url || att?.url || null
+    const msg = saveMessage({
+      conversation_id: conv?.id || conversationId, dir: 'out', text: text || '',
+      attachments: [{ type: isImg ? 'image' : 'file', url, name: fileName }],
+      time: nowTime(), via, agent: agentName(req),
+    })
+    captureSourceArtworks({ id: msg.id, direction: 'out', conversation_id: conv?.id || conversationId,
+      attachments: url ? [{ type: isImg ? 'image' : 'file', url, name: fileName }] : [] }).catch(() => {})
+    if (conv) update('conversations', conv.id, { list_preview: isImg ? '📷 Photo' : `📎 ${fileName}`, list_time: nowTime(), last_ts: Date.now() })
+    broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })
+    res.json({ ok: true, via, message: msg })
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message })
   }
 })
 
