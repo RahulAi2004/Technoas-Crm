@@ -58,7 +58,8 @@ export default function Settings() {
     setSavingName(true)
     try {
       const u = await api.patch('/api/auth/me', { name: name.trim(), role })
-      sessionStorage.setItem('tcUser', JSON.stringify(u))
+      const store = localStorage.getItem('tcToken') ? localStorage : sessionStorage
+      store.setItem('tcUser', JSON.stringify(u))
       window.dispatchEvent(new Event('tc:user'))  // update top-bar live
       toast('Profile updated', 'success')
     } catch (ex) { toast(ex.message || 'Update failed', 'error') }

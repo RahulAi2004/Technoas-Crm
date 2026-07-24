@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
-import { isAuthed, signIn } from '../lib/auth.js'
+import { isAuthed, signIn, signInWithSso } from '../lib/auth.js'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -9,11 +9,20 @@ export default function Login() {
   const [email, setEmail] = useState(location.state?.email || 'info@technocas.com')
   const [pw, setPw] = useState('')
   const [showPw, setShowPw] = useState(false)
+  const [remember, setRemember] = useState(true)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (isAuthed()) navigate(dest, { replace: true })
+    if (isAuthed()) {
+      navigate(dest, { replace: true })
+      return
+    }
+    let active = true
+    signInWithSso()
+      .then(() => { if (active) navigate(dest, { replace: true }) })
+      .catch(() => {})
+    return () => { active = false }
   }, [navigate, dest])
 
   const submit = async (e) => {
@@ -23,7 +32,7 @@ export default function Login() {
     if (!e2 || !pw) { setErr('Please enter both email and password.'); return }
     setBusy(true)
     try {
-      await signIn(e2, pw)
+      await signIn(e2, pw, remember)
       navigate(dest, { replace: true })
     } catch (ex) {
       setErr(ex.message || 'Invalid email or password.')
@@ -115,7 +124,8 @@ export default function Login() {
 
             <div className="flex items-center justify-between text-sm">
               <label className="inline-flex items-center gap-2 select-none">
-                <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
                 <span className="text-slate-600">Remember me</span>
               </label>
               <a href="#" onClick={(e) => e.preventDefault()} className="font-semibold text-brand-600 hover:text-brand-700">Forgot password?</a>

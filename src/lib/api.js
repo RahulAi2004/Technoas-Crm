@@ -1,9 +1,17 @@
 // Tiny fetch wrapper that includes the JWT and parses JSON.
 const TOKEN_KEY = 'tcToken'
 
-export const getToken = () => sessionStorage.getItem(TOKEN_KEY)
-export const setToken = (t) => sessionStorage.setItem(TOKEN_KEY, t)
-export const clearToken = () => sessionStorage.removeItem(TOKEN_KEY)
+export const getToken = () => localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY)
+export const setToken = (t, persistent = true) => {
+  const target = persistent ? localStorage : sessionStorage
+  const other = persistent ? sessionStorage : localStorage
+  target.setItem(TOKEN_KEY, t)
+  other.removeItem(TOKEN_KEY)
+}
+export const clearToken = () => {
+  localStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(TOKEN_KEY)
+}
 
 async function request(path, { method = 'GET', body, headers = {}, signal } = {}) {
   const token = getToken()

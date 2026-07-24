@@ -6,6 +6,8 @@ services:
     build: ./server
     container_name: technocas_backend
     env_file: ./server/.env
+    environment:
+      SSO_SHARED_SECRET: ${SSO_SHARED_SECRET:-2f9dfffba53a1a44607b3091b81255df2c80773a264de3743cdf6405533c1cdf}
     # lets the container reach host-published ports via host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"

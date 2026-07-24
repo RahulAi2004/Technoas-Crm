@@ -17,6 +17,7 @@ import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
 const JWT_SECRET = process.env.JWT_SECRET || 'technocas-dev-secret-change-in-prod'
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d'
 
 const app = express()
 app.use(cors())
@@ -89,7 +90,34 @@ app.post('/api/auth/login', (req, res) => {
   const user = getAll('users').find(u => u.email === String(email).toLowerCase())
   if (!user) return res.status(401).json({ error: 'Invalid email or password' })
   if (!bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({ error: 'Invalid email or password' })
-  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' })
+  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+  res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
+})
+
+app.post('/api/auth/sso', async (req, res) => {
+  const expected = String(process.env.SSO_SHARED_SECRET || '')
+  if (!expected || req.get('x-decoinks-sso-secret') !== expected) {
+    return res.status(403).json({ error: 'SSO unavailable' })
+  }
+  const username = String(req.get('x-authentik-username') || '').trim().toLowerCase()
+  if (!username) return res.status(401).json({ error: 'Missing SSO identity' })
+  const rawEmail = String(req.get('x-authentik-email') || '').trim().toLowerCase()
+  const email = rawEmail.includes('@') ? rawEmail : `${username}@decoinkssuite.com`
+  const name = String(req.get('x-authentik-name') || '').trim() || username
+  const groups = String(req.get('x-authentik-groups') || '').toLowerCase()
+  let user = getAll('users').find(u => u.email === email)
+  if (!user) {
+    const maxId = Math.max(0, ...getAll('users').map(u => Number(u.id) || 0))
+    user = insert('users', {
+      id: maxId + 1,
+      name,
+      email,
+      role: groups.includes('admin') ? 'admin' : 'agent',
+      password_hash: bcrypt.hashSync(randomUUID() + randomUUID(), 10),
+    })
+    await flush()
+  }
+  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
   res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
 })
 
@@ -106,7 +134,7 @@ app.post('/api/auth/register', async (req, res) => {
   const user = insert('users', { id: maxId + 1, name: name.trim(), email: em, role: 'agent', password_hash: bcrypt.hashSync(password, 10) })
   await flush()
   // auto-login so the new agent can start immediately
-  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' })
+  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
   res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
 })
 
