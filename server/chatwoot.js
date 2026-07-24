@@ -219,6 +219,30 @@ export async function cwSendMessage(conversationId, content) {
   return j
 }
 
+// File/image attachment ke saath bhejo (multipart). buffer = file bytes.
+export async function cwSendFile(conversationId, { buffer, fileName, mimeType, caption }) {
+  if (!cwSendEnabled()) { const e = new Error('Chatwoot send disabled (CHATWOOT_SEND_ENABLED=false)'); e.status = 403; throw e }
+  if (!ACCOUNT || !TOKEN) { const e = new Error('Chatwoot not configured'); e.status = 400; throw e }
+  const fd = new FormData()
+  fd.append('message_type', 'outgoing')
+  if (caption) fd.append('content', caption)
+  fd.append('attachments[]', new Blob([buffer], { type: mimeType || 'application/octet-stream' }), fileName || 'file')
+  const res = await fetch(`${BASE}/api/v1/accounts/${ACCOUNT}/conversations/${conversationId}/messages`, {
+    method: 'POST', headers: { api_access_token: TOKEN }, body: fd, signal: AbortSignal.timeout(60000),
+  })   // Content-Type khud fetch set karta hai (multipart boundary ke saath)
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok) { const e = new Error(`Chatwoot file send failed: ${res.status} ${JSON.stringify(j).slice(0, 200)}`); e.status = res.status; throw e }
+  return j
+}
+
+// PSID se file bhejo — conversation khud resolve karta hai.
+export async function cwSendFileToPsid(psid, file) {
+  const convId = await cwConvForPsid(psid)
+  if (!convId) { const e = new Error(`Chatwoot conversation nahi mili (psid ${psid})`); e.status = 404; throw e }
+  const r = await cwSendFile(convId, file)
+  return { ...r, chatwoot_conversation_id: convId }
+}
+
 // PSID (Facebook user id) se Chatwoot par bhejo — conversation khud resolve karta hai.
 // Send routing (index.js) isi ko call karta hai jab transport='chatwoot' ho.
 export async function cwSendToPsid(psid, content) {

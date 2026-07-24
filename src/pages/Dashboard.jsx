@@ -154,9 +154,17 @@ export default function Dashboard() {
         setMessages((prev) =>
           (prev.length === rows.length && prev[prev.length - 1]?.id === rows[rows.length - 1]?.id)
             ? prev : rows)
-        // jis optimistic message ki server copy aa gayi, use hata do (warna duplicate)
-        setPending((p) => p.filter((pm) => !rows.some((r) =>
-          (r.dir === 'out' || r.direction === 'out') && (r.text || r.body || '').trim() === pm.text.trim())))
+        // jis optimistic message ki server copy aa gayi, use hata do (warna duplicate).
+        // attachment ko file-naam se match karo; plain text ko text se (khali text nahi).
+        setPending((p) => p.filter((pm) => {
+          const hasAtt = Array.isArray(pm.attachments) && pm.attachments.length
+          return !rows.some((r) => {
+            if (!(r.dir === 'out' || r.direction === 'out')) return false
+            if (hasAtt) return (Array.isArray(r.attachments) ? r.attachments : []).some((a) => a?.name && a.name === pm.attachments[0]?.name)
+            const t = pm.text.trim()
+            return t !== '' && (r.text || r.body || '').trim() === t
+          })
+        }))
       })
       .catch(() => {})
     load()
@@ -262,6 +270,29 @@ export default function Dashboard() {
   }
 
   const retrySend = (pm) => { setPending((p) => p.filter((x) => x.id !== pm.id)); sendMessage(pm.text, 'reply') }
+
+  // ---- File/image attach + send (Chatwoot ke raste) ----
+  const fileInputRef = useRef(null)
+  const [attachBusy, setAttachBusy] = useState(false)
+  const onPickFile = () => fileInputRef.current?.click()
+  const onFileChosen = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''                       // dobara wahi file chunne dena
+    if (!file || !currentId) return
+    if (file.size > 24 * 1024 * 1024) { toast('File 24MB se chhoti honi chahiye', 'error'); return }
+    const isImg = file.type.startsWith('image/')
+    const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file) })
+    const pid = `pending-${Date.now()}`
+    setPending((p) => [...p, { id: pid, dir: 'out', text: draft.trim() || '', time: nowTime(), agent: currentUser()?.name,
+      attachments: [{ type: isImg ? 'image' : 'file', url: dataUrl, name: file.name }], _status: 'sending', created_at: new Date().toISOString() }])
+    const caption = draft.trim(); setDraft(''); setAttachBusy(true)
+    const mark = (s, err) => setPending((p) => p.map((x) => x.id === pid ? { ...x, _status: s, _error: err } : x))
+    try {
+      await api.post('/api/meta/send-file', { conversationId: currentId, fileName: file.name, fileType: file.type, dataBase64: dataUrl, text: caption })
+      mark('sent')
+    } catch (ex) { mark('failed', ex.message) }
+    finally { setAttachBusy(false) }
+  }
 
   const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(draft) } }
 
@@ -854,8 +885,18 @@ export default function Dashboard() {
                     <button onClick={() => setMode('note')} className={`pb-1 ${mode === 'note' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Note</button>
                   </div>
                   <textarea rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message...'} className="block w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
+                  <input ref={fileInputRef} type="file" onChange={onFileChosen} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.ai,.psd,.eps,.zip" />
                   <div className="mt-2 flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-slate-500"></div>
+                    <div className="flex items-center gap-1 text-slate-500">
+                      {mode === 'reply' && (
+                        <button onClick={onPickFile} disabled={attachBusy} title="Attach a file / image" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50">
+                          {attachBusy
+                            ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                            : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>}
+                          Attach
+                        </button>
+                      )}
+                    </div>
                     <button onClick={() => sendMessage(draft)} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
                       Send
