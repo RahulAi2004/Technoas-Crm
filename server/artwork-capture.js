@@ -165,6 +165,27 @@ export async function storeArtwork({ ref, convRef, url, name }) {
   return rec.artwork_no
 }
 
+// Bheji hui file — bytes seedhe (URL se download nahi). PG mein pg_only. Returns artwork_no.
+// Chat composer se bheji image/file isi se save hoti hai taaki hum use PG se serve kar sakein.
+export async function storeArtworkBytes({ ref, convRef, buffer, fileName, fileType }) {
+  if (!buffer || !ref) return null
+  const dupe = await pool.query(`SELECT artwork_no FROM app.customer_artwork WHERE message_ref = $1`, [ref])
+  if (dupe.rows[0]) return dupe.rows[0].artwork_no
+  const ctx = await resolveContext(convRef)
+  const folder = await folderForCustomer(ctx?.customer_id, ctx?.full_name)
+  const ext = (fileType || '').split('/')[1]?.replace('jpeg', 'jpg') || extOf('', fileName)
+  const artworkNo = await nextArtworkNo(ctx?.client_code, isOut(ref))
+  const ins = await pool.query(
+    `INSERT INTO app.customer_artwork
+       (lead_id, customer_id, conversation_id, message_ref, folder, file_name, file_type, file_size_bytes, image_data, artwork_no, upload_status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pg_only')
+     ON CONFLICT (message_ref) DO NOTHING
+     RETURNING artwork_no`,
+    [ctx?.lead_id || null, ctx?.customer_id || null, ctx?.conversation_id || null, ref, folder,
+     safeName(fileName) || null, ext, buffer.length, buffer, artworkNo])
+  return ins.rows[0]?.artwork_no || artworkNo
+}
+
 // RETRY WORKER — pending/nextcloud-less artworks ko NextCloud par chadhata hai (har N min).
 // Boot par index.js se ek baar start hota hai; NextCloud configured na ho to kuch nahi karta.
 let workerOn = false, workerBusy = false
@@ -282,9 +303,10 @@ export async function getArtworkFile(idOrNo) {
 // Chat attachment ka `name` (jaise "image-1793950308252607") se stored bytes dhoondo.
 // Facebook ke CDN link 2-3 hafte mein expire ho jate hain — tab chat apni copy maangta hai.
 export async function getArtworkFileByName(fileName) {
+  // file_name (customer ki bheji, jaise "image-123") YA artwork_no (hamari bheji, "AW-...-OUT") dono match.
   const r = await pool.query(
     `SELECT artwork_no, file_type, image_data FROM app.customer_artwork
-      WHERE file_name = $1 AND image_data IS NOT NULL
+      WHERE (file_name = $1 OR artwork_no = $1) AND image_data IS NOT NULL
       ORDER BY created_at DESC LIMIT 1`, [String(fileName)])
   return r.rows[0] || null
 }

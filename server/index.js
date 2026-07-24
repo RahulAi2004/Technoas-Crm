@@ -11,7 +11,7 @@ import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
-import { captureSourceArtworks, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker } from './artwork-capture.js'
+import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker } from './artwork-capture.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -820,16 +820,21 @@ app.post('/api/meta/send-file', authRequired, async (req, res) => {
       // File send abhi sirf Chatwoot se (Meta app dev-mode). Transport chatwoot karein.
       const e = new Error('File bhejne ke liye messaging transport Chatwoot hona chahiye'); e.status = 400; throw e
     }
-    // Bheji file ki apni copy PG mein rakho (user pref: hamari files sirf PostgreSQL).
-    const att = result?.attachments?.[0]
-    const url = att?.data_url || att?.url || null
+    // Bheji file ki apni copy PG mein SYNC save karo (Chatwoot ka URL browser mein load nahi hota).
+    // Message ka attachment `name` = artwork_no rakho — chat image ise PG se serve karega
+    // (/api/artwork-file?name=<artwork_no>), taaki chat mein hamesha dikhe.
+    let artworkNo = null
+    try {
+      artworkNo = await storeArtworkBytes({ ref: `out:file:${Date.now()}#0`, convRef: conv?.id || conversationId,
+        buffer, fileName, fileType })
+    } catch (capErr) { console.warn('[send-file] PG save failed:', capErr.message) }
+    // url: null rakho — Chatwoot ka attachment URL browser mein load nahi hota. Chat image
+    // `name` (artwork_no) se PG endpoint /api/artwork-file se serve karega (hamesha dikhega).
     const msg = saveMessage({
       conversation_id: conv?.id || conversationId, dir: 'out', text: text || '',
-      attachments: [{ type: isImg ? 'image' : 'file', url, name: fileName }],
+      attachments: [{ type: isImg ? 'image' : 'file', url: null, name: artworkNo || fileName }],
       time: nowTime(), via, agent: agentName(req),
     })
-    captureSourceArtworks({ id: msg.id, direction: 'out', conversation_id: conv?.id || conversationId,
-      attachments: url ? [{ type: isImg ? 'image' : 'file', url, name: fileName }] : [] }).catch(() => {})
     if (conv) update('conversations', conv.id, { list_preview: isImg ? '📷 Photo' : `📎 ${fileName}`, list_time: nowTime(), last_ts: Date.now() })
     broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })
     res.json({ ok: true, via, message: msg })
