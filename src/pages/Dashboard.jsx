@@ -239,9 +239,12 @@ export default function Dashboard() {
       try { await api.post('/api/manychat/send', { subscriberId: currentId.slice(3), text: text.trim() }); toast('Sent via ManyChat → Meta', 'success') }
       catch (ex) { toast(`ManyChat send failed: ${ex.message}`, 'error') }
     } else if (isMeta) {
-      // Direct Meta (Messenger / Instagram) — actually deliver to the customer
-      try { await api.post('/api/meta/send', { conversationId: currentId, text: text.trim() }); toast('Sent via Meta', 'success') }
-      catch (ex) { toast(`Meta send failed: ${ex.message}`, 'error') }
+      // Deliver to the customer — backend routes via Chatwoot or Meta (messaging_transport).
+      try {
+        const r = await api.post('/api/meta/send', { conversationId: currentId, text: text.trim() })
+        toast(r?.via === 'chatwoot' ? 'Sent via Chatwoot' : 'Sent via Meta', 'success')
+      }
+      catch (ex) { toast(`Send failed: ${ex.message}`, 'error') }
     } else {
       // Plain CRM conversation — save locally
       try { await api.post(`/api/conversations/${encodeURIComponent(currentId)}/messages`, { dir: direction, text: text.trim(), time }); toast('Message saved', 'success') }
