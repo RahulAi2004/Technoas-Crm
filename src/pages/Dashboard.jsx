@@ -17,6 +17,7 @@ const normalizeConv = (c) => c && ({
   statusIcon:  c.status_icon ?? c.statusIcon,
   listPreview: c.list_preview ?? c.listPreview,
   listTime:    c.list_time   ?? c.listTime,
+  lastDir:     c.last_dir    ?? c.lastDir,
 })
 
 const channelIcon = (channel) => {
@@ -191,6 +192,14 @@ export default function Dashboard() {
   const loadFlags = () => api.get('/api/flags').then(setFlags).catch(() => setFlags([]))
   useEffect(() => { loadFlags() }, [])
   const setConvTags = (id, next) => patchConv(id, { tags: next })   // optimistic UI + API save dono patchConv mein
+
+  // Sabse HAAL ka customer (incoming) message — array order nahi, time (created_at) se.
+  const lastIncomingText = useMemo(() => {
+    const ins = messages.filter((m) => (m.dir === 'in' || m.direction === 'in') && (m.text || m.body))
+    if (!ins.length) return ''
+    ins.sort((a, b) => (Date.parse(a.created_at) || 0) - (Date.parse(b.created_at) || 0))
+    return ins[ins.length - 1].text || ins[ins.length - 1].body || ''
+  }, [messages])
 
   const myName = currentUser()?.name
   const unassignedCount = conversations.filter((c) => !c.assigned_to).length
@@ -703,7 +712,7 @@ export default function Dashboard() {
                         <span className="text-[11px] text-slate-500">{c.listTime}</span>
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2">
-                        <p className="truncate text-xs text-slate-600">{c.listPreview}</p>
+                        <p className="truncate text-xs text-slate-600">{c.lastDir === 'out' && <span className="font-semibold text-slate-500">You: </span>}{c.listPreview}</p>
                         {c.unread > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{c.unread}</span>}
                       </div>
                       {Array.isArray(c.tags) && c.tags.length > 0 && (
@@ -963,7 +972,7 @@ export default function Dashboard() {
 
             <div className="nice-scroll flex-1 overflow-y-auto px-5 py-4">
               {aiTab === 'responses' && <ResponsesTab onSendReply={(text) => sendMessage(text, 'reply')} conv={conv} msgCount={messages.length} />}
-              {aiTab === 'translate' && <TranslationTab onSendReply={(text) => sendMessage(text, 'reply')} lastIncoming={[...messages].reverse().find((m) => m.dir === 'in')?.text || ''} />}
+              {aiTab === 'translate' && <TranslationTab onSendReply={(text) => sendMessage(text, 'reply')} lastIncoming={lastIncomingText} />}
               {aiTab === 'summary' && <SummaryTab conv={conv} msgCount={messages.length} />}
               {aiTab === 'actions' && <ActionsTab ai={ai} onAnalyze={analyze} />}
               {aiTab === 'designer' && <DesignerTab conv={conv} />}

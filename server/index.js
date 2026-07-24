@@ -782,7 +782,7 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
       via,
       agent: agentName(req),
     })
-    if (conv) update('conversations', conv.id, { list_preview: text, list_time: nowTime(), last_ts: Date.now() })
+    if (conv) update('conversations', conv.id, { list_preview: text, list_time: nowTime(), last_ts: Date.now(), last_dir: 'out' })
     broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })
     res.json({ ok: true, via, message: msg, result })
   } catch (e) {
@@ -835,7 +835,7 @@ app.post('/api/meta/send-file', authRequired, async (req, res) => {
       attachments: [{ type: isImg ? 'image' : 'file', url: null, name: artworkNo || fileName }],
       time: nowTime(), via, agent: agentName(req),
     })
-    if (conv) update('conversations', conv.id, { list_preview: isImg ? '📷 Photo' : `📎 ${fileName}`, list_time: nowTime(), last_ts: Date.now() })
+    if (conv) update('conversations', conv.id, { list_preview: isImg ? '📷 Photo' : `📎 ${fileName}`, list_time: nowTime(), last_ts: Date.now(), last_dir: 'out' })
     broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })
     res.json({ ok: true, via, message: msg })
   } catch (e) {
@@ -1034,7 +1034,7 @@ async function syncMetaConversations() {
         ensureCustomerForConversation(conv)  // auto customer-capture (idempotent)
 
         const msgs = (c.messages?.data || []).slice().reverse() // oldest → newest
-        let lastText = conv.list_preview, lastTime = conv.list_time, added = false
+        let lastText = conv.list_preview, lastTime = conv.list_time, lastDir = conv.last_dir, added = false
         for (const m of msgs) {
           const exists = findById('messages', m.id)
           const fromId = String(m.from?.id || '')
@@ -1065,14 +1065,14 @@ async function syncMetaConversations() {
           })
           if (!exists) {
             added = true; newMessages++
-            lastText = stored.text || attachPreview(atts); lastTime = stored.time
+            lastText = stored.text || attachPreview(atts); lastTime = stored.time; lastDir = dir
             broadcast({ type: 'message', conversationId: convId, message: stored })
           }
         }
         // Track last-activity timestamp so the inbox can sort newest-first.
         const lastTs = c.updated_time ? Date.parse(c.updated_time) : (conv.last_ts || null)
         const patch = { last_ts: lastTs }
-        if (added) { patch.list_preview = lastText; patch.list_time = lastTime }
+        if (added) { patch.list_preview = lastText; patch.list_time = lastTime; patch.last_dir = lastDir }
         const updated = update('conversations', convId, patch)
         if (updated && (added || updated.last_ts !== conv.last_ts)) {
           broadcast({ type: 'conversation', conversation: updated })
@@ -1154,7 +1154,7 @@ app.post('/api/webhooks/meta', async (req, res) => {
         time: nowTime(),
         via: 'meta',
       })
-      const patch = { list_preview: text || attachPreview(atts), list_time: nowTime(), last_ts: Date.now() }
+      const patch = { list_preview: text || attachPreview(atts), list_time: nowTime(), last_ts: Date.now(), last_dir: isEcho ? 'out' : 'in' }
       if (!isEcho) patch.unread = (conv.unread || 0) + 1
       const updated = update('conversations', conv.id, patch)
       broadcast({ type: 'message', conversationId: conv.id, message: stored })
