@@ -12,7 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
-import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields } from './lead-panel.js'
+import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -1432,6 +1432,15 @@ app.get('/api/leads/extract/:id', authRequired, async (req, res) => {
   if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY in server/.env' })
   try { res.json(await extractLeadFields(req.params.id)) }
   catch (e) { res.status(e.status || 500).json({ error: e.message, hint: e.hint }) }
+})
+// BULK: jin conversations me order hua hai, unki fields AI se nikaal kar DB me bhar do.
+// Default sirf khaali fields; { force: true } -> sab refresh. { limit: N } -> test.
+app.post('/api/leads/backfill-orders', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY in server/.env' })
+  try {
+    const summary = await backfillOrderConversations({ limit: Number(req.body?.limit) || 0, force: !!req.body?.force })
+    res.json({ ok: true, ...summary })
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 // Agent ne ek field pe Validate dabaya -> wahi ek field DB me save.
 app.post('/api/leads/field/:id', authRequired, async (req, res) => {

@@ -216,3 +216,47 @@ export async function extractFields(conversationId) {
   const fields = await chatJSON(EXTRACT_SYSTEM, user)
   return { ok: true, fields }
 }
+
+const isEmpty = (v) =>
+  v == null || v === '' ||
+  (Array.isArray(v) && v.length === 0) ||
+  (typeof v === 'object' && !Array.isArray(v) && !Object.values(v).some((x) => x))
+
+// ---- BULK: jin conversations me order hua hai, unki fields AI se nikaal kar DB me bhar do ----
+// Default: sirf KHAALI fields bhare (existing data safe). force=true -> sab refresh.
+export async function backfillOrderConversations({ limit = 0, force = false } = {}) {
+  const q = await dbQuery(
+    `SELECT DISTINCT c.legacy_id AS cid
+       FROM app.orders o JOIN app.conversations c ON o.conversation_id = c.conversation_id
+      WHERE c.legacy_id IS NOT NULL`)
+  let cids = q.rows.map((r) => r.cid)
+  if (limit > 0) cids = cids.slice(0, limit)
+  const summary = { orders_conversations: cids.length, processed: 0, fields_saved: 0, skipped_filled: 0, no_chat: 0, errors: 0 }
+
+  const CONC = 4
+  let i = 0
+  async function worker() {
+    while (i < cids.length) {
+      const cid = cids[i++]
+      try {
+        const ex = await extractFields(cid)
+        if (ex?.empty || !ex?.fields) { summary.no_chat++; summary.processed++; continue }
+        const saved = force ? { lead: {}, customer: {}, quote: {} } : await getLeadBundle(cid)
+        const existing = { ...saved.lead, ...saved.customer, ...saved.quote }
+        const flat = { ...(ex.fields.lead || {}), ...(ex.fields.customer || {}), ...(ex.fields.quote || {}) }
+        for (const [field, value] of Object.entries(flat)) {
+          if (!FIELD_MAP[field]) continue
+          if (isEmpty(value)) continue
+          if (!force && !isEmpty(existing[field])) { summary.skipped_filled++; continue }  // pehle se bhara -> chhodo
+          try { await saveField({ conversationId: cid, field, value }); summary.fields_saved++ }
+          catch { summary.errors++ }
+        }
+        summary.processed++
+        if (summary.processed % 10 === 0) console.log(`[backfill-orders] ${summary.processed}/${cids.length} done, ${summary.fields_saved} fields saved`)
+      } catch (e) { summary.errors++; summary.processed++; console.warn('[backfill-orders]', cid, e.message) }
+    }
+  }
+  await Promise.all(Array.from({ length: CONC }, worker))
+  console.log(`[backfill-orders] DONE:`, JSON.stringify(summary))
+  return summary
+}
