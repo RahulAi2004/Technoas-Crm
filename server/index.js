@@ -807,6 +807,7 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
       dir: 'out',
       text,
       time: nowTime(),
+      ts: Date.now(),
       via,
       agent: agentName(req),
     })
@@ -861,7 +862,7 @@ app.post('/api/meta/send-file', authRequired, async (req, res) => {
     const msg = saveMessage({
       conversation_id: conv?.id || conversationId, dir: 'out', text: text || '',
       attachments: [{ type: isImg ? 'image' : 'file', url: null, name: artworkNo || fileName }],
-      time: nowTime(), via, agent: agentName(req),
+      time: nowTime(), ts: Date.now(), via, agent: agentName(req),
     })
     if (conv) update('conversations', conv.id, { list_preview: isImg ? '📷 Photo' : `📎 ${fileName}`, list_time: nowTime(), last_ts: Date.now(), last_dir: 'out' })
     broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })
@@ -1064,7 +1065,9 @@ async function syncMetaConversations() {
         const msgs = (c.messages?.data || []).slice().reverse() // oldest → newest
         let lastText = conv.list_preview, lastTime = conv.list_time, lastDir = conv.last_dir, added = false
         for (const m of msgs) {
-          const exists = findById('messages', m.id)
+          // dedup: id se YA mid se (Chatwoot-bheje messages ka id generated hota hai, mid alag) —
+          // warna poller unhe dobara insert karke duplicate + created_at scramble kar deta hai.
+          const exists = findById('messages', m.id) || getAll('messages').find((x) => x.mid === m.id && x.conversation_id === convId)
           const fromId = String(m.from?.id || '')
           const dir = (fromId === pageId || fromId === igId) ? 'out' : 'in'
           // DEDUP: agar ye outgoing message CRM ne abhi Chatwoot se bheja tha (numeric id,
@@ -1089,6 +1092,7 @@ async function syncMetaConversations() {
             text: m.message || '',
             attachments: atts,
             time: fmtTimeFromISO(m.created_time),
+            ts: Date.parse(m.created_time) || Date.now(),   // ASLI FB time — sort isi se (created_at re-ingest par badal jata hai)
             via: 'meta',
           })
           if (!exists) {
@@ -1180,6 +1184,7 @@ app.post('/api/webhooks/meta', async (req, res) => {
         text,
         attachments: atts,
         time: nowTime(),
+        ts: Date.now(),
         via: 'meta',
       })
       const patch = { list_preview: text || attachPreview(atts), list_time: nowTime(), last_ts: Date.now(), last_dir: isEcho ? 'out' : 'in' }
