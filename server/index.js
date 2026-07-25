@@ -11,7 +11,7 @@ import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
-import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker } from './artwork-capture.js'
+import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -2381,6 +2381,7 @@ app.listen(PORT, () => {
   startIntelligenceRefresh()
   startUploadWorker()          // NextCloud file upload (fast)
   startShareWorker()           // NextCloud share-links (slow, rate-limit-safe)
+  startBackfillWorker()        // missing image bytes ko source_url se dobara download (broken images fix)
   startChatwootReconcile()     // Chatwoot: webhook ke gaps API se bharo (server-down safety)
 })
 

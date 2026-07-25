@@ -40,16 +40,25 @@ export function ourCopyUrl(att) {
 function ChatImage({ att, className = 'max-h-64 max-w-full rounded-lg object-cover' }) {
   const fallback = ourCopyUrl(att)
   const [stage, setStage] = useState(att.url ? 'src' : (fallback ? 'ours' : 'gone'))
+  // Ek transient fail (backend restart/network blip) image ko hamesha ke liye toot na de:
+  // apni PG copy ko 3 baar (backoff + cache-bust) retry karo, tab jaake "not available" dikhao.
+  const [bust, setBust] = useState(0)
+  const retries = useRef(0)
   if (stage === 'gone') return (
     <div className="flex max-w-full items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
       🖼️ <span>Image not available</span>
     </div>
   )
-  const src = stage === 'src' ? att.url : fallback
+  const base = stage === 'src' ? att.url : fallback
+  const src = (stage === 'ours' && bust) ? `${base}&r=${bust}` : base
+  const onError = () => {
+    if (stage === 'src' && fallback) { retries.current = 0; setStage('ours'); return }  // asli link fail -> apni copy
+    if (retries.current < 3) { retries.current += 1; const n = retries.current; setTimeout(() => setBust((b) => b + 1), 700 * n); return }
+    setStage('gone')                                                                     // 3 retry ke baad haar maano
+  }
   return (
-    <a href={src} target="_blank" rel="noreferrer" className="block">
-      <img src={src} alt={att.name || 'image'} loading="lazy" className={className}
-        onError={() => setStage((s) => (s === 'src' && fallback ? 'ours' : 'gone'))} />
+    <a href={base} target="_blank" rel="noreferrer" className="block">
+      <img src={src} alt={att.name || 'image'} loading="lazy" className={className} onError={onError} />
     </a>
   )
 }

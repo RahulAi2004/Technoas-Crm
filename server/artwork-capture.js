@@ -263,6 +263,66 @@ export function startShareWorker() {
   console.log('🔗 NextCloud share-link worker started')
 }
 
+// SELF-HEAL — capture ke waqt fetchBytes fail ho to row bina bytes ke ban jaati hai
+// (image_data NULL). Aisi rows chat mein "broken image" dikhati hain (/api/artwork-file 404).
+// Ye worker un rows ko source_url se dobara download karke image_data bhar deta hai — bina
+// send/dedup logic ko chhue. Meta CDN link 2-3 hafte mein expire hota hai, isliye backfill
+// jitni jaldi ho utni behtar; expire ho chuki links skip ho jati hain (koi harm nahi).
+let backfillOn = false, backfillBusy = false
+// Ek row ka source_url download karo. { buf } = mil gaya; { gone:true } = link permanently
+// expire (Meta CDN 403/404/410) -> dobara mat try karo; kuch nahi = transient, agli baar retry.
+async function fetchForBackfill(url, timeoutMs = 8000) {
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }, signal: AbortSignal.timeout(timeoutMs) })
+    if (res.ok) return { buf: Buffer.from(await res.arrayBuffer()) }
+    if ([400, 401, 403, 404, 410].includes(res.status)) return { gone: true }   // link mar chuka
+    return {}                                                                     // 5xx/timeout -> transient
+  } catch { return {} }
+}
+export async function backfillMissingBytes(limit = 40) {
+  // 'bytes_lost' = source_url expire ho chuka, bytes recover nahi ho sakte -> skip (worker spin na kare)
+  const rows = (await pool.query(
+    `SELECT artwork_id, source_url FROM app.customer_artwork
+      WHERE image_data IS NULL AND source_url IS NOT NULL AND upload_status IS DISTINCT FROM 'bytes_lost'
+      ORDER BY created_at DESC LIMIT $1`, [limit])).rows
+  if (!rows.length) return { seen: 0, fixed: 0, lost: 0 }
+  let fixed = 0, lost = 0, i = 0
+  await Promise.all(Array.from({ length: 6 }, async () => {   // 6 concurrent downloads
+    while (i < rows.length) {
+      const r = rows[i++]
+      const { buf, gone } = await fetchForBackfill(r.source_url)
+      try {
+        if (buf && buf.length) {
+          await pool.query(
+            `UPDATE app.customer_artwork SET image_data = $1, file_size_bytes = $2 WHERE artwork_id = $3`,
+            [buf, buf.length, r.artwork_id])
+          fixed++
+        } else if (gone) {
+          await pool.query(`UPDATE app.customer_artwork SET upload_status = 'bytes_lost' WHERE artwork_id = $1`, [r.artwork_id])
+          lost++
+        }   // transient: kuch mat karo, agli tick retry karegi
+      } catch { /* next tick retry karega */ }
+    }
+  }))
+  return { seen: rows.length, fixed, lost }
+}
+export function startBackfillWorker(intervalMs = 3 * 60 * 1000) {
+  if (backfillOn) return
+  backfillOn = true
+  const tick = async () => {
+    if (backfillBusy) return
+    backfillBusy = true
+    try {
+      const { seen, fixed, lost } = await backfillMissingBytes(40)
+      if (fixed || lost) console.log(`🖼️  backfill: recovered ${fixed}, gave up on ${lost} (batch ${seen})`)
+    } catch (e) { console.warn('[backfill] error:', e.message) }
+    finally { backfillBusy = false }
+  }
+  setTimeout(tick, 15000)
+  setInterval(tick, intervalMs)
+  console.log('🩹 artwork byte-backfill worker started')
+}
+
 // LIVE HOOK — saveMessage se har naye message par (fire-and-forget).
 // Dono taraf ki images save hoti hain: customer ki -> references/, hamari -> sent/.
 // Meta ke CDN links kuch hafton mein expire ho jate hain, isliye hamare bheje mockups
