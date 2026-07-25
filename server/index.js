@@ -1043,25 +1043,9 @@ async function syncMetaConversations() {
           const fromId = String(m.from?.id || '')
           const dir = (fromId === pageId || fromId === igId) ? 'out' : 'in'
           const atts = metaAttachments(m.attachments)
-          // DEDUP: CRM ne jo message bheja (Chatwoot se, generated id + FB mid nahi) use poller
-          // dobara na banaye — warna duplicate banta hai jinke ts alag hote hain aur order bigadta hai.
-          // Text -> same body se match; Image (empty body) -> attachment-wali CRM message se match.
-          // !x.mid = abhi tak claim nahi hui (1:1 pairing, warna ek copy do baar match ho jaati).
-          if (!exists && dir === 'out') {
-            const body = (m.message || '').trim()
-            const isImg = atts.length > 0
-            const placeholder = getAll('messages').find((x) =>
-              x.conversation_id === convId && (x.dir === 'out' || x.direction === 'out') &&
-              !String(x.id).startsWith('m_') && !x.mid &&
-              Date.now() - (Date.parse(x.created_at) || 0) < 15 * 60 * 1000 &&
-              (body
-                ? (x.text || x.body || '').trim() === body
-                : (Array.isArray(x.attachments) && x.attachments.length > 0 && !((x.text || x.body || '').trim()))))
-            if (placeholder) {
-              update('messages', placeholder.id, { mid: m.id })   // FB mid de do, dobara na banao
-              continue
-            }
-          }
+          // OUTGOING poller se NAHI likhte — outgoing sirf CRM send handler (Chatwoot) se aata hai.
+          // Isse duplicate (via:chatwoot + via:meta) aur order-bigadna hamesha ke liye khatam.
+          if (dir === 'out') continue
           const stored = saveMessage({
             id: m.id,
             conversation_id: convId,
@@ -1131,6 +1115,7 @@ app.post('/api/webhooks/meta', async (req, res) => {
       const msg = ev.message
       if (!msg) continue
       const isEcho = !!msg.is_echo
+      if (isEcho) continue   // outgoing sirf CRM send handler se — Meta webhook echo se duplicate na bane
       // For inbound, the other party is sender. For echoes (sent from the page /
       // Meta inbox), the other party is the recipient.
       const senderId = isEcho ? ev.recipient?.id : ev.sender?.id
