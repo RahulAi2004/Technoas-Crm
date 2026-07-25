@@ -225,20 +225,23 @@ export function startUploadWorker(intervalMs = 60 * 1000) {
   console.log('🗂️  NextCloud upload worker started')
 }
 
-// SHARE-LINK WORKER — uploaded files ke liye NextCloud shareable link banata hai, DHEERE
-// (OCS share-API rate-limit karta hai). Adaptive: 429 aaye to ruk jao, warna ~1.2s gap.
-let shareOn = false
+// SHARE-LINK WORKER — uploaded files ke liye NextCloud shareable link banata hai, DHEERE.
+// shareBusy guard: ek waqt me sirf EK tick (warna ticks overlap ho kar NextCloud ko hammer
+// karte the aur backend ko dabate the). Throttle (429) aate hi tick ROK do — agli baar retry.
+let shareOn = false, shareBusy = false
 export function startShareWorker() {
   if (shareOn || !ncConfigured()) return
   shareOn = true
   const tick = async () => {
+    if (shareBusy) return               // pichhla tick abhi chal raha -> skip (overlap band)
+    shareBusy = true
     try {
       const rows = (await pool.query(
         `SELECT artwork_id, artwork_no, folder, file_type, message_ref FROM app.customer_artwork
           WHERE upload_status = 'nextcloud_ok' AND nextcloud_url IS NULL
-            AND message_ref NOT LIKE 'out:%'            -- hamari bheji files NextCloud pe hain hi nahi
-          ORDER BY created_at DESC LIMIT 30`)).rows
-      let made = 0, throttled = false
+            AND message_ref NOT LIKE 'out:%'
+          ORDER BY created_at DESC LIMIT 15`)).rows
+      let made = 0
       for (const r of rows) {
         const remote = ncRemotePath(r.folder, subfolderForRef(r.message_ref), `${r.artwork_no}.${r.file_type || 'jpg'}`)
         let url = null
@@ -246,17 +249,17 @@ export function startShareWorker() {
         if (url) {
           await pool.query(`UPDATE app.customer_artwork SET nextcloud_url = $1 WHERE artwork_id = $2`, [url, r.artwork_id])
           made++
-          await new Promise((res) => setTimeout(res, 1200))   // gentle rate
+          await new Promise((res) => setTimeout(res, 1500))   // gentle rate
         } else {
-          throttled = true
-          await new Promise((res) => setTimeout(res, 8000))    // rate-limited -> back off
+          break   // throttle/fail -> is tick ko yahin rok do, agla tick 2 min baad retry karega
         }
       }
-      if (made || throttled) console.log(`[nextcloud] share-links made ${made}${throttled ? ' (some throttled, will retry)' : ''}`)
+      if (made) console.log(`[nextcloud] share-links made ${made}`)
     } catch (e) { console.warn('[nextcloud] share worker error:', e.message) }
+    finally { shareBusy = false }
   }
-  setInterval(tick, 45 * 1000)   // har 45s ek pass
-  setTimeout(tick, 20000)        // upload worker ko pehle chalne do
+  setInterval(tick, 120 * 1000)   // har 2 min ek pass (share-link zaroori nahi, dheere theek)
+  setTimeout(tick, 30000)
   console.log('🔗 NextCloud share-link worker started')
 }
 
