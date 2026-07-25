@@ -157,17 +157,17 @@ export default function Dashboard() {
         setMessages((prev) =>
           (prev.length === rows.length && prev[prev.length - 1]?.id === rows[rows.length - 1]?.id)
             ? prev : rows)
-        // jis optimistic message ki server copy aa gayi, use hata do (warna duplicate).
-        // attachment ko file-naam se match karo; plain text ko text se (khali text nahi).
-        setPending((p) => p.filter((pm) => {
-          const hasAtt = Array.isArray(pm.attachments) && pm.attachments.length
-          return !rows.some((r) => {
-            if (!(r.dir === 'out' || r.direction === 'out')) return false
-            if (hasAtt) return (Array.isArray(r.attachments) ? r.attachments : []).some((a) => a?.name && a.name === pm.attachments[0]?.name)
-            const t = pm.text.trim()
-            return t !== '' && (r.text || r.body || '').trim() === t
-          })
-        }))
+        // jis optimistic message ki server copy aa gayi, use hata do (warna duplicate dikhta).
+        // MATCH ts (send-click time) se — pending aur server dono ka ts wahi clientTs hota hai.
+        // (Image ka file-naam server par artwork_no ban jata tha, isliye naam-match fail hota tha
+        //  aur image do baar dikhti thi.) ts na ho to text se fallback.
+        setPending((p) => p.filter((pm) => !rows.some((r) => {
+          if (!(r.dir === 'out' || r.direction === 'out')) return false
+          if (pm.ts && r.ts && Number(r.ts) === Number(pm.ts)) return true
+          if (Array.isArray(pm.attachments) && pm.attachments.length) return false   // image sirf ts se (bina ts match nahi)
+          const t = (pm.text || '').trim()
+          return t !== '' && (r.text || r.body || '').trim() === t
+        })))
       })
       .catch(() => {})
     load()
