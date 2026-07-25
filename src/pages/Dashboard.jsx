@@ -35,21 +35,61 @@ export function ourCopyUrl(att) {
   return `/api/artwork-file?name=${encodeURIComponent(att.name)}&t=${encodeURIComponent(getToken() || '')}`
 }
 
-// Chat image: pehle original link (agar ho), wo fail ho to apni PG copy, wo bhi na ho to placeholder.
-// url na ho to seedhe PG copy (hamari bheji files ka Chatwoot URL browser mein load nahi hota).
+// Chat image: pehle original link (agar ho) try karo; wo na ho / fail ho to apni PG copy.
+// PG copy ko `<img src+token>` se nahi, balki `fetch` (Authorization header — wahi jo baaki
+// chalte API calls use karte hain) se laa kar BLOB bana ke dikhate hain. Isse token-in-URL,
+// browser-cache aur "abhi-abhi bheji file" wali timing/race — teeno masle khatam. Fail hone
+// par thodi der baad AUTO-RETRY (bheji file ka row/backend ek pal baad taiyaar hota hai).
 function ChatImage({ att, className = 'max-h-64 max-w-full rounded-lg object-cover' }) {
-  const fallback = ourCopyUrl(att)
-  const [stage, setStage] = useState(att.url ? 'src' : (fallback ? 'ours' : 'gone'))
-  if (stage === 'gone') return (
+  const hasName = !!att?.name
+  // url na ho to seedhe apni PG copy (hamari bheji files ka Chatwoot URL browser mein load nahi hota).
+  const [useOurs, setUseOurs] = useState(!att?.url && hasName)
+  const [blobUrl, setBlobUrl] = useState(null)
+  const [gone, setGone] = useState(!att?.url && !hasName)
+
+  useEffect(() => {
+    if (!useOurs || !hasName) return
+    let cancelled = false, obj = null
+    const load = async (tries = 0) => {
+      try {
+        const res = await fetch(`/api/artwork-file?name=${encodeURIComponent(att.name)}`,
+          { headers: { Authorization: `Bearer ${getToken() || ''}` } })
+        if (!res.ok) throw new Error('http ' + res.status)
+        const blob = await res.blob()
+        if (cancelled) return
+        obj = URL.createObjectURL(blob); setBlobUrl(obj)
+      } catch {
+        if (cancelled) return
+        if (tries < 6) setTimeout(() => load(tries + 1), 1500)   // abhi bheji file: race -> retry (~9s)
+        else setGone(true)
+      }
+    }
+    load()
+    return () => { cancelled = true; if (obj) URL.revokeObjectURL(obj) }
+  }, [useOurs, hasName, att?.name])
+
+  if (gone) return (
     <div className="flex max-w-full items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
       🖼️ <span>Image not available</span>
     </div>
   )
-  const src = stage === 'src' ? att.url : fallback
+  if (useOurs) {
+    if (!blobUrl) return (
+      <div className="flex max-w-full items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-400 ring-1 ring-slate-200">
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500" /> loading…
+      </div>
+    )
+    return (
+      <a href={blobUrl} target="_blank" rel="noreferrer" className="block">
+        <img src={blobUrl} alt={att.name || 'image'} className={className} />
+      </a>
+    )
+  }
+  // Pehle original url try karo; fail ho to apni PG copy (blob) par switch.
   return (
-    <a href={src} target="_blank" rel="noreferrer" className="block">
-      <img src={src} alt={att.name || 'image'} loading="lazy" className={className}
-        onError={() => setStage((s) => (s === 'src' && fallback ? 'ours' : 'gone'))} />
+    <a href={att.url} target="_blank" rel="noreferrer" className="block">
+      <img src={att.url} alt={att.name || 'image'} loading="lazy" className={className}
+        onError={() => (hasName ? setUseOurs(true) : setGone(true))} />
     </a>
   )
 }
