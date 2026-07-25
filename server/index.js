@@ -1042,21 +1042,26 @@ async function syncMetaConversations() {
           const exists = findById('messages', m.id) || getAll('messages').find((x) => x.mid === m.id && x.conversation_id === convId)
           const fromId = String(m.from?.id || '')
           const dir = (fromId === pageId || fromId === igId) ? 'out' : 'in'
-          // DEDUP: agar ye outgoing message CRM ne abhi Chatwoot se bheja tha (numeric id,
-          // FB mid nahi), to poller ki copy mat banao — warna duplicate + "gayab-wapas" hota hai.
+          const atts = metaAttachments(m.attachments)
+          // DEDUP: CRM ne jo message bheja (Chatwoot se, generated id + FB mid nahi) use poller
+          // dobara na banaye — warna duplicate banta hai jinke ts alag hote hain aur order bigadta hai.
+          // Text -> same body se match; Image (empty body) -> attachment-wali CRM message se match.
+          // !x.mid = abhi tak claim nahi hui (1:1 pairing, warna ek copy do baar match ho jaati).
           if (!exists && dir === 'out') {
             const body = (m.message || '').trim()
+            const isImg = atts.length > 0
             const placeholder = getAll('messages').find((x) =>
               x.conversation_id === convId && (x.dir === 'out' || x.direction === 'out') &&
-              !String(x.id).startsWith('m_') && (x.text || x.body || '').trim() === body &&
-              Date.now() - (Date.parse(x.created_at) || 0) < 15 * 60 * 1000)
+              !String(x.id).startsWith('m_') && !x.mid &&
+              Date.now() - (Date.parse(x.created_at) || 0) < 15 * 60 * 1000 &&
+              (body
+                ? (x.text || x.body || '').trim() === body
+                : (Array.isArray(x.attachments) && x.attachments.length > 0 && !((x.text || x.body || '').trim()))))
             if (placeholder) {
-              // placeholder ko asli FB mid de do (taaki aage ke polls bhi ise pehchaanein)
-              update('messages', placeholder.id, { mid: m.id })
+              update('messages', placeholder.id, { mid: m.id })   // FB mid de do, dobara na banao
               continue
             }
           }
-          const atts = metaAttachments(m.attachments)
           const stored = saveMessage({
             id: m.id,
             conversation_id: convId,
