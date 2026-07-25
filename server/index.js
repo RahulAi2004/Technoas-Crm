@@ -12,6 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
+import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -1416,6 +1417,30 @@ app.get('/api/ai/analyze/:id', authRequired, async (req, res) => {
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
   }
+})
+
+// ============================================================
+// Lead Details panel — saved values, AI extraction (chat se), per-field validate→save.
+// ============================================================
+// Panel khulte hi jo DB me pehle se saved hai wo values.
+app.get('/api/leads/panel/:id', authRequired, async (req, res) => {
+  try { res.json(await getLeadBundle(req.params.id)) }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+// AI se chat padh kar teeno tabs ke fields suggest karo (save nahi karta).
+app.get('/api/leads/extract/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY in server/.env' })
+  try { res.json(await extractLeadFields(req.params.id)) }
+  catch (e) { res.status(e.status || 500).json({ error: e.message, hint: e.hint }) }
+})
+// Agent ne ek field pe Validate dabaya -> wahi ek field DB me save.
+app.post('/api/leads/field/:id', authRequired, async (req, res) => {
+  try {
+    res.json(await saveLeadField({
+      conversationId: req.params.id, field: req.body?.field, value: req.body?.value,
+      convName: findById('conversations', req.params.id)?.name,
+    }))
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 
 // Add a document to the Knowledge Base (embed → Qdrant `documents`).

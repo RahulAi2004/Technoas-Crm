@@ -7,6 +7,7 @@ import { useToast } from '../components/ToastContext.jsx'
 import { STATUS_OPTIONS } from '../data/conversations.js'
 import { api, getToken } from '../lib/api.js'
 import { FlagBadges, FlagChip, ManageFlagsModal } from '../components/CustomerFlags.jsx'
+import LeadPanel from '../components/LeadPanel.jsx'
 
 // Normalize a conversation row from the server (snake_case) to the shape the JSX expects (camelCase).
 const normalizeConv = (c) => c && ({
@@ -125,6 +126,10 @@ export default function Dashboard() {
   const [sbCollapsed, setSbCollapsed] = useState(() => localStorage.getItem('sidebarCollapsed') === '1')
   const [filtersCollapsed, setFiltersCollapsed] = useState(() => localStorage.getItem('filtersCollapsed') === '1')
   const [aiOpen, setAiOpen] = useState(() => localStorage.getItem('aiOpen') !== '0')
+  // Lead Details panel — AI Supervisor ke saath ek waqt me EK hi khulta hai (toggle).
+  const [leadOpen, setLeadOpen] = useState(false)
+  const openAiPanel = () => { setAiOpen(true); setLeadOpen(false) }
+  const openLeadPanel = () => { setLeadOpen(true); setAiOpen(false) }
   // Filter FORM (date/category/etc.) is independent from the conversation list.
   // Hidden by default so the list gets full height and shows many at once.
   const [showFilterForm, setShowFilterForm] = useState(() => localStorage.getItem('showFilterForm') === '1')
@@ -619,7 +624,7 @@ export default function Dashboard() {
         </header>
 
         {/* data-mobile drives the one-panel-at-a-time layout on phones (see index.css) */}
-        <section ref={panelsRef} id="panels" className="grid flex-1 overflow-hidden" data-filters={filtersCollapsed ? 'collapsed' : 'expanded'} data-ai={aiOpen ? 'open' : 'closed'} data-mobile={currentId ? 'chat' : 'list'}>
+        <section ref={panelsRef} id="panels" className="grid flex-1 overflow-hidden" data-filters={filtersCollapsed ? 'collapsed' : 'expanded'} data-ai={(aiOpen || leadOpen) ? 'open' : 'closed'} data-mobile={currentId ? 'chat' : 'list'}>
           {/* ===== Filters / List ===== */}
           <div id="panel-list" className="flex flex-col overflow-hidden border-r border-slate-200 bg-white">
             <div id="filters-header" className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
@@ -846,8 +851,14 @@ export default function Dashboard() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                   {conv.assigned_to && <span className="max-w-[80px] truncate text-xs">{conv.assigned_to.split(' ')[0]}</span>}
                 </button>
+                {!leadOpen && (
+                  <button onClick={openLeadPanel} title="Open Lead Details" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>
+                    Lead Details
+                  </button>
+                )}
                 {!aiOpen && (
-                  <button onClick={() => setAiOpen(true)} title="Open AI Supervisor" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100">
+                  <button onClick={openAiPanel} title="Open AI Supervisor" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
                     AI Supervisor
                   </button>
@@ -983,7 +994,10 @@ export default function Dashboard() {
 
           <div id="resize-ai" className="resize-handle" role="separator" aria-orientation="vertical" onPointerDown={(e) => startDrag(e, '--col-ai', 320, 720, true, 'w-col-ai')} onDoubleClick={dblResetVar('--col-ai', 'w-col-ai')}></div>
 
-          {/* ===== AI Supervisor ===== */}
+          {/* ===== Right panel: Lead Details OR AI Supervisor (ek waqt me ek) ===== */}
+          {leadOpen ? (
+            <LeadPanel conv={conv} onClose={() => setLeadOpen(false)} />
+          ) : (
           <aside id="ai-panel" className="flex h-full flex-col overflow-hidden border-l border-slate-200 bg-white">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div className="flex items-center gap-2">
@@ -1018,6 +1032,7 @@ export default function Dashboard() {
               {aiTab === 'intent' && <IntentTab ai={ai} onAnalyze={analyze} conv={conv} />}
             </div>
           </aside>
+          )}
         </section>
       </div>
       {manageFlagsOpen && (
