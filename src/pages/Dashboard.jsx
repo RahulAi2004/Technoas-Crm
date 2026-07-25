@@ -157,17 +157,9 @@ export default function Dashboard() {
         setMessages((prev) =>
           (prev.length === rows.length && prev[prev.length - 1]?.id === rows[rows.length - 1]?.id)
             ? prev : rows)
-        // jis optimistic message ki server copy aa gayi, use hata do (warna duplicate).
-        // attachment ko file-naam se match karo; plain text ko text se (khali text nahi).
-        setPending((p) => p.filter((pm) => {
-          const hasAtt = Array.isArray(pm.attachments) && pm.attachments.length
-          return !rows.some((r) => {
-            if (!(r.dir === 'out' || r.direction === 'out')) return false
-            if (hasAtt) return (Array.isArray(r.attachments) ? r.attachments : []).some((a) => a?.name && a.name === pm.attachments[0]?.name)
-            const t = pm.text.trim()
-            return t !== '' && (r.text || r.body || '').trim() === t
-          })
-        }))
+        // Optimistic message ki server copy aate hi use hata do — UNIQUE id se match (bulletproof).
+        // Server pending ka clientId hi message id banata hai, isliye id === id = wahi message.
+        setPending((p) => p.filter((pm) => !rows.some((r) => String(r.id) === String(pm.id))))
       })
       .catch(() => {})
     load()
@@ -259,11 +251,12 @@ export default function Dashboard() {
       return
     }
 
-    // Reply — optimistic bubble jo TURANT dikhe aur poll se na gire. Status: sending -> sent/failed.
-    // clientTs = jis waqt SEND dabaya — server isse hi ts banata hai, taaki upload der lage to bhi
-    // message apne asli order mein rahe (Meta jaisa: jis order mein bheja usi order mein dikhe).
+    // Reply — optimistic bubble jo TURANT dikhe. UNIQUE clientId server ko jata hai aur wahi
+    // message ki id banti hai — app pending ko server copy se USI id se jodta hai (duplicate
+    // kabhi nahi, chahe naam/text kuch bhi ho). clientTs = order ke liye (upload der lage to bhi).
     const clientTs = Date.now()
-    const pid = `pending-${clientTs}`
+    const clientId = `cid-${clientTs}-${Math.random().toString(36).slice(2, 8)}`
+    const pid = clientId
     setPending((p) => [...p, { id: pid, dir: 'out', text: text.trim(), time, agent: currentUser()?.name, _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
     setDraft('')
 
@@ -273,7 +266,7 @@ export default function Dashboard() {
       if (currentId.startsWith('mc:')) {
         await api.post('/api/manychat/send', { subscriberId: currentId.slice(3), text: text.trim() })
       } else if (isMeta) {
-        await api.post('/api/meta/send', { conversationId: currentId, text: text.trim(), clientTs })   // backend Chatwoot/Meta route karta hai
+        await api.post('/api/meta/send', { conversationId: currentId, text: text.trim(), clientTs, clientId })   // backend Chatwoot/Meta route karta hai
       } else {
         await api.post(`/api/conversations/${encodeURIComponent(currentId)}/messages`, { dir: 'out', text: text.trim(), time })
       }
@@ -296,14 +289,15 @@ export default function Dashboard() {
     if (file.size > 24 * 1024 * 1024) { toast('File 24MB se chhoti honi chahiye', 'error'); return }
     const isImg = file.type.startsWith('image/')
     const clientTs = Date.now()               // click ka waqt = asli order (upload der lage to bhi)
+    const clientId = `cid-${clientTs}-${Math.random().toString(36).slice(2, 8)}`
     const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file) })
-    const pid = `pending-${clientTs}`
+    const pid = clientId
     setPending((p) => [...p, { id: pid, dir: 'out', text: draft.trim() || '', time: nowTime(), agent: currentUser()?.name,
       attachments: [{ type: isImg ? 'image' : 'file', url: dataUrl, name: file.name }], _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
     const caption = draft.trim(); setDraft(''); setAttachBusy(true)
     const mark = (s, err) => setPending((p) => p.map((x) => x.id === pid ? { ...x, _status: s, _error: err } : x))
     try {
-      await api.post('/api/meta/send-file', { conversationId: currentId, fileName: file.name, fileType: file.type, dataBase64: dataUrl, text: caption, clientTs })
+      await api.post('/api/meta/send-file', { conversationId: currentId, fileName: file.name, fileType: file.type, dataBase64: dataUrl, text: caption, clientTs, clientId })
       mark('sent')
     } catch (ex) { mark('failed', ex.message) }
     finally { setAttachBusy(false) }
@@ -845,7 +839,7 @@ export default function Dashboard() {
               <div className="flex min-h-0 flex-1 flex-col">
                 <div ref={chatRef} className="nice-scroll flex-1 overflow-y-auto bg-slate-50/40 px-6 py-5">
                   <div className="my-2 flex justify-center"><span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">May 12, 2024</span></div>
-                  {[...conv.messages, ...pending]
+                  {[...conv.messages, ...pending.filter((pm) => !conv.messages.some((m) => String(m.id) === String(pm.id)))]
                     // ASLI message-time (ts) se sort — created_at re-ingest par badal jata hai, ts sthir rehta hai
                     .map((m, idx) => ({ m, idx, k: Number(m.ts) || Date.parse(m.created_at) || 0 }))
                     .sort((a, b) => (a.k - b.k) || (a.idx - b.idx))   // stable — recent hamesha neeche

@@ -798,11 +798,10 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
     } else {
       result = await meta().sendText(recipientId, text)
     }
-    // Chatwoot echo webhook wahi message dobara laayega — usi FB message id (mid/source_id)
-    // par upsert hota hai, isliye dupe nahi banta.
-    const mid = result?.message_id || (via === 'chatwoot' ? undefined : result?.message_id)
+    // clientId ko message id banao — frontend pending ko isi id se match karke hata deta hai
+    // (bulletproof, koi duplicate nahi). Poller/webhook outgoing skip karte hain, to conflict nahi.
     const msg = saveMessage({
-      id: mid || undefined,
+      id: req.body?.clientId || result?.message_id || undefined,
       conversation_id: conv?.id || `${channel === 'Instagram' ? 'ig' : 'fb'}:${recipientId}`,
       dir: 'out',
       text,
@@ -860,6 +859,7 @@ app.post('/api/meta/send-file', authRequired, async (req, res) => {
     // url: null rakho — Chatwoot ka attachment URL browser mein load nahi hota. Chat image
     // `name` (artwork_no) se PG endpoint /api/artwork-file se serve karega (hamesha dikhega).
     const msg = saveMessage({
+      id: req.body?.clientId || undefined,   // clientId = message id -> frontend id se match, no duplicate
       conversation_id: conv?.id || conversationId, dir: 'out', text: text || '',
       attachments: [{ type: isImg ? 'image' : 'file', url: null, name: artworkNo || fileName }],
       time: nowTime(), ts: Number(req.body?.clientTs) || Date.now(), via, agent: agentName(req),
