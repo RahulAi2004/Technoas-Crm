@@ -779,7 +779,7 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
       dir: 'out',
       text,
       time: nowTime(),
-      ts: Date.now(),
+      ts: Number(req.body?.clientTs) || Date.now(),   // client ke send-click ka waqt = asli order
       via,
       agent: agentName(req),
     })
@@ -834,7 +834,7 @@ app.post('/api/meta/send-file', authRequired, async (req, res) => {
     const msg = saveMessage({
       conversation_id: conv?.id || conversationId, dir: 'out', text: text || '',
       attachments: [{ type: isImg ? 'image' : 'file', url: null, name: artworkNo || fileName }],
-      time: nowTime(), ts: Date.now(), via, agent: agentName(req),
+      time: nowTime(), ts: Number(req.body?.clientTs) || Date.now(), via, agent: agentName(req),
     })
     if (conv) update('conversations', conv.id, { list_preview: isImg ? '📷 Photo' : `📎 ${fileName}`, list_time: nowTime(), last_ts: Date.now(), last_dir: 'out' })
     broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })

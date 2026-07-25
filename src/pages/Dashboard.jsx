@@ -260,8 +260,11 @@ export default function Dashboard() {
     }
 
     // Reply — optimistic bubble jo TURANT dikhe aur poll se na gire. Status: sending -> sent/failed.
-    const pid = `pending-${Date.now()}`
-    setPending((p) => [...p, { id: pid, dir: 'out', text: text.trim(), time, agent: currentUser()?.name, _status: 'sending', created_at: new Date().toISOString() }])
+    // clientTs = jis waqt SEND dabaya — server isse hi ts banata hai, taaki upload der lage to bhi
+    // message apne asli order mein rahe (Meta jaisa: jis order mein bheja usi order mein dikhe).
+    const clientTs = Date.now()
+    const pid = `pending-${clientTs}`
+    setPending((p) => [...p, { id: pid, dir: 'out', text: text.trim(), time, agent: currentUser()?.name, _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
     setDraft('')
 
     const mark = (status, error) => setPending((p) => p.map((x) => x.id === pid ? { ...x, _status: status, _error: error } : x))
@@ -270,7 +273,7 @@ export default function Dashboard() {
       if (currentId.startsWith('mc:')) {
         await api.post('/api/manychat/send', { subscriberId: currentId.slice(3), text: text.trim() })
       } else if (isMeta) {
-        await api.post('/api/meta/send', { conversationId: currentId, text: text.trim() })   // backend Chatwoot/Meta route karta hai
+        await api.post('/api/meta/send', { conversationId: currentId, text: text.trim(), clientTs })   // backend Chatwoot/Meta route karta hai
       } else {
         await api.post(`/api/conversations/${encodeURIComponent(currentId)}/messages`, { dir: 'out', text: text.trim(), time })
       }
@@ -292,14 +295,15 @@ export default function Dashboard() {
     if (!file || !currentId) return
     if (file.size > 24 * 1024 * 1024) { toast('File 24MB se chhoti honi chahiye', 'error'); return }
     const isImg = file.type.startsWith('image/')
+    const clientTs = Date.now()               // click ka waqt = asli order (upload der lage to bhi)
     const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file) })
-    const pid = `pending-${Date.now()}`
+    const pid = `pending-${clientTs}`
     setPending((p) => [...p, { id: pid, dir: 'out', text: draft.trim() || '', time: nowTime(), agent: currentUser()?.name,
-      attachments: [{ type: isImg ? 'image' : 'file', url: dataUrl, name: file.name }], _status: 'sending', created_at: new Date().toISOString() }])
+      attachments: [{ type: isImg ? 'image' : 'file', url: dataUrl, name: file.name }], _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
     const caption = draft.trim(); setDraft(''); setAttachBusy(true)
     const mark = (s, err) => setPending((p) => p.map((x) => x.id === pid ? { ...x, _status: s, _error: err } : x))
     try {
-      await api.post('/api/meta/send-file', { conversationId: currentId, fileName: file.name, fileType: file.type, dataBase64: dataUrl, text: caption })
+      await api.post('/api/meta/send-file', { conversationId: currentId, fileName: file.name, fileType: file.type, dataBase64: dataUrl, text: caption, clientTs })
       mark('sent')
     } catch (ex) { mark('failed', ex.message) }
     finally { setAttachBusy(false) }
