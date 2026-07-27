@@ -1175,9 +1175,9 @@ const sentimentTone = (label) => label === 'Positive' ? TONE.emerald : label ===
 // Quick-send asset panels (Communication / Payment / Document). Edit the msg
 // values to your real links/QRs — checking items + "Send to Chat" delivers them.
 const COMM_ITEMS = [
-  { label: 'Send Website Address',      msg: '🌐 Our website: https://decoinks.com' },
-  { label: 'Send Email Address',        msg: '📧 Email us: info@decoinks.com' },
-  { label: 'Send Pinterest Account',    msg: '📌 Pinterest: https://pinterest.com/decoinks' },
+  { label: 'Send Website Address',      msg: '🌐 Website: DECOINKS.COM' },
+  { label: 'Send Email Address',        msg: '📧 Email: INFO@DECOINKS.COM' },
+  { label: 'Send Pinterest Account',    msg: '📌 Pinterest: Pinterest – Decoinks' },
   { label: 'Send WhatsApp Catalog',     msg: '🛍️ Our catalog: https://wa.me/c/decoinks' },
   { label: 'Send Google Maps Location', msg: '📍 Find us: https://maps.google.com/?q=Decoinks' },
   { label: 'Our Brochure (PDF)',        msg: '📄 Our brochure: https://decoinks.com/brochure.pdf' },

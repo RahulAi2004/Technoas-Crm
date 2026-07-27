@@ -76,29 +76,27 @@ const hasVal = (v) =>
 const SCORE_COLOR = (s) => s >= 70 ? 'bg-emerald-500' : s >= 40 ? 'bg-amber-500' : 'bg-rose-500'
 const TEMP_CHIP = { Hot: 'bg-rose-50 text-rose-700 ring-rose-200', Warm: 'bg-amber-50 text-amber-700 ring-amber-200', Cold: 'bg-sky-50 text-sky-700 ring-sky-200' }
 
-// Status badge + validate control (badge IS the button)
-function Validate({ k, state, filled, val, onClick }) {
-  const confirmed = state === 'ok'
-  const saving = state === 'saving'
-  const err = state === 'err'
-  const empty = !hasVal(val)
-  let cls, label
-  if (confirmed) { cls = 'border-emerald-300 bg-emerald-50 text-emerald-700'; label = '✓ Confirmed' }
-  else if (saving) { cls = 'border-slate-200 bg-white text-slate-400'; label = '…' }
-  else if (err) { cls = 'border-rose-300 bg-rose-50 text-rose-700'; label = 'Retry' }
-  else if (empty) { cls = 'border-slate-200 bg-slate-50 text-slate-400'; label = 'Not discussed' }
-  else { cls = filled ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-amber-300 bg-amber-50 text-amber-700'; label = filled ? '✨ Validate' : 'Validate' }
+// Compact validate control — chhota check button, rang se state pata chale (space bachta hai).
+//   🟢 green = Confirmed (saved) · 🟡 amber = Validate (value hai, dabao) · grey = empty · rose = retry
+function Validate({ state, filled, val, onClick }) {
+  const confirmed = state === 'ok', saving = state === 'saving', err = state === 'err', empty = !hasVal(val)
+  let cls, title, icon = '✓'
+  if (confirmed) { cls = 'border-emerald-400 bg-emerald-500 text-white'; title = 'Confirmed — saved to database' }
+  else if (saving) { cls = 'border-slate-200 bg-white text-slate-400'; title = 'Saving…'; icon = '…' }
+  else if (err) { cls = 'border-rose-300 bg-rose-50 text-rose-600'; title = 'Failed — click to retry'; icon = '↻' }
+  else if (empty) { cls = 'border-slate-200 bg-slate-50 text-slate-300'; title = 'Not discussed' }
+  else { cls = filled ? 'border-violet-300 bg-violet-50 text-violet-600' : 'border-amber-300 bg-amber-50 text-amber-600'; title = filled ? 'AI-filled — click to Validate (save)' : 'Validate — save to database' }
   return (
-    <button onClick={onClick} disabled={saving || empty} title="Validate = save this field to the database"
-      className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-bold ring-0 ${cls} ${empty ? '' : 'hover:brightness-95'}`}>
-      {label}
+    <button onClick={onClick} disabled={saving || empty} title={title}
+      className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-md border text-xs font-bold ${cls} ${empty ? 'cursor-default' : 'hover:brightness-95'}`}>
+      {icon}
     </button>
   )
 }
 
 function Field({ k, label, type, val, filled, state, onChange, onValidate }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${type === 'textarea' ? 'col-span-full' : ''}`}>
       <div className="mb-0.5 flex items-center gap-1.5">
         <label className="truncate text-[11px] font-semibold text-slate-600">{label}</label>
         {filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}
@@ -361,7 +359,10 @@ export default function LeadPanel({ conv, onClose }) {
   const missing = useMemo(() => computeMissing(vals, hasVal(vals.grand_total) || (Array.isArray(vals.line_items) && vals.line_items.length > 0)), [vals])
 
   const TABS = [['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Shipping & Delivery'], ['quote', 'Quote']]
-  const grid = wide ? 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3' : 'grid grid-cols-1 gap-3'
+  // Auto-columns: jitni jagah utni fields ek row me (space waste nahi). Wide me capped.
+  const grid = wide
+    ? 'grid gap-2.5 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+    : 'grid gap-2.5 grid-cols-[repeat(auto-fill,minmax(185px,1fr))]'
 
   const renderFields = (defs) => defs.map(([k, label, type]) => (
     <Field key={k} k={k} label={label} type={type} val={vals[k]} filled={filled[k]} state={fs[k]}
