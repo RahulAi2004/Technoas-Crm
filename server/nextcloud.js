@@ -46,6 +46,15 @@ export async function ncPut(remotePath, bytes) {
   return res.status === 201 || res.status === 204 || res.ok
 }
 
+// WebDAV GET — file ke bytes wapas laao (jab PG se bytes hata diye ho, chat isse serve hota hai).
+export async function ncGet(remotePath) {
+  try {
+    const res = await req(davUrl(remotePath), { method: 'GET' }, 30000)
+    if (!res.ok) return null
+    return Buffer.from(await res.arrayBuffer())
+  } catch { return null }
+}
+
 // OCS public share link (shareType 3 = public link, permission 1 = read-only)
 export async function ncShareLink(remotePath) {
   const res = await req(`${B}/ocs/v2.php/apps/files_sharing/api/v1/shares`, {

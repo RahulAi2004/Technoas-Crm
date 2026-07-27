@@ -4,7 +4,7 @@
 // NextCloud mein customer ke bheje files `references/` mein, hamare bheje mockups `sent/` mein.
 // Local disk par koi copy nahi.
 import pg from 'pg'
-import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath, ncEnsureCustomerFolders } from './nextcloud.js'
+import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath, ncEnsureCustomerFolders, ncGet } from './nextcloud.js'
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3, connectionTimeoutMillis: 20000, query_timeout: 60000 })
 const SRC_SUBFOLDER = 'references'   // customer ke bheje files (source/reference material)
@@ -86,7 +86,10 @@ export async function pushToNextcloud(row) {
     // sirf upload (tez) — share-link alag worker banata hai (rate-limit se bachne ke liye)
     const res = await ncUploadAndShare({ folder: row.folder, subfolder: subfolderForRef(row.message_ref), fileName: `${row.artwork_no}.${row.file_type || 'jpg'}`, bytes: b, share: false })
     if (!res) return false
-    await pool.query(`UPDATE app.customer_artwork SET upload_status = 'nextcloud_ok' WHERE artwork_id = $1 AND upload_status = 'pending'`, [row.artwork_id])
+    // NextCloud pe chala gaya -> PG se bytes HATA do (storage bachane ko). Chat isse ab NextCloud
+    // se serve karega (getArtworkFileByName -> ncFetchBytes). nextcloud_url share-worker set karega.
+    await pool.query(`UPDATE app.customer_artwork SET upload_status = 'nextcloud_ok', image_data = NULL WHERE artwork_id = $1`, [row.artwork_id])
+    if (b && row.artwork_no) ncCacheSet(row.artwork_no, b)   // abhi ke liye cache mein (turant serve ho jaye)
     return true
   } catch (e) { console.warn('[nextcloud] push failed:', e.message); return false }
 }
@@ -151,16 +154,11 @@ export async function storeArtwork({ ref, convRef, url, name }) {
      safeName(name) || null, ext, buf ? buf.length : null, url, buf, artworkNo])
   const rec = ins.rows[0]
   if (!rec) return null
-  // Hamari bheji files filhaal SIRF PostgreSQL mein rakhni hain (user ki pref) — inhe
-  // 'pg_only' mark kar do taaki upload/share worker (jo 'pending' uthate hain) chhod dein.
-  if (isOut(ref)) {
-    await pool.query(`UPDATE app.customer_artwork SET upload_status = 'pg_only' WHERE artwork_id = $1`, [rec.artwork_id])
-    return rec.artwork_no
-  }
-  // Customer ki files: bytes PostgreSQL mein (upar ho chuka) + NextCloud pe upload.
-  // Local disk pe koi copy NAHI (user ki pref) — PG hi source of truth.
+  // Dono taraf ki files ab NextCloud pe jaati hain (customer -> references/, hamari -> sent/ subfolder;
+  // subfolder message_ref se decide hota hai). Upload hote hi PG se bytes HAT jaate hain (storage
+  // bachane ko) — chat phir NextCloud se serve karta hai. Local disk pe koi copy NAHI.
   if (buf) {
-    pushToNextcloud({ artwork_id: rec.artwork_id, artwork_no: rec.artwork_no, folder, file_type: ext, image_data: buf }).catch(() => {})
+    pushToNextcloud({ artwork_id: rec.artwork_id, artwork_no: rec.artwork_no, folder, file_type: ext, message_ref: ref, image_data: buf }).catch(() => {})
   }
   return rec.artwork_no
 }
@@ -178,12 +176,15 @@ export async function storeArtworkBytes({ ref, convRef, buffer, fileName, fileTy
   const ins = await pool.query(
     `INSERT INTO app.customer_artwork
        (lead_id, customer_id, conversation_id, message_ref, folder, file_name, file_type, file_size_bytes, image_data, artwork_no, upload_status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pg_only')
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending')
      ON CONFLICT (message_ref) DO NOTHING
-     RETURNING artwork_no`,
+     RETURNING artwork_id, artwork_no`,
     [ctx?.lead_id || null, ctx?.customer_id || null, ctx?.conversation_id || null, ref, folder,
      safeName(fileName) || null, ext, buffer.length, buffer, artworkNo])
-  return ins.rows[0]?.artwork_no || artworkNo
+  const rec = ins.rows[0]
+  // Bheji file ab NextCloud pe bhi jaati hai (upload hote hi PG se bytes hat jate hain).
+  if (rec) pushToNextcloud({ artwork_id: rec.artwork_id, artwork_no: rec.artwork_no, folder, file_type: ext, message_ref: ref, image_data: buffer }).catch(() => {})
+  return rec?.artwork_no || artworkNo
 }
 
 // RETRY WORKER — pending/nextcloud-less artworks ko NextCloud par chadhata hai (har N min).
@@ -202,7 +203,6 @@ export function startUploadWorker(intervalMs = 60 * 1000) {
         const rows = (await pool.query(
           `SELECT artwork_id, artwork_no, folder, file_type, message_ref FROM app.customer_artwork
             WHERE image_data IS NOT NULL AND upload_status = 'pending'
-              AND message_ref NOT LIKE 'out:%'          -- hamari bheji files sirf PG mein
             ORDER BY created_at DESC LIMIT 20`)).rows
         if (!rows.length) break
         let i = 0
@@ -239,7 +239,6 @@ export function startShareWorker() {
       const rows = (await pool.query(
         `SELECT artwork_id, artwork_no, folder, file_type, message_ref FROM app.customer_artwork
           WHERE upload_status = 'nextcloud_ok' AND nextcloud_url IS NULL
-            AND message_ref NOT LIKE 'out:%'
           ORDER BY created_at DESC LIMIT 15`)).rows
       let made = 0
       for (const r of rows) {
@@ -283,7 +282,7 @@ export async function backfillMissingBytes(limit = 40) {
   // 'bytes_lost' = source_url expire ho chuka, bytes recover nahi ho sakte -> skip (worker spin na kare)
   const rows = (await pool.query(
     `SELECT artwork_id, source_url FROM app.customer_artwork
-      WHERE image_data IS NULL AND source_url IS NOT NULL AND upload_status IS DISTINCT FROM 'bytes_lost'
+      WHERE image_data IS NULL AND source_url IS NOT NULL AND upload_status NOT IN ('bytes_lost', 'nextcloud_ok')
       ORDER BY created_at DESC LIMIT $1`, [limit])).rows
   if (!rows.length) return { seen: 0, fixed: 0, lost: 0 }
   let fixed = 0, lost = 0, i = 0
@@ -356,20 +355,55 @@ export async function listArtworks({ lead_id, customer_id, conversation_id, fold
   return r.rows
 }
 
+// NextCloud pe upload hone ke baad bytes PG se hata dete hain (storage bachane ko). Serve karte
+// waqt agar image_data NULL ho par row NextCloud pe ho, to WebDAV se bytes laa kar dete hain.
+// Chhota in-memory cache taaki baar-baar wahi image NextCloud se na kheenchni pade.
+const ncCache = new Map()   // artwork_no -> { buf, at }
+const NC_CACHE_MAX = 150, NC_CACHE_TTL = 10 * 60 * 1000
+function ncCacheGet(key) {
+  const e = ncCache.get(key)
+  if (e && Date.now() - e.at < NC_CACHE_TTL) { ncCache.delete(key); ncCache.set(key, e); return e.buf }  // LRU touch
+  if (e) ncCache.delete(key)
+  return null
+}
+function ncCacheSet(key, buf) {
+  ncCache.set(key, { buf, at: Date.now() })
+  while (ncCache.size > NC_CACHE_MAX) ncCache.delete(ncCache.keys().next().value)
+}
+// Row (folder, message_ref, artwork_no, file_type) se NextCloud path banao aur bytes laao.
+async function ncFetchBytes(row) {
+  if (!ncConfigured() || !row?.folder || !row?.artwork_no) return null
+  const cached = ncCacheGet(row.artwork_no)
+  if (cached) return cached
+  const remote = ncRemotePath(row.folder, subfolderForRef(row.message_ref), `${row.artwork_no}.${row.file_type || 'jpg'}`)
+  const buf = await ncGet(remote)
+  if (buf) ncCacheSet(row.artwork_no, buf)
+  return buf
+}
+// image_data ho to seedhe do; na ho par NextCloud pe ho to wahan se laa ke do.
+async function withBytes(row) {
+  if (!row) return null
+  if (row.image_data) return { artwork_no: row.artwork_no, file_type: row.file_type, image_data: row.image_data }
+  const buf = await ncFetchBytes(row)
+  return buf ? { artwork_no: row.artwork_no, file_type: row.file_type, image_data: buf } : null
+}
+
 export async function getArtworkFile(idOrNo) {
   const r = await pool.query(
-    `SELECT artwork_no, file_type, image_data FROM app.customer_artwork
+    `SELECT artwork_no, file_type, image_data, folder, message_ref FROM app.customer_artwork
       WHERE artwork_id::text = $1 OR artwork_no = $1 LIMIT 1`, [String(idOrNo)])
-  return r.rows[0] || null
+  return withBytes(r.rows[0])
 }
 
 // Chat attachment ka `name` (jaise "image-1793950308252607") se stored bytes dhoondo.
 // Facebook ke CDN link 2-3 hafte mein expire ho jate hain — tab chat apni copy maangta hai.
 export async function getArtworkFileByName(fileName) {
   // file_name (customer ki bheji, jaise "image-123") YA artwork_no (hamari bheji, "AW-...-OUT") dono match.
+  // image_data hone wali row ko pehle (DESC), warna NextCloud-wali row (bytes wahan se aayenge).
   const r = await pool.query(
-    `SELECT artwork_no, file_type, image_data FROM app.customer_artwork
-      WHERE (file_name = $1 OR artwork_no = $1) AND image_data IS NOT NULL
-      ORDER BY created_at DESC LIMIT 1`, [String(fileName)])
-  return r.rows[0] || null
+    `SELECT artwork_no, file_type, image_data, folder, message_ref FROM app.customer_artwork
+      WHERE (file_name = $1 OR artwork_no = $1)
+        AND (image_data IS NOT NULL OR upload_status = 'nextcloud_ok')
+      ORDER BY (image_data IS NOT NULL) DESC, created_at DESC LIMIT 1`, [String(fileName)])
+  return withBytes(r.rows[0])
 }
