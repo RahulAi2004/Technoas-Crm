@@ -36,20 +36,18 @@ export function ourCopyUrl(att) {
   return `/api/artwork-file?name=${encodeURIComponent(att.name)}&t=${encodeURIComponent(getToken() || '')}`
 }
 
-// Chat image: pehle original link (agar ho) try karo; wo na ho / fail ho to apni PG copy.
-// PG copy ko `<img src+token>` se nahi, balki `fetch` (Authorization header — wahi jo baaki
-// chalte API calls use karte hain) se laa kar BLOB bana ke dikhate hain. Isse token-in-URL,
-// browser-cache aur "abhi-abhi bheji file" wali timing/race — teeno masle khatam. Fail hone
-// par thodi der baad AUTO-RETRY (bheji file ka row/backend ek pal baad taiyaar hota hai).
+// Chat image: HAMESHA pehle apni PG copy (blob) — `fetch` (Authorization header) se laa kar.
+// Ye same-origin + permanent + reliable hai. Meta CDN url (att.url) cross-origin hota hai aur
+// kuch hafton mein EXPIRE ho jata hai (isliye woh sirf aakhri fallback, jab PG copy na mile).
+// PG copy /api/artwork-file se milti hai — artwork_no YA file_name ("image-<metaid>") dono se.
 function ChatImage({ att, className = 'max-h-64 max-w-full rounded-lg object-cover' }) {
   const hasName = !!att?.name
-  // url na ho to seedhe apni PG copy (hamari bheji files ka Chatwoot URL browser mein load nahi hota).
-  const [useOurs, setUseOurs] = useState(!att?.url && hasName)
   const [blobUrl, setBlobUrl] = useState(null)
-  const [gone, setGone] = useState(!att?.url && !hasName)
+  const [oursFailed, setOursFailed] = useState(!hasName)   // PG copy try khatam (naam na ho to seedhe url)
+  const [gone, setGone] = useState(false)
 
   useEffect(() => {
-    if (!useOurs || !hasName) return
+    if (!hasName) return
     let cancelled = false, obj = null
     const load = async (tries = 0) => {
       try {
@@ -61,37 +59,37 @@ function ChatImage({ att, className = 'max-h-64 max-w-full rounded-lg object-cov
         obj = URL.createObjectURL(blob); setBlobUrl(obj)
       } catch {
         if (cancelled) return
-        if (tries < 6) setTimeout(() => load(tries + 1), 1500)   // abhi bheji file: race -> retry (~9s)
-        else setGone(true)
+        if (tries < 4) setTimeout(() => load(tries + 1), 1200)   // abhi bheji file: race -> retry
+        else setOursFailed(true)   // PG copy nahi mili -> Meta CDN url fallback
       }
     }
     load()
     return () => { cancelled = true; if (obj) URL.revokeObjectURL(obj) }
-  }, [useOurs, hasName, att?.name])
+  }, [att?.name, hasName])
 
-  if (gone) return (
+  // 1) PG copy (blob) mil gayi — reliable
+  if (blobUrl) return (
+    <a href={blobUrl} target="_blank" rel="noreferrer" className="block">
+      <img src={blobUrl} alt={att.name || 'image'} className={className} />
+    </a>
+  )
+  // 2) PG copy abhi aa rahi hai
+  if (!oursFailed) return (
+    <div className="flex max-w-full items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-400 ring-1 ring-slate-200">
+      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500" /> loading…
+    </div>
+  )
+  // 3) PG copy nahi mili -> Meta CDN url try karo (agar ho)
+  if (att?.url && !gone) return (
+    <a href={att.url} target="_blank" rel="noreferrer" className="block">
+      <img src={att.url} alt={att.name || 'image'} loading="lazy" className={className} onError={() => setGone(true)} />
+    </a>
+  )
+  // 4) kuch nahi mila
+  return (
     <div className="flex max-w-full items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
       🖼️ <span>Image not available</span>
     </div>
-  )
-  if (useOurs) {
-    if (!blobUrl) return (
-      <div className="flex max-w-full items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-400 ring-1 ring-slate-200">
-        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-500" /> loading…
-      </div>
-    )
-    return (
-      <a href={blobUrl} target="_blank" rel="noreferrer" className="block">
-        <img src={blobUrl} alt={att.name || 'image'} className={className} />
-      </a>
-    )
-  }
-  // Pehle original url try karo; fail ho to apni PG copy (blob) par switch.
-  return (
-    <a href={att.url} target="_blank" rel="noreferrer" className="block">
-      <img src={att.url} alt={att.name || 'image'} loading="lazy" className={className}
-        onError={() => (hasName ? setUseOurs(true) : setGone(true))} />
-    </a>
   )
 }
 
