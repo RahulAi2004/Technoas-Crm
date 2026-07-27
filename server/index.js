@@ -1076,7 +1076,7 @@ async function syncMetaConversations() {
           // bheje replies bhi dikhein. CRM-se-bheje (Chatwoot) ka echo duplicate na bane: mid ya
           // (same conv + same text + ~15 min) se dedup.
           if (dir === 'out') {
-            const k = knownOutgoing(convId, m.id, txt, ts)
+            const k = knownOutgoing(convId, m.id, txt, ts, atts.length > 0)
             if (k?.skip) continue
             if (k?.link) { const ex = findById('messages', k.link); if (ex && !ex.mid) update('messages', k.link, { mid: m.id }); continue }
             const stored = saveMessage({ id: m.id, conversation_id: convId, dir: 'out', text: txt, attachments: atts, time: fmtTimeFromISO(m.created_time), ts, via: 'meta' })
@@ -1174,7 +1174,7 @@ app.post('/api/webhooks/meta', async (req, res) => {
       // Echo (page / Meta Business Suite se bheja outgoing) bhi CRM mein aata hai — par
       // CRM-se-bheje (Chatwoot) ka duplicate skip: mid ya same-text+time se dedup.
       if (isEcho) {
-        const k = knownOutgoing(conv.id, msg.mid, text, Date.now())
+        const k = knownOutgoing(conv.id, msg.mid, text, Date.now(), atts.length > 0)
         if (k?.skip) continue
         if (k?.link) { const ex = findById('messages', k.link); if (ex && !ex.mid) update('messages', k.link, { mid: msg.mid }); continue }
       }
@@ -1368,15 +1368,23 @@ function ingestMessage(msg) {
 //   { skip:true }      -> bilkul wahi message pehle se hai (id/mid match) — kuch mat karo.
 //   { link: <msgId> }  -> CRM-se-bheja same message mila (text+time) — usi ko mid se link karo, naya row mat banao.
 //   null               -> naya external outgoing — ingest karo.
-function knownOutgoing(convId, mid, text, ts) {
+function knownOutgoing(convId, mid, text, ts, hasAtt) {
   const msgs = getAll('messages')
   if (mid && msgs.find((x) => x.conversation_id === convId && (String(x.id) === String(mid) || (x.mid && String(x.mid) === String(mid)))))
     return { skip: true }
+  const t = Number(ts) || Date.now()
   const txt = (text || '').trim()
   if (txt) {
-    const t = Number(ts) || Date.now()
+    // TEXT echo: same conv + same text + ~15 min ke andar CRM-se-bheja outgoing.
     const echo = msgs.find((x) => x.conversation_id === convId && x.dir === 'out'
       && (x.text || '').trim() === txt && Math.abs((Number(x.ts) || 0) - t) < 15 * 60 * 1000)
+    if (echo) return { link: echo.id }
+  } else if (hasAtt) {
+    // IMAGE/FILE echo (text khaali): CRM-se-bheji (via=chatwoot) attachment jiska ts echo ke
+    // aas-paas (~5 min) ho aur abhi tak link na hui ho — Meta ka echo usi ka hai, naya row mat banao.
+    const echo = msgs.find((x) => x.conversation_id === convId && x.dir === 'out'
+      && x.via === 'chatwoot' && Array.isArray(x.attachments) && x.attachments.length && !x.mid
+      && Math.abs((Number(x.ts) || 0) - t) < 5 * 60 * 1000)
     if (echo) return { link: echo.id }
   }
   return null
