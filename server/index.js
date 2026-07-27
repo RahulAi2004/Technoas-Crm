@@ -1066,25 +1066,29 @@ async function syncMetaConversations() {
         const msgs = (c.messages?.data || []).slice().reverse() // oldest → newest
         let lastText = conv.list_preview, lastTime = conv.list_time, lastDir = conv.last_dir, added = false
         for (const m of msgs) {
-          // dedup: id se YA mid se (Chatwoot-bheje messages ka id generated hota hai, mid alag) —
-          // warna poller unhe dobara insert karke duplicate + created_at scramble kar deta hai.
-          const exists = findById('messages', m.id) || getAll('messages').find((x) => x.mid === m.id && x.conversation_id === convId)
           const fromId = String(m.from?.id || '')
           const dir = (fromId === pageId || fromId === igId) ? 'out' : 'in'
           const atts = metaAttachments(m.attachments)
-          // OUTGOING poller se NAHI likhte — outgoing sirf CRM send handler (Chatwoot) se aata hai.
-          // Isse duplicate (via:chatwoot + via:meta) aur order-bigadna hamesha ke liye khatam.
-          if (dir === 'out') continue
-          const stored = saveMessage({
-            id: m.id,
-            conversation_id: convId,
-            dir,
-            text: m.message || '',
-            attachments: atts,
-            time: fmtTimeFromISO(m.created_time),
-            ts: Date.parse(m.created_time) || Date.now(),   // ASLI FB time — sort isi se (created_at re-ingest par badal jata hai)
-            via: 'meta',
-          })
+          const txt = m.message || ''
+          const ts = Date.parse(m.created_time) || Date.now()   // ASLI FB time — sort isi se
+
+          // OUTGOING (Meta Business Suite / AI se bheja) bhi ab CRM mein aata hai, taaki agent ke
+          // bheje replies bhi dikhein. CRM-se-bheje (Chatwoot) ka echo duplicate na bane: mid ya
+          // (same conv + same text + ~15 min) se dedup.
+          if (dir === 'out') {
+            const k = knownOutgoing(convId, m.id, txt, ts)
+            if (k?.skip) continue
+            if (k?.link) { const ex = findById('messages', k.link); if (ex && !ex.mid) update('messages', k.link, { mid: m.id }); continue }
+            const stored = saveMessage({ id: m.id, conversation_id: convId, dir: 'out', text: txt, attachments: atts, time: fmtTimeFromISO(m.created_time), ts, via: 'meta' })
+            added = true; newMessages++
+            lastText = stored.text || attachPreview(atts); lastTime = stored.time; lastDir = 'out'
+            broadcast({ type: 'message', conversationId: convId, message: stored })
+            continue
+          }
+
+          // INCOMING — dedup id/mid se (warna poller dobara insert karke duplicate + order scramble kare).
+          const exists = findById('messages', m.id) || getAll('messages').find((x) => x.mid === m.id && x.conversation_id === convId)
+          const stored = saveMessage({ id: m.id, conversation_id: convId, dir, text: txt, attachments: atts, time: fmtTimeFromISO(m.created_time), ts, via: 'meta' })
           if (!exists) {
             added = true; newMessages++
             lastText = stored.text || attachPreview(atts); lastTime = stored.time; lastDir = dir
@@ -1144,7 +1148,6 @@ app.post('/api/webhooks/meta', async (req, res) => {
       const msg = ev.message
       if (!msg) continue
       const isEcho = !!msg.is_echo
-      if (isEcho) continue   // outgoing sirf CRM send handler se — Meta webhook echo se duplicate na bane
       // For inbound, the other party is sender. For echoes (sent from the page /
       // Meta inbox), the other party is the recipient.
       const senderId = isEcho ? ev.recipient?.id : ev.sender?.id
@@ -1166,6 +1169,14 @@ app.post('/api/webhooks/meta', async (req, res) => {
         broadcast({ type: 'conversation', conversation: conv })
         ensureLeadForConversation(conv)  // auto lead-capture
         ensureCustomerForConversation(conv)  // auto customer-capture
+      }
+
+      // Echo (page / Meta Business Suite se bheja outgoing) bhi CRM mein aata hai — par
+      // CRM-se-bheje (Chatwoot) ka duplicate skip: mid ya same-text+time se dedup.
+      if (isEcho) {
+        const k = knownOutgoing(conv.id, msg.mid, text, Date.now())
+        if (k?.skip) continue
+        if (k?.link) { const ex = findById('messages', k.link); if (ex && !ex.mid) update('messages', k.link, { mid: msg.mid }); continue }
       }
 
       const stored = saveMessage({
@@ -1353,6 +1364,24 @@ function ingestMessage(msg) {
     } catch { /* best effort — message is already saved in Postgres */ }
   })()
 }
+// Meta se aaya OUTGOING pehle se CRM mein hai? (Meta Business Suite/AI se bheja vs CRM-se-bheja echo).
+//   { skip:true }      -> bilkul wahi message pehle se hai (id/mid match) — kuch mat karo.
+//   { link: <msgId> }  -> CRM-se-bheja same message mila (text+time) — usi ko mid se link karo, naya row mat banao.
+//   null               -> naya external outgoing — ingest karo.
+function knownOutgoing(convId, mid, text, ts) {
+  const msgs = getAll('messages')
+  if (mid && msgs.find((x) => x.conversation_id === convId && (String(x.id) === String(mid) || (x.mid && String(x.mid) === String(mid)))))
+    return { skip: true }
+  const txt = (text || '').trim()
+  if (txt) {
+    const t = Number(ts) || Date.now()
+    const echo = msgs.find((x) => x.conversation_id === convId && x.dir === 'out'
+      && (x.text || '').trim() === txt && Math.abs((Number(x.ts) || 0) - t) < 15 * 60 * 1000)
+    if (echo) return { link: echo.id }
+  }
+  return null
+}
+
 // Save a message to Postgres AND push it to Qdrant (used by every insert path).
 function saveMessage(row) {
   const m = insert('messages', row)
