@@ -118,6 +118,17 @@ const nowTime = () => {
   return `${h}:${String(m).padStart(2,'0')} ${ampm}`
 }
 
+// Chat ka din-wala divider label: aaj -> "Today", kal -> "Yesterday", warna "13 Jul 2026".
+const dayLabel = (ts) => {
+  if (!ts) return ''
+  const d = new Date(ts), now = new Date()
+  const y = new Date(now); y.setDate(now.getDate() - 1)
+  const same = (a, b) => a.toDateString() === b.toDateString()
+  if (same(d, now)) return 'Today'
+  if (same(d, y)) return 'Yesterday'
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 export default function Dashboard() {
   const toast = useToast()
   const navigate = useNavigate()
@@ -889,13 +900,20 @@ export default function Dashboard() {
             {midTab === 'conversation' && (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div ref={chatRef} className="nice-scroll flex-1 overflow-y-auto bg-slate-50/40 px-6 py-5">
-                  <div className="my-2 flex justify-center"><span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">May 12, 2024</span></div>
                   {[...conv.messages, ...pending.filter((pm) => !conv.messages.some((m) => String(m.id) === String(pm.id)))]
                     // ASLI message-time (ts) se sort — created_at re-ingest par badal jata hai, ts sthir rehta hai
                     .map((m, idx) => ({ m, idx, k: Number(m.ts) || Date.parse(m.created_at) || 0 }))
                     .sort((a, b) => (a.k - b.k) || (a.idx - b.idx))   // stable — recent hamesha neeche
                     .map(({ m }) => m)
-                    .map((m, i) => {
+                    .map((m, i, arr) => {
+                    // Din badalne par date-divider (asli message-time se, hardcoded nahi).
+                    const _k = Number(m.ts) || Date.parse(m.created_at) || 0
+                    const _pk = i > 0 ? (Number(arr[i - 1].ts) || Date.parse(arr[i - 1].created_at) || 0) : 0
+                    const _day = _k ? new Date(_k).toDateString() : null
+                    const _divider = (_day && _day !== (_pk ? new Date(_pk).toDateString() : null))
+                      ? <div className="my-2 flex justify-center"><span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">{dayLabel(_k)}</span></div>
+                      : null
+                    const _bubble = (() => {
                     if (m.dir === 'sys') return <div key={m.id || i} className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500"><span>{m.time}</span>·<span>{m.text}</span></div>
                     if (m.dir === 'in') return (
                       <div key={m.id || i} className="mt-4 flex items-start gap-2">
@@ -941,6 +959,8 @@ export default function Dashboard() {
                         )}
                       </div>
                     )
+                    })()
+                    return _divider ? <Fragment key={`g${m.id || i}`}>{_divider}{_bubble}</Fragment> : _bubble
                   })}
                 </div>
 
