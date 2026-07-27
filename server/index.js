@@ -1494,6 +1494,26 @@ app.post('/api/leads/field/:id', authRequired, async (req, res) => {
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 
+// ---- Quick-send asset images (Zelle/CashApp/PayPal QR, brochure, etc.) ----
+// Agent ek baar upload kare (base64), sab agents ko milega; SendPanel "Send to Chat" pe
+// text ke bajaye ye image bhejta hai.
+app.get('/api/quick-assets', authRequired, (req, res) => res.json(getSetting('quick_assets') || {}))
+app.post('/api/quick-assets', authRequired, (req, res) => {
+  const { key, dataBase64 } = req.body || {}
+  if (!key || !dataBase64) return res.status(400).json({ error: 'key and dataBase64 required' })
+  if (String(dataBase64).length > 8 * 1024 * 1024) return res.status(400).json({ error: 'image too large (max ~6MB)' })
+  const cur = getSetting('quick_assets') || {}
+  cur[key] = dataBase64
+  setSetting('quick_assets', cur)
+  res.json({ ok: true, key })
+})
+app.delete('/api/quick-assets/:key', authRequired, (req, res) => {
+  const cur = getSetting('quick_assets') || {}
+  delete cur[req.params.key]
+  setSetting('quick_assets', cur)
+  res.json({ ok: true })
+})
+
 // Add a document to the Knowledge Base (embed → Qdrant `documents`).
 app.post('/api/ai/ingest', authRequired, async (req, res) => {
   const { title, text, category = 'general', language = 'en', author = '', access_level = 'public' } = req.body || {}

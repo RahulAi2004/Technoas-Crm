@@ -357,6 +357,21 @@ export default function Dashboard() {
     finally { setAttachBusy(false) }
   }
 
+  // Quick-send asset (Zelle QR image etc.) ko chat me bhej — send-file (base64) ke raste.
+  const sendAssetImage = async (dataUrl, name, caption) => {
+    if (!currentId || !dataUrl) return
+    const clientTs = Date.now(); const clientId = `cid-${clientTs}-${Math.random().toString(36).slice(2, 8)}`
+    const isImg = /^data:image\//.test(dataUrl)
+    const fileType = (String(dataUrl).match(/^data:([^;]+);/) || [])[1] || 'image/png'
+    setPending((p) => [...p, { id: clientId, dir: 'out', text: caption || '', time: nowTime(), agent: currentUser()?.name,
+      attachments: [{ type: isImg ? 'image' : 'file', url: dataUrl, name }], _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
+    const mark = (s, err) => setPending((p) => p.map((x) => x.id === clientId ? { ...x, _status: s, _error: err } : x))
+    try {
+      await api.post('/api/meta/send-file', { conversationId: currentId, fileName: name, fileType, dataBase64: dataUrl, text: caption || '', clientTs, clientId })
+      mark('sent')
+    } catch (ex) { mark('failed', ex.message) }
+  }
+
   const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(draft) } }
 
   // Add an internal note (with a category). Optimistic; the 4s poll reconciles with
@@ -1042,7 +1057,7 @@ export default function Dashboard() {
             </nav>
 
             <div className="nice-scroll flex-1 overflow-y-auto px-5 py-4">
-              {aiTab === 'responses' && <ResponsesTab onSendReply={(text) => sendMessage(text, 'reply')} conv={conv} msgCount={messages.length} />}
+              {aiTab === 'responses' && <ResponsesTab onSendReply={(text) => sendMessage(text, 'reply')} onSendImage={sendAssetImage} conv={conv} msgCount={messages.length} />}
               {aiTab === 'translate' && <TranslationTab onSendReply={(text) => sendMessage(text, 'reply')} lastIncoming={lastIncomingText} />}
               {aiTab === 'summary' && <SummaryTab conv={conv} msgCount={messages.length} />}
               {aiTab === 'actions' && <ActionsTab ai={ai} onAnalyze={analyze} />}
@@ -1183,9 +1198,9 @@ const COMM_ITEMS = [
   { label: 'Our Brochure (PDF)',        msg: '📄 Our brochure: https://decoinks.com/brochure.pdf' },
 ]
 const PAY_ITEMS = [
-  { label: 'Zelle QR Code',          msg: '💳 Pay via Zelle: info@decoinks.com' },
-  { label: 'Cash App QR Code',       msg: '💵 Cash App: $decoinks' },
-  { label: 'PayPal QR Code',         msg: '🅿️ PayPal: https://paypal.me/decoinks' },
+  { label: 'Zelle QR Code',          key: 'zelle',   msg: '💳 Pay via Zelle — DECOINKS, LLC' },
+  { label: 'Cash App QR Code',       key: 'cashapp', msg: '💵 Cash App: $decoinks' },
+  { label: 'PayPal QR Code',         key: 'paypal',  msg: '🅿️ PayPal: https://paypal.me/decoinks' },
   { label: 'PayPal Invoice (Cards)', msg: '🧾 We will send a secure PayPal invoice link (cards accepted).' },
 ]
 const DOC_ITEMS = [
@@ -1193,18 +1208,45 @@ const DOC_ITEMS = [
   { label: 'Preview Invoice', msg: '🧾 Here is your invoice.' },
 ]
 
-function SendPanel({ title, hint, items, onSendReply }) {
+function SendPanel({ title, hint, items, onSendReply, onSendImage }) {
   const toast = useToast()
   const [checked, setChecked] = useState({})
+  const [assets, setAssets] = useState({})   // key -> base64 dataURL (Zelle QR etc.)
+  const [busy, setBusy] = useState(false)
+  const fileRefs = useRef({})
+  useEffect(() => { api.get('/api/quick-assets').then((a) => setAssets(a || {})).catch(() => {}) }, [])
+
   const allOn = items.length > 0 && items.every((_, i) => checked[i])
   const toggleAll = () => setChecked(allOn ? {} : Object.fromEntries(items.map((_, i) => [i, true])))
-  const send = () => {
-    const msgs = items.filter((_, i) => checked[i]).map((x) => x.msg)
-    if (!msgs.length) { toast('Pehle kuch select karo', 'info'); return }
-    onSendReply(msgs.join('\n'))
-    toast(`${msgs.length} item${msgs.length > 1 ? 's' : ''} sent to chat`, 'success')
+
+  // keyed item ke liye QR/image upload -> server setting me store (sab agents ko milega)
+  const pickImage = (key) => (e) => {
+    const f = e.target.files?.[0]; e.target.value = ''
+    if (!f) return
+    if (f.size > 6 * 1024 * 1024) { toast('Image 6MB se chhoti ho', 'error'); return }
+    const r = new FileReader()
+    r.onload = async () => {
+      try { await api.post('/api/quick-assets', { key, dataBase64: r.result }); setAssets((a) => ({ ...a, [key]: r.result })); toast(`${key} image set ✓`, 'success') }
+      catch (ex) { toast(ex.message, 'error') }
+    }
+    r.readAsDataURL(f)
+  }
+
+  const send = async () => {
+    const chosen = items.filter((_, i) => checked[i])
+    if (!chosen.length) { toast('Pehle kuch select karo', 'info'); return }
+    setBusy(true)
+    const texts = []
+    for (const it of chosen) {
+      if (it.key && assets[it.key] && onSendImage) await onSendImage(assets[it.key], `${it.key}.png`, it.msg)   // image bhejo
+      else texts.push(it.msg)                                                                                    // text
+    }
+    if (texts.length) onSendReply(texts.join('\n'))
+    setBusy(false)
+    toast(`${chosen.length} sent to chat`, 'success')
     setChecked({})
   }
+
   if (!items.length) return null
   return (
     <div className="h-fit rounded-xl border border-slate-200 bg-white p-2.5">
@@ -1225,14 +1267,21 @@ function SendPanel({ title, hint, items, onSendReply }) {
           <label key={i} className="flex cursor-pointer select-none items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50">
             <input type="checkbox" checked={!!checked[i]} onChange={() => setChecked((c) => ({ ...c, [i]: !c[i] }))} className="h-3.5 w-3.5 shrink-0 accent-brand-600" />
             <span className="flex-1 truncate text-[13px] font-semibold text-brand-700">{x.label}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-300"><path d="m9 18 6-6-6-6"/></svg>
+            {x.key ? (<>
+              {assets[x.key] && <img src={assets[x.key]} alt="" className="h-5 w-5 shrink-0 rounded object-cover ring-1 ring-slate-200" />}
+              <input ref={(el) => (fileRefs.current[x.key] = el)} type="file" accept="image/*,application/pdf" onChange={pickImage(x.key)} className="hidden" />
+              <button onClick={(e) => { e.preventDefault(); fileRefs.current[x.key]?.click() }} title={assets[x.key] ? 'Image badlo' : 'QR/image upload karo'}
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${assets[x.key] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{assets[x.key] ? '✓ img' : '⬆ set'}</button>
+            </>) : (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-300"><path d="m9 18 6-6-6-6"/></svg>
+            )}
           </label>
         ))}
       </div>
 
-      <button onClick={send} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-3 py-1.5 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-100">
+      <button onClick={send} disabled={busy} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50/70 px-3 py-1.5 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-100 disabled:opacity-50">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
-        Send to Chat
+        {busy ? 'Sending…' : 'Send to Chat'}
       </button>
     </div>
   )
@@ -1814,7 +1863,7 @@ function SummaryTab({ conv, msgCount }) {
 // AI Recommended Reply — answers the customer messages that arrived AFTER the agent's
 // last reply (the unanswered ones). Re-generates automatically when new customer
 // messages arrive; cheap/no-op when the agent has already replied to the latest.
-function ResponsesTab({ onSendReply, conv, msgCount }) {
+function ResponsesTab({ onSendReply, onSendImage, conv, msgCount }) {
   const toast = useToast()
   const cid = conv?.id
   const [reply, setReply] = useState('')
@@ -1881,9 +1930,9 @@ function ResponsesTab({ onSendReply, conv, msgCount }) {
       {/* Quick-send panels — responsive: side-by-side when wide, stacked when narrow.
           auto-fit reacts to the AI panel's actual width (not the viewport). */}
       <div className="mt-3 grid items-start gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))' }}>
-        <SendPanel title="Communication Actions" items={qa?.communication || COMM_ITEMS} onSendReply={onSendReply} />
-        <SendPanel title="Payment Methods" hint="Select to send" items={qa?.payment || PAY_ITEMS} onSendReply={onSendReply} />
-        <SendPanel title="Document" items={qa?.document || DOC_ITEMS} onSendReply={onSendReply} />
+        <SendPanel title="Communication Actions" items={qa?.communication || COMM_ITEMS} onSendReply={onSendReply} onSendImage={onSendImage} />
+        <SendPanel title="Payment Methods" hint="tick + Send" items={qa?.payment || PAY_ITEMS} onSendReply={onSendReply} onSendImage={onSendImage} />
+        <SendPanel title="Document" items={qa?.document || DOC_ITEMS} onSendReply={onSendReply} onSendImage={onSendImage} />
       </div>
     </>
   )
