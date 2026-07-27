@@ -145,10 +145,24 @@ async function writeCol(table, idCol, idVal, map, value) {
   }
 }
 
+const _isEmpty = (v) =>
+  v == null || v === '' ||
+  (Array.isArray(v) && v.length === 0) ||
+  (typeof v === 'object' && !Array.isArray(v) && !Object.values(v).some((x) => x))
+
 // Ek validated field ko DB me save karo (agent ne Validate dabaya).
 export async function saveField({ conversationId, field, value, convName }) {
   const map = FIELD_MAP[field]
   if (!map) { const e = new Error('Unknown field: ' + field); e.status = 400; throw e }
+  // VALIDATION: khaali value save mat karo — empty field "confirm"/save nahi hona chahiye,
+  // aur na hi khaali ke liye lead/customer/quote row banao. (toggle ka false valid hai.)
+  if (map.bool !== true && _isEmpty(value)) return { ok: true, saved: false, reason: 'empty' }
+  if (field === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(value).trim())) {
+    const e = new Error('Invalid email'); e.status = 400; throw e
+  }
+  if (map.num && value !== '' && value != null && isNaN(Number(value))) {
+    const e = new Error('Must be a number'); e.status = 400; throw e
+  }
   const co = await resolveIds(conversationId)
   if (!co) { const e = new Error('Conversation not found in DB'); e.status = 404; throw e }
 
@@ -162,7 +176,7 @@ export async function saveField({ conversationId, field, value, convName }) {
     const lid = await ensureLead(co); await ensureExtRow(map.t, lid)
     await writeCol('app.' + map.t, 'lead_id', lid, map, value)
   }
-  return { ok: true, field }
+  return { ok: true, saved: true, field }
 }
 
 const dstr = (d) => { try { return d ? new Date(d).toISOString().slice(0, 10) : '' } catch { return '' } }

@@ -329,9 +329,12 @@ export default function LeadPanel({ conv, onClose }) {
 
   const saveOne = async (k, valueOverride) => {
     if (!cid) return false
+    const v = valueOverride !== undefined ? valueOverride : (vals[k] ?? '')
+    if (!hasVal(v)) return false   // khaali value validate/save mat karo
     setFs((s) => ({ ...s, [k]: 'saving' }))
     try {
-      await api.post(`/api/leads/field/${encodeURIComponent(cid)}`, { field: k, value: valueOverride !== undefined ? valueOverride : (vals[k] ?? '') })
+      const r = await api.post(`/api/leads/field/${encodeURIComponent(cid)}`, { field: k, value: v })
+      if (r && r.saved === false) { setFs((s) => ({ ...s, [k]: 'idle' })); return false }  // backend ne empty skip kiya
       setFs((s) => ({ ...s, [k]: 'ok' })); setFilled((a) => ({ ...a, [k]: false }))
       return true
     } catch { setFs((s) => ({ ...s, [k]: 'err' })); return false }
@@ -467,9 +470,9 @@ export default function LeadPanel({ conv, onClose }) {
         <button onClick={saveAll} disabled={savingAll} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
           {savingAll ? 'Saving…' : '💾 Save Draft'}
         </button>
-        <button onClick={async () => { await saveAll(); await saveOne('stage', 'Proposal') }} disabled={savingAll}
+        <button onClick={saveAll} disabled={savingAll}
           className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
-          ✓ Submit / Complete
+          {savingAll ? 'Saving…' : '✓ Submit / Complete'}
         </button>
       </div>
     </aside>
