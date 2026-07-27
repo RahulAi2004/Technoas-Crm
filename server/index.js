@@ -12,7 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
-import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations } from './lead-panel.js'
+import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -1425,6 +1425,11 @@ app.get('/api/ai/analyze/:id', authRequired, async (req, res) => {
 // Panel khulte hi jo DB me pehle se saved hai wo values.
 app.get('/api/leads/panel/:id', authRequired, async (req, res) => {
   try { res.json(await getLeadBundle(req.params.id)) }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+// Qualification score (0-100, deterministic) + purchase intent + auto temperature.
+app.get('/api/leads/score/:id', authRequired, async (req, res) => {
+  try { res.json(await getLeadScore(req.params.id)) }
   catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 // AI se chat padh kar teeno tabs ke fields suggest karo (save nahi karta).

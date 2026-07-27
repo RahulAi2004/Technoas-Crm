@@ -15,16 +15,68 @@ const OPTIONS = {
   qualification:['Qualified', 'Unqualified', 'Pending'],
   temperature:  ['Cold', 'Warm', 'Hot'],
   priority:     ['Low', 'Medium', 'High'],
+  purchase_intent: ['Researching', 'Browsing', 'Price Comparing', 'Interested', 'Ready to Buy', 'Waiting Payment', 'Returning Customer'],
   segment:      ['Event Customer', 'Reseller', 'Wholesale', 'Individual', 'Business'],
   cust_status:  ['Active', 'Inactive', 'Lead'],
 }
 
 const LEAD_FIELDS = [
   ['stage', 'Stage', 'select'], ['lead_status', 'Lead Status', 'select'],
-  ['qualification', 'Qualification', 'select'], ['temperature', 'Temperature', 'select'],
+  ['purchase_intent', 'Purchase Intent', 'select'], ['qualification', 'Qualification', 'select'],
   ['product_intent', 'Product Intent', 'text'], ['priority', 'Priority', 'select'],
   ['lead_summary', 'Lead Summary', 'textarea'], ['internal_notes', 'Internal Notes', 'textarea'],
 ]
+
+// Qualification band -> rang (Tailwind static classes; dynamic class-name safe nahi hota).
+const BAND = {
+  'Sales Ready': { bar: 'bg-blue-500',    chip: 'bg-blue-50 text-blue-700 ring-blue-200',       dot: '🔵' },
+  'Qualified':   { bar: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200', dot: '🟢' },
+  'Warm':        { bar: 'bg-amber-500',   chip: 'bg-amber-50 text-amber-700 ring-amber-200',     dot: '🟡' },
+  'Cold':        { bar: 'bg-rose-500',    chip: 'bg-rose-50 text-rose-700 ring-rose-200',         dot: '🔴' },
+}
+const TEMP_CHIP = { Hot: 'bg-rose-50 text-rose-700 ring-rose-200', Warm: 'bg-amber-50 text-amber-700 ring-amber-200', Cold: 'bg-sky-50 text-sky-700 ring-sky-200' }
+// Temperature = f(score, intent) — backend jaisa hi (auto).
+const deriveTemp = (score, intent) => {
+  const HOT = ['Ready to Buy', 'Waiting Payment', 'Returning Customer']
+  const LOW = ['Researching', 'Browsing']
+  if (score > 70 && HOT.includes(intent)) return 'Hot'
+  if (score < 40 || LOW.includes(intent)) return 'Cold'
+  return 'Warm'
+}
+
+function QualCard({ q, temp }) {
+  if (!q) return null
+  const b = BAND[q.band] || BAND.Cold
+  return (
+    <div className="rounded-xl border border-slate-200 p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h4 className="text-xs font-bold text-slate-700">Qualification Score</h4>
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${b.chip}`}>{b.dot} {q.band}</span>
+        </div>
+        <div className="text-sm font-extrabold text-slate-800">{q.score}<span className="text-[11px] font-medium text-slate-400">/100</span></div>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className={`h-2 rounded-full ${b.bar} transition-all`} style={{ width: `${q.score}%` }} />
+      </div>
+      {temp && (
+        <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+          <span className="text-slate-500">Temperature (auto):</span>
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-bold ring-1 ${TEMP_CHIP[temp] || ''}`}>{temp}</span>
+        </div>
+      )}
+      <ul className="mt-2 grid grid-cols-1 gap-0.5">
+        {q.breakdown.map((c) => (
+          <li key={c.key} className={`flex items-center gap-1.5 text-[11px] ${c.got ? 'text-slate-700' : 'text-slate-400'}`}>
+            <span>{c.got ? '✓' : '☐'}</span>
+            <span className="flex-1">{c.label}</span>
+            <span className="tabular-nums text-[10px] text-slate-400">+{c.points}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 const CUST_FIELDS = [
   ['email', 'Email', 'text'], ['phone', 'Phone', 'text'],
   ['segment', 'Segment', 'select'], ['cust_status', 'Status', 'select'],
@@ -134,6 +186,7 @@ export default function LeadPanel({ conv, onClose }) {
   const [vals, setVals] = useState({})
   const [aiFilled, setAiFilled] = useState({})   // fieldKey -> true (AI ne bhara, abhi tak save nahi)
   const [fs, setFs] = useState({})               // fieldKey -> 'idle'|'saving'|'ok'|'err'
+  const [score, setScore] = useState(null)       // { score, band, breakdown } — qualification
   const [extracting, setExtracting] = useState(false)
   const [err, setErr] = useState('')
 
@@ -163,11 +216,14 @@ export default function LeadPanel({ conv, onClose }) {
   useEffect(() => {
     if (!cid) return
     let cancelled = false
-    setVals({}); setAiFilled({}); setFs({}); setErr('')
+    setVals({}); setAiFilled({}); setFs({}); setErr(''); setScore(null)
     api.get(`/api/leads/panel/${encodeURIComponent(cid)}`)
       .then((b) => { if (!cancelled) setVals(flatten(b)) })
       .catch(() => {})
       .finally(() => { if (!cancelled) runExtract() })
+    api.get(`/api/leads/score/${encodeURIComponent(cid)}`)
+      .then((s) => { if (!cancelled && s?.qualification) setScore(s.qualification) })
+      .catch(() => {})
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid])
@@ -232,10 +288,13 @@ export default function LeadPanel({ conv, onClose }) {
 
       {/* Body */}
       <div className="nice-scroll flex-1 space-y-4 overflow-y-auto px-5 py-4">
-        {tab === 'lead' && LEAD_FIELDS.map(([k, lbl, type]) => (
-          <Field key={k} k={k} label={lbl} type={type} val={vals[k]} aiFilled={aiFilled[k]} state={fs[k]}
-            onChange={(v) => setVal(k, v)} onValidate={validate(k)} />
-        ))}
+        {tab === 'lead' && (<>
+          <QualCard q={score} temp={score ? deriveTemp(score.score, vals.purchase_intent) : null} />
+          {LEAD_FIELDS.map(([k, lbl, type]) => (
+            <Field key={k} k={k} label={lbl} type={type} val={vals[k]} aiFilled={aiFilled[k]} state={fs[k]}
+              onChange={(v) => setVal(k, v)} onValidate={validate(k)} />
+          ))}
+        </>)}
 
         {tab === 'customer' && (<>
           {CUST_FIELDS.map(([k, lbl, type]) => (

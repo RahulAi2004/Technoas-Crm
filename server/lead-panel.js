@@ -15,6 +15,7 @@ export const FIELD_MAP = {
   lead_status:      { t: 'leads', c: 'lead_status' },
   qualification:    { t: 'leads', j: 'qualification' },
   temperature:      { t: 'leads', c: 'temperature' },
+  purchase_intent:  { t: 'leads', j: 'purchase_intent' },
   product_intent:   { t: 'leads', c: 'primary_product' },
   priority:         { t: 'leads', c: 'priority' },
   lead_summary:     { t: 'leads', c: 'lead_summary' },
@@ -130,6 +131,7 @@ export async function getLeadBundle(conversationId) {
       lead_status: lead.lead_status || lead.status || '',
       qualification: lead.extra?.qualification || '',
       temperature: lead.temperature || '',
+      purchase_intent: lead.extra?.purchase_intent || '',
       product_intent: lead.primary_product || '',
       priority: lead.priority || '',
       lead_summary: lead.lead_summary || '',
@@ -175,6 +177,7 @@ Return ONLY a JSON object with EXACTLY these keys (use "" or [] when unknown —
     "lead_status": one of ["Active","Inactive","Won","Lost"] or "",
     "qualification": one of ["Qualified","Unqualified","Pending"] or "",
     "temperature": one of ["Cold","Warm","Hot"] or "",
+    "purchase_intent": one of ["Researching","Browsing","Price Comparing","Interested","Ready to Buy","Waiting Payment","Returning Customer"] or "",
     "product_intent": short product name the customer wants (e.g. "Bulk DTF Transfers") or "",
     "priority": one of ["Low","Medium","High"] or "",
     "lead_summary": one short sentence describing what the lead needs or "",
@@ -215,6 +218,81 @@ export async function extractFields(conversationId) {
   const user = `Customer name: ${conv?.name || 'Unknown'}\nChannel: ${conv?.channel || ''}\n\nConversation transcript (oldest to newest):\n${transcript}`
   const fields = await chatJSON(EXTRACT_SYSTEM, user)
   return { ok: true, fields }
+}
+
+// ============================================================
+// Qualification Score (0-100) — DETERMINISTIC, chat + collected data se (AI nahi).
+// Purchase Intent AI se (extract). Temperature = f(score, intent) auto-derive.
+// ============================================================
+const QUAL_CRITERIA = [
+  { key: 'replied',  label: 'Customer replied after auto-response', pts: 10 },
+  { key: 'human',    label: 'Human agent engaged',                  pts: 5 },
+  { key: 'product',  label: 'Product identified',                   pts: 10 },
+  { key: 'artwork',  label: 'Artwork uploaded',                     pts: 20 },
+  { key: 'quantity', label: 'Quantity discussed',                   pts: 10 },
+  { key: 'garment',  label: 'Garment type identified',              pts: 5 },
+  { key: 'print',    label: 'Print locations known',                pts: 5 },
+  { key: 'shipping', label: 'Shipping ZIP/Address received',        pts: 10 },
+  { key: 'quote',    label: 'Quote requested',                      pts: 10 },
+  { key: 'mockup',   label: 'Mockup requested',                     pts: 10 },
+  { key: 'budget',   label: 'Budget discussed',                     pts: 5 },
+  { key: 'timeline', label: 'Timeline discussed',                   pts: 5 },
+]
+
+const bandOf = (score) =>
+  score >= 81 ? 'Sales Ready' : score >= 61 ? 'Qualified' : score >= 31 ? 'Warm' : 'Cold'
+
+export function deriveTemperature(score, intent) {
+  const HOT = ['Ready to Buy', 'Waiting Payment', 'Returning Customer']
+  const LOW = ['Researching', 'Browsing']
+  if (score > 70 && HOT.includes(intent)) return 'Hot'
+  if (score < 40 || LOW.includes(intent)) return 'Cold'
+  return 'Warm'
+}
+
+function computeQualification(conversationId, bundle) {
+  const msgs = getAll('messages').filter((m) => m.conversation_id === conversationId)
+  const text = msgs.map((m) => m.text || '').join(' \n ').toLowerCase().slice(0, 20000)
+  const rx = (re) => re.test(text)
+  const hasIn = msgs.some((m) => m.dir === 'in')
+  const hasOut = msgs.some((m) => m.dir === 'out')
+  const hasImg = msgs.some((m) => (m.attachments || []).some((a) => a?.type === 'image'))
+  const ship = bundle?.customer?.shipping_address
+  const got = {
+    replied:  hasIn && hasOut,
+    human:    hasOut,
+    product:  !!bundle?.lead?.product_intent || rx(/\b(dtf|transfer|screen ?print|embroider|sublimation|vinyl|htv)\b/),
+    artwork:  hasImg || rx(/\b(artwork|logo|design file|\.png|\.ai|\.psd|mockup)\b/),
+    quantity: rx(/\b(\d{2,})\s*(pcs|pieces|shirts|units|qty)\b/) || rx(/\b(how many|quantity|minimum order|moq)\b/),
+    garment:  rx(/\b(t-?shirts?|tees?|hood(ie|y)|sweatshirt|jersey|garment|apparel|polo|tank top)\b/),
+    print:    rx(/\b(front|back|left chest|right chest|sleeve|print location|placement)\b/),
+    shipping: !!(ship && Object.values(ship).some((x) => x)) || rx(/\b(\d{5})\b/) || rx(/\b(zip ?code|postal|ship to|shipping address)\b/),
+    quote:    !!bundle?.has?.quote || rx(/\b(quote|quotation|pricing|how much|estimate)\b/),
+    mockup:   rx(/\b(mock-?up|proof|preview|sample design)\b/),
+    budget:   rx(/\$\s?\d/) || rx(/\b(budget|per (piece|shirt|unit)|price range)\b/),
+    timeline: rx(/\b(deadline|need (it|them|by)|turnaround|how (soon|long)|delivery date|timeline|urgent|asap|by (mon|tue|wed|thu|fri|sat|sun|next))\b/),
+  }
+  let score = 0
+  const breakdown = QUAL_CRITERIA.map((c) => { const g = !!got[c.key]; if (g) score += c.pts; return { key: c.key, label: c.label, points: c.pts, got: g } })
+  score = Math.min(100, score)
+  return { score, band: bandOf(score), breakdown }
+}
+
+// Panel/grid ke liye: qualification (deterministic) + stored purchase intent + auto temperature.
+export async function getLeadScore(conversationId) {
+  const bundle = await getLeadBundle(conversationId)
+  const qualification = computeQualification(conversationId, bundle)
+  const purchase_intent = bundle.lead?.purchase_intent || ''
+  const temperature = deriveTemperature(qualification.score, purchase_intent)
+  // Lead pehle se ho to score/temperature persist karo (grid/filter ke liye) — naya lead mat banao.
+  const co = await resolveIds(conversationId)
+  if (co) {
+    const lead = await findLead(co.conversation_id)
+    if (lead) await dbQuery(
+      `UPDATE app.leads SET score_total = $1, temperature = $2, updated_at = now() WHERE lead_id = $3`,
+      [qualification.score, temperature, lead.lead_id]).catch(() => {})
+  }
+  return { qualification, purchase_intent, temperature }
 }
 
 const isEmpty = (v) =>
