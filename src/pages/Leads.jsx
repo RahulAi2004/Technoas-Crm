@@ -29,6 +29,23 @@ function periodRange(period, customFrom, customTo) {
 }
 const PERIODS = [['today', 'Today'], ['week', 'This Week'], ['month', 'This Month'], ['quarter', 'This Quarter'], ['year', 'This Year'], ['custom', 'Custom'], ['all', 'All Time']]
 
+// Column definitions. `always` = hamesha dikhe; baaki tabhi dikhein jab kisi lead me data ho
+// (dynamic — khaali "—" wale columns apne aap gayab). `has(l)` = is lead me is field ka data hai?
+const LEAD_COLUMNS = [
+  { key: 'leadNo', header: 'Lead No', always: true },
+  { key: 'date', header: 'Lead Date & Time', always: true },
+  { key: 'name', header: 'Customer Name', always: true },
+  { key: 'source', header: 'Source', has: (l) => !!l._source },
+  { key: 'stage', header: 'Stage', has: (l) => !!l._stage },
+  { key: 'status', header: 'Lead Status', has: (l) => !!l._status },
+  { key: 'qual', header: 'Qualification', has: (l) => l._score > 0 },
+  { key: 'temp', header: 'Temperature', has: (l) => !!l._temp },
+  { key: 'product', header: 'Product / Intent', has: (l) => !!l._product },
+  { key: 'value', header: 'Est. Value', has: (l) => l._value > 0 },
+  { key: 'next', header: 'Next Action', has: (l) => !!l._next },
+  { key: 'actions', header: 'Actions', always: true, right: true },
+]
+
 function StatCard({ label, value, icon, tint, sub }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
@@ -54,9 +71,10 @@ export default function Leads() {
   const [menuId, setMenuId] = useState(null)
 
   // Real data: leads + conversations (join by id → accurate start-date + "engaged" = we replied).
+  // Live: har 20s refetch, taaki naye leads apne aap aa jayein (reload ke bina).
   useEffect(() => {
     let cancelled = false
-    Promise.all([api.get('/api/leads').catch(() => []), api.get('/api/conversations').catch(() => [])])
+    const load = () => Promise.all([api.get('/api/leads').catch(() => []), api.get('/api/conversations').catch(() => [])])
       .then(([leads, convs]) => {
         if (cancelled) return
         const cmap = {}; for (const c of (convs || [])) cmap[c.id] = c
@@ -65,12 +83,15 @@ export default function Leads() {
           const c = cmap[cid] || cmap[l.id] || {}
           const firstTs = Number(c.first_ts) || (l.created_at ? Date.parse(l.created_at) : 0) || 0
           return { ...l, _cid: cid, _firstTs: firstTs, _lastOut: Number(c.last_out_ts) || 0, _lastTs: Number(c.last_ts) || 0,
-            _stage: l.pipeline || l.stage || 'Initiated', _status: l.status || 'New', _source: l.source || l.channel || '—',
-            _score: Number(l.score) || 0, _value: Number(l.value) || 0, _product: l.product || '' }
+            _stage: l.pipeline || l.stage || 'Initiated', _status: l.status || 'New', _source: l.source || l.channel || '',
+            _score: Number(l.score) || 0, _value: Number(l.value) || 0, _product: l.product || '',
+            _temp: l.temperature || (l.badge === 'Hot' ? 'Hot' : ''), _next: l.next_action || l.nextStep || '' }
         })
         setData(merged)
       })
-    return () => { cancelled = true }
+    load()
+    const t = setInterval(load, 20000)
+    return () => { cancelled = true; clearInterval(t) }
   }, [])
 
   const src = data || []
@@ -109,6 +130,38 @@ export default function Leads() {
   const clearAll = () => { setStage(''); setStatus(''); setSource(''); setFrom(''); setTo(''); setQuery(''); setPeriod('all') }
 
   const openChat = (cid) => navigate(`/dashboard?conv=${encodeURIComponent(cid)}`)
+
+  // Sirf wahi columns dikhao jinme kam-se-kam ek lead ka data ho (dynamic).
+  const activeCols = useMemo(() => LEAD_COLUMNS.filter((c) => c.always || filtered.some((l) => c.has(l))), [filtered])
+
+  const cellFor = (key, l) => {
+    switch (key) {
+      case 'leadNo': return <span className="font-semibold text-brand-700">{leadNo(l._cid)}</span>
+      case 'date': return <span className="whitespace-nowrap text-slate-600">{fmtDateTime(l._firstTs)}</span>
+      case 'name': return (
+        <div className="flex items-center gap-2">
+          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${avatarFor(l.name, l._cid)} text-xs font-bold text-white`}>{initialsOf(l.name)}</span>
+          <span className="font-semibold text-slate-800">{l.name || 'Unknown'}</span>
+        </div>)
+      case 'source': return <span className="whitespace-nowrap text-slate-600">{l._source || '—'}</span>
+      case 'stage': return <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">{l._stage}</span>
+      case 'status': return <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{l._status}</span>
+      case 'qual': return (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-600">{l._score}<span className="text-slate-400">/100</span></span>
+          <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100"><span className={`block h-full ${scoreCls(l._score)}`} style={{ width: `${Math.min(100, l._score)}%` }} /></span>
+        </div>)
+      case 'temp': return <span className="text-slate-600">{l._temp === 'Hot' ? '🔥 Hot' : (l._temp || '—')}</span>
+      case 'product': return <span className="text-slate-500">{l._product || '—'}</span>
+      case 'value': return <span className="whitespace-nowrap font-semibold text-slate-700">{fmt$(l._value)}</span>
+      case 'next': return <span className="text-slate-500">{l._next || '—'}</span>
+      case 'actions': return (
+        <RowMenu open={menuId === l._cid} onToggle={() => setMenuId(menuId === l._cid ? null : l._cid)}
+          onChat={() => { setMenuId(null); openChat(l._cid) }}
+          onDetails={() => { setMenuId(null); navigate(`/leads/${encodeURIComponent(l._cid)}`) }} />)
+      default: return null
+    }
+  }
 
   const exportCsv = () => {
     const cols = ['Lead No', 'Lead Date', 'Customer', 'Source', 'Stage', 'Status', 'Qualification', 'Est Value', 'Product']
@@ -189,58 +242,24 @@ export default function Leads() {
             </div>
           </div>
 
-          {/* Table */}
+          {/* Table — columns dynamic (khaali column apne aap chhup jaate hain) */}
           <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-card">
-            <table className="w-full min-w-[1000px] text-sm">
+            <table className="w-full text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-3 py-3 text-left font-semibold">Lead No</th>
-                  <th className="px-3 py-3 text-left font-semibold">Lead Date &amp; Time</th>
-                  <th className="px-3 py-3 text-left font-semibold">Customer Name</th>
-                  <th className="px-3 py-3 text-left font-semibold">Source</th>
-                  <th className="px-3 py-3 text-left font-semibold">Stage</th>
-                  <th className="px-3 py-3 text-left font-semibold">Lead Status</th>
-                  <th className="px-3 py-3 text-left font-semibold">Qualification</th>
-                  <th className="px-3 py-3 text-left font-semibold">Temperature</th>
-                  <th className="px-3 py-3 text-left font-semibold">Product / Intent</th>
-                  <th className="px-3 py-3 text-left font-semibold">Est. Value</th>
-                  <th className="px-3 py-3 text-left font-semibold">Next Action</th>
-                  <th className="px-3 py-3 text-right font-semibold">Actions</th>
+                  {activeCols.map((c) => <th key={c.key} className={`px-3 py-3 font-semibold ${c.right ? 'text-right' : 'text-left'}`}>{c.header}</th>)}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {data === null ? (
-                  <tr><td colSpan={12} className="px-3 py-10 text-center text-sm text-slate-400">Loading leads…</td></tr>
+                  <tr><td colSpan={activeCols.length} className="px-3 py-10 text-center text-sm text-slate-400">Loading leads…</td></tr>
                 ) : pageRows.length === 0 ? (
-                  <tr><td colSpan={12} className="px-3 py-10 text-center text-sm text-slate-400">Koi lead nahi mila. {anyFilter && <button onClick={clearAll} className="font-semibold text-brand-600 underline">Clear filters</button>}</td></tr>
+                  <tr><td colSpan={activeCols.length} className="px-3 py-10 text-center text-sm text-slate-400">Koi lead nahi mila. {anyFilter && <button onClick={clearAll} className="font-semibold text-brand-600 underline">Clear filters</button>}</td></tr>
                 ) : pageRows.map((l) => (
                   <tr key={l._cid} onClick={() => openChat(l._cid)} className="cursor-pointer transition hover:bg-brand-50/40">
-                    <td className="px-3 py-3 font-semibold text-brand-700">{leadNo(l._cid)}</td>
-                    <td className="whitespace-nowrap px-3 py-3 text-slate-600">{fmtDateTime(l._firstTs)}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${avatarFor(l.name, l._cid)} text-xs font-bold text-white`}>{initialsOf(l.name)}</span>
-                        <span className="font-semibold text-slate-800">{l.name || 'Unknown'}</span>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 text-slate-600">{l._source}</td>
-                    <td className="px-3 py-3"><span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">{l._stage}</span></td>
-                    <td className="px-3 py-3"><span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{l._status}</span></td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-600">{l._score}<span className="text-slate-400">/100</span></span>
-                        <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100"><span className={`block h-full ${scoreCls(l._score)}`} style={{ width: `${Math.min(100, l._score)}%` }} /></span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-center text-slate-300">{l.badge === 'Hot' ? '🔥' : '—'}</td>
-                    <td className="px-3 py-3 text-slate-500">{l._product || '—'}</td>
-                    <td className="whitespace-nowrap px-3 py-3 font-semibold text-slate-700">{fmt$(l._value)}</td>
-                    <td className="px-3 py-3 text-slate-300">—</td>
-                    <td className="px-3 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      <RowMenu open={menuId === l._cid} onToggle={() => setMenuId(menuId === l._cid ? null : l._cid)}
-                        onChat={() => { setMenuId(null); openChat(l._cid) }}
-                        onDetails={() => { setMenuId(null); navigate(`/leads/${encodeURIComponent(l._cid)}`) }} />
-                    </td>
+                    {activeCols.map((c) => (
+                      <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={c.key === 'actions' ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l)}</td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
