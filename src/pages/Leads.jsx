@@ -41,8 +41,6 @@ const LEAD_COLUMNS = [
   { key: 'qual', header: 'Qualification', has: (l) => l._score > 0 },
   { key: 'temp', header: 'Temperature', has: (l) => !!l._temp },
   { key: 'intent', header: 'Purchase Intent', has: (l) => l._intent != null },
-  { key: 'product', header: 'Product', has: (l) => !!l._product },
-  { key: 'value', header: 'Est. Value', has: (l) => l._value > 0 },
   { key: 'actions', header: 'Actions', always: true, right: true },
 ]
 
@@ -223,13 +221,11 @@ export default function Leads() {
           </div>
 
           {/* Stat cards */}
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatCard label="Total Inquiries" value={s.total.toLocaleString()} sub="in period" tint="bg-sky-50 text-sky-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>} />
             <StatCard label="Engaged" value={s.engaged.toLocaleString()} sub="we replied" tint="bg-violet-50 text-violet-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>} />
             <StatCard label="Qualified" value={s.qualified.toLocaleString()} sub="score ≥ 60" tint="bg-emerald-50 text-emerald-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
             <StatCard label="Hot Leads" value={s.hot.toLocaleString()} sub="score ≥ 80" tint="bg-rose-50 text-rose-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>} />
-            <StatCard label="Quotes Sent" value={s.quotes.toLocaleString()} sub="in pipeline" tint="bg-amber-50 text-amber-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>} />
-            <StatCard label="Ready to Order" value={s.orders.toLocaleString()} sub="confirmed" tint="bg-teal-50 text-teal-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" x2="21" y1="6" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>} />
           </div>
 
           {/* Filters */}

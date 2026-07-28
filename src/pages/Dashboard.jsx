@@ -119,6 +119,15 @@ const nowTime = () => {
   return `${h}:${String(m).padStart(2,'0')} ${ampm}`
 }
 
+// Clock time BROWSER ke LOCAL timezone me (raw epoch ts se). Server UTC me format karta tha,
+// isliye user ke local time se ghante aage/peeche dikhta tha. Ab ts se client-side format ->
+// Facebook/Messenger ke time se match. Fallback: purana stored string.
+const fmtClock = (ts, fallback) => {
+  const t = Number(ts) || 0
+  if (!t) return fallback || ''
+  return new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
 // Chat ka din-wala divider label: aaj -> "Today", kal -> "Yesterday", warna "13 Jul 2026".
 const dayLabel = (ts) => {
   if (!ts) return ''
@@ -802,7 +811,7 @@ export default function Dashboard() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <div className={`truncate text-sm font-semibold ${active ? 'text-brand-900' : 'text-slate-800'}`}>{c.name}</div>
-                        <span className="shrink-0 text-[11px] text-slate-400">{c.listTime}</span>
+                        <span className="shrink-0 text-[11px] text-slate-400">{fmtClock(c.last_ts, c.listTime)}</span>
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2">
                         <p className="truncate text-xs text-slate-500">{c.lastDir === 'out' && <span className="font-semibold text-slate-400">You: </span>}{c.listPreview}</p>
@@ -957,7 +966,7 @@ export default function Dashboard() {
                     if (m.dir === 'in') return (
                       <div key={m.id || i} className="mt-4 flex items-start gap-2">
                         <span className={`mt-1 grid h-8 w-8 place-items-center rounded-full ${conv.avatarBg} text-xs font-bold`}>{conv.initials}</span>
-                        <div className="max-w-md rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 text-[10px] text-slate-400">{m.time}</div></div>
+                        <div className="max-w-md rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 text-[10px] text-slate-400">{fmtClock(m.ts, m.time)}</div></div>
                       </div>
                     )
                     if (m.dir === 'note') return (
@@ -965,7 +974,7 @@ export default function Dashboard() {
                         <div className="max-w-md rounded-2xl rounded-tr-md bg-amber-50 px-4 py-2.5 text-sm text-amber-900 shadow-sm ring-1 ring-amber-200">
                           <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">📝 Internal note{m.agent ? ` · ${m.agent}` : ''}</div>
                           <div>{m.text}</div>
-                          <div className="mt-1 text-right text-[10px] text-amber-700/70">{m.time}</div>
+                          <div className="mt-1 text-right text-[10px] text-amber-700/70">{fmtClock(m.ts, m.time)}</div>
                         </div>
                       </div>
                     )
@@ -978,7 +987,7 @@ export default function Dashboard() {
                           <div className={`max-w-md rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ${failed ? 'bg-rose-50 text-rose-900 ring-1 ring-rose-200' : 'bg-brand-600 text-white'}`}>
                             <MsgAttachments items={m.attachments} />{m.text}
                             <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${failed ? 'text-rose-500' : 'text-white/70'}`}>
-                              {m.time}
+                              {fmtClock(m.ts, m.time)}
                               {sending
                                 ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin text-white/70"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                                 : failed
@@ -2300,8 +2309,8 @@ function IntentTab({ ai, onAnalyze, conv }) {
         </div>
       )}
 
-      {conv?.listTime && (
-        <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-500"><span>📅</span> Last Activity · {conv.listTime}</div>
+      {(conv?.last_ts || conv?.listTime) && (
+        <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-500"><span>📅</span> Last Activity · {fmtClock(conv.last_ts, conv.listTime)}</div>
       )}
     </>
   )
