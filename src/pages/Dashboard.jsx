@@ -1794,33 +1794,84 @@ function FilesTab({ conv }) {
 
 // Conversation summary for an agent taking over. Generated on a button, SAVED to the
 // DB, and updated INCREMENTALLY (only new messages are sent to AI, not the whole chat).
+const SUMMARY_WINDOWS = [
+  { k: 'full', label: 'Full chat' }, { k: '1', label: 'Last 1 day' }, { k: '2', label: 'Last 2 days' },
+  { k: '3', label: 'Last 3 days' }, { k: '7', label: 'Last 7 days' }, { k: 'custom', label: 'Custom' },
+]
+const winLabel = (w) => (w?.from || w?.to) ? `${w.from || '…'} → ${w.to || '…'}` : w?.days ? `Last ${w.days} day${w.days > 1 ? 's' : ''}` : 'Full chat'
+
+// The summary body cards (overview / key points / status / next step) — shared by the
+// persisted running summary and one-off ad-hoc (windowed) summaries.
+function SummaryCards({ s }) {
+  return (<>
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="text-sm font-bold">📝 Conversation summary</div>
+      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{s.overview}</p>
+    </div>
+    {Array.isArray(s.keyPoints) && s.keyPoints.length > 0 && (
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="text-sm font-bold">Key points</div>
+        <ul className="mt-2 space-y-1.5">
+          {s.keyPoints.map((k, i) => (
+            <li key={i} className="flex gap-2 text-sm text-slate-700"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500"></span><span>{k}</span></li>
+          ))}
+        </ul>
+      </div>
+    )}
+    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Current status</div>
+        <p className="mt-1 text-sm font-medium text-slate-800">{s.status || '—'}</p>
+      </div>
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Next step</div>
+        <p className="mt-1 text-sm font-medium text-emerald-900">{s.nextStep || '—'}</p>
+      </div>
+    </div>
+  </>)
+}
+
 function SummaryTab({ conv, msgCount }) {
   const toast = useToast()
-  const [info, setInfo] = useState(null)    // { cached, summary, newCount, stale, summaryAt, ... }
-  const [loading, setLoading] = useState(false)  // loading cache (cheap, no AI)
-  const [working, setWorking] = useState(false)  // generating/updating (AI call)
+  const [info, setInfo] = useState(null)    // persisted running (full) summary
+  const [adhoc, setAdhoc] = useState(null)  // one-off windowed/custom-prompt result { summary, count, window }
+  const [loading, setLoading] = useState(false)
+  const [working, setWorking] = useState(false)
   const [error, setError] = useState(null)
+  const [win, setWin] = useState('full')    // full | 1 | 2 | 3 | 7 | custom
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
+  const [prompt, setPrompt] = useState(''); const [defaultPrompt, setDefaultPrompt] = useState('')
+  const [promptOpen, setPromptOpen] = useState(false)
   const cid = conv?.id
 
-  // Cheap GET: pulls the saved summary from memory + reports new-message count. No AI cost.
+  // Cheap GET: saved running summary + new-message count + current prompt. No AI cost.
   useEffect(() => {
     let cancelled = false
-    setInfo(null); setError(null)
+    setInfo(null); setError(null); setAdhoc(null); setWin('full')
     if (!cid) return
     setLoading(true)
     api.get(`/api/ai/summary/${encodeURIComponent(cid)}`)
-      .then((r) => { if (!cancelled) { if (r.empty) setError('Is chat mein abhi koi message nahi.'); else setInfo(r) } })
+      .then((r) => { if (cancelled) return; if (r.empty) { setError('Is chat mein abhi koi message nahi.'); return } setInfo(r); setPrompt(r.prompt || ''); setDefaultPrompt(r.defaultPrompt || r.prompt || '') })
       .catch((ex) => { if (!cancelled) setError(ex.message || 'Summary failed') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [cid, msgCount])
 
-  // The only AI call — full first time, incremental afterwards. Result is persisted server-side.
-  const generate = () => {
+  // Generate: window + (optionally edited) prompt. savePrompt=true persists it as the new default.
+  const runGenerate = (savePrompt = false) => {
     if (!cid) return
+    if (win === 'custom' && !from && !to) { toast('Custom range: From/To date choose karo', 'info'); return }
     setWorking(true)
-    api.post(`/api/ai/summary/${encodeURIComponent(cid)}`, {})
-      .then((r) => { setInfo({ cached: true, stale: false, newCount: 0, summary: r.summary, summaryAt: r.summaryAt }); toast(r.mode === 'incremental' ? 'Summary updated with new messages' : 'Summary saved', 'success') })
+    const body = { prompt, savePrompt }
+    if (win === 'custom') { body.from = from; body.to = to }
+    else if (win !== 'full') body.days = Number(win)
+    api.post(`/api/ai/summary/${encodeURIComponent(cid)}`, body)
+      .then((r) => {
+        if (r.empty === 'window') { setAdhoc(null); toast('Is time-window me koi message nahi', 'info'); return }
+        if (r.adhoc) { setAdhoc({ summary: r.summary, count: r.count, window: r.window }); toast('Summary ready', 'success') }
+        else { setInfo((p) => ({ ...(p || {}), cached: true, stale: false, newCount: 0, summary: r.summary, summaryAt: r.summaryAt })); setAdhoc(null); toast(r.mode === 'incremental' ? 'Summary updated with new messages' : 'Summary saved', 'success') }
+        if (savePrompt) toast('Prompt saved as default ✓', 'success')
+      })
       .catch((ex) => toast(ex.message || 'Failed', 'error'))
       .finally(() => setWorking(false))
   }
@@ -1829,65 +1880,80 @@ function SummaryTab({ conv, msgCount }) {
   if (loading && !info) return <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center text-sm text-violet-700">📝 Loading summary…</div>
   if (error) return <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-6 text-center text-sm text-amber-700">{error}</div>
 
-  const s = info?.summary
-  const savedAt = info?.summaryAt ? new Date(info.summaryAt).toLocaleString() : null
-
-  // No saved summary yet → first-time generate prompt.
-  if (!s) {
-    return (
-      <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center">
-        <div className="text-2xl">📝</div>
-        <p className="mt-1 text-sm font-semibold text-slate-700">No summary yet</p>
-        <p className="mt-0.5 text-xs text-slate-500">Poori chat (start → last) ki ek detailed summary banao. Save ho jayegi — agli baar memory se aayegi.</p>
-        <button onClick={generate} disabled={working} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{working ? 'Generating…' : '📝 Generate summary'}</button>
-      </div>
-    )
-  }
+  const s = adhoc ? adhoc.summary : info?.summary
+  const savedAt = !adhoc && info?.summaryAt ? new Date(info.summaryAt).toLocaleString() : null
+  const promptEdited = prompt.trim() !== defaultPrompt.trim()
+  const isDefaultRun = win === 'full' && !promptEdited
 
   return (
     <>
-      {/* New-messages banner: incremental update only adds the new part */}
-      {info.stale && info.newCount > 0 && (
+      {/* Controls: time-window + editable prompt */}
+      <div className="mb-3 rounded-xl border border-slate-200 bg-white p-2.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-0.5 text-[11px] font-semibold text-slate-500">Period:</span>
+          {SUMMARY_WINDOWS.map((o) => (
+            <button key={o.k} onClick={() => setWin(o.k)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${win === o.k ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{o.label}</button>
+          ))}
+        </div>
+        {win === 'custom' && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+            <span>From</span><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-700" />
+            <span>To</span><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-700" />
+          </div>
+        )}
+
+        <div className="mt-2 border-t border-slate-100 pt-2">
+          <button onClick={() => setPromptOpen((v) => !v)} className="flex w-full items-center justify-between text-[11px] font-semibold text-slate-500 hover:text-slate-700">
+            <span>⚙️ Summary prompt{promptEdited && <span className="ml-1 rounded bg-amber-100 px-1 text-[9px] text-amber-700">edited</span>}</span>
+            <span className="text-slate-400">{promptOpen ? '▲ hide' : '▼ edit'}</span>
+          </button>
+          {promptOpen && (
+            <div className="mt-2">
+              <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}
+                placeholder="Kaisi summary chahiye… (e.g. focus on pricing & objections, ya 2-line TL;DR)"
+                className="w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[12px] leading-relaxed outline-none focus:border-brand-500 focus:bg-white" />
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <button onClick={() => setPrompt(defaultPrompt)} className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">Reset to default</button>
+                <button onClick={() => runGenerate(true)} disabled={working} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">💾 Save as default + Generate</button>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-400">Output format (overview / key points / status / next step) fixed rehta hai — sirf style/focus badalta hai.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+          <span className="text-[11px] text-slate-400">{isDefaultRun ? 'Poori chat ka running summary (saved).' : 'Ad-hoc — running summary ko nahi chhedta.'}</span>
+          <button onClick={() => runGenerate(false)} disabled={working} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{working ? 'Generating…' : (isDefaultRun ? '↻ Generate / Update' : '✨ Generate')}</button>
+        </div>
+      </div>
+
+      {/* Ad-hoc result banner */}
+      {adhoc && (
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-violet-200 bg-violet-50 p-2.5">
+          <span className="text-[11px] font-semibold text-violet-800">Ad-hoc summary · {winLabel(adhoc.window)} · {adhoc.count} msgs</span>
+          <button onClick={() => setAdhoc(null)} className="shrink-0 text-[11px] font-semibold text-violet-700 underline hover:text-violet-900">← Full summary</button>
+        </div>
+      )}
+
+      {/* Stale banner — only for the persisted running summary */}
+      {!adhoc && info?.stale && info.newCount > 0 && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
           <span className="text-xs font-semibold text-amber-800">{info.newCount} new message{info.newCount > 1 ? 's' : ''} since this summary.</span>
-          <button onClick={generate} disabled={working} className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50">{working ? 'Updating…' : '↻ Update summary'}</button>
+          <button onClick={() => runGenerate(false)} disabled={working} className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50">{working ? 'Updating…' : '↻ Update summary'}</button>
         </div>
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-bold">📝 Conversation summary</div>
-          {!info.stale && <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Up to date</span>}
-        </div>
-        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{s.overview}</p>
-      </div>
-
-      {Array.isArray(s.keyPoints) && s.keyPoints.length > 0 && (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-sm font-bold">Key points</div>
-          <ul className="mt-2 space-y-1.5">
-            {s.keyPoints.map((k, i) => (
-              <li key={i} className="flex gap-2 text-sm text-slate-700"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500"></span><span>{k}</span></li>
-            ))}
-          </ul>
+      {/* Body */}
+      {s ? <SummaryCards s={s} /> : (
+        <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center">
+          <div className="text-2xl">📝</div>
+          <p className="mt-1 text-sm font-semibold text-slate-700">No summary yet</p>
+          <p className="mt-0.5 text-xs text-slate-500">Upar se period choose karke "Generate" dabao. Full chat ki summary save ho jayegi.</p>
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Current status</div>
-          <p className="mt-1 text-sm font-medium text-slate-800">{s.status || '—'}</p>
-        </div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Next step</div>
-          <p className="mt-1 text-sm font-medium text-emerald-900">{s.nextStep || '—'}</p>
-        </div>
-      </div>
-
-      <div className="mt-3 flex items-center justify-between">
-        {savedAt ? <span className="text-[11px] text-slate-400">Saved {savedAt}</span> : <span></span>}
-        <button onClick={generate} disabled={working} className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">{working ? '…' : '↻ Regenerate'}</button>
-      </div>
+      {savedAt && !adhoc && <div className="mt-3 text-right text-[11px] text-slate-400">Saved {savedAt}</div>}
     </>
   )
 }

@@ -1618,14 +1618,36 @@ app.post('/api/ai/verify-translation', authRequired, async (req, res) => {
 const sortedConvMsgs = (cid) => getAll('messages').filter((m) => m.conversation_id === cid)
 const fmtMsg = (m) => `${m.dir === 'in' ? 'Customer' : m.dir === 'out' ? 'Agent' : 'System'}: ${m.text}`
 
-const SUMMARY_FULL = `Summarize this customer conversation for an agent who is taking over, so they instantly understand what happened WITHOUT reading the whole chat. Be detailed and specific. Respond with ONLY a JSON object:
+// The EDITABLE part of the summary prompt (agent can change it → "Save as default").
+// The fixed JSON schema is always appended by the server so the output stays parseable
+// no matter what the agent writes (UI depends on these 4 fields).
+const SUMMARY_DEFAULT_PROMPT = `Summarize this customer conversation for an agent who is taking over, so they instantly understand what happened WITHOUT reading the whole chat. Be detailed and specific.`
+const SUMMARY_SCHEMA_SUFFIX = `
+
+Respond with ONLY a JSON object:
 {
- "overview": string,        // 3-5 sentence plain-English overview from first to last message
+ "overview": string,        // 3-5 sentence plain-English overview
  "keyPoints": string[],     // detailed bullet facts: what the customer wants, products, quantities, sizes, colors, prices/quotes, decisions, dates
  "status": string,          // current stage (e.g. "Awaiting quote approval")
  "nextStep": string         // what the agent should do next
 }`
+const summaryPromptFull = (p) => `${(p && String(p).trim()) || SUMMARY_DEFAULT_PROMPT}${SUMMARY_SCHEMA_SUFFIX}`
+const savedSummaryPrompt = () => getSetting('summary_prompt') || SUMMARY_DEFAULT_PROMPT
 const SUMMARY_UPDATE = `You maintain a running, DETAILED summary of a customer-support conversation so an agent taking over understands everything WITHOUT reading the whole chat. You are given the EXISTING summary (JSON) and ONLY the NEW messages since it was written. Merge the new messages into the summary: keep all still-relevant key points, ADD the new information, and update status and nextStep. Do not drop earlier facts that still matter. Respond with ONLY a JSON object: { "overview": string, "keyPoints": string[], "status": string, "nextStep": string }`
+
+// Filter a conversation's messages to a time window. days>0 = rolling last-N-days;
+// from/to = "YYYY-MM-DD" custom range (inclusive). Empty = full chat.
+function windowSummaryMsgs(msgs, { days, from, to }) {
+  const tsOf = (m) => Number(m.ts) || Date.parse(m.created_at) || 0
+  if (from || to) {
+    const fromTs = from ? Date.parse(`${from}T00:00:00Z`) : 0
+    const toTs = to ? Date.parse(`${to}T23:59:59Z`) : Date.now()
+    return msgs.filter((m) => { const t = tsOf(m); return t >= fromTs && t <= toTs })
+  }
+  const d = Number(days) || 0
+  if (d > 0) { const cutoff = Date.now() - d * 86400000; return msgs.filter((m) => tsOf(m) >= cutoff) }
+  return msgs
+}
 
 // ---- Summary store: Qdrant ONLY (collection `crm_summaries`) ----
 const SUMMARY_COLLECTION = 'crm_summaries'
@@ -1679,6 +1701,8 @@ app.get('/api/ai/summary/:id', authRequired, async (req, res) => {
     totalCount: total,
     newCount: Math.max(0, total - covered),
     stale: !!saved?.summary && total > covered,
+    prompt: savedSummaryPrompt(),           // current default prompt (editable in UI)
+    defaultPrompt: SUMMARY_DEFAULT_PROMPT,   // built-in, for "Reset to default"
   })
 })
 
@@ -1688,27 +1712,48 @@ app.post('/api/ai/summary/:id', authRequired, async (req, res) => {
   if (!qdrantConfigured()) return res.status(400).json({ error: 'Qdrant not configured — summaries are stored in Qdrant (set QDRANT_URL)' })
   const conv = findById('conversations', req.params.id)
   if (!conv) return res.status(404).json({ error: 'conversation not found' })
-  const msgs = sortedConvMsgs(req.params.id)
-  if (!msgs.length) return res.json({ empty: true })
+  const allMsgs = sortedConvMsgs(req.params.id)
+  if (!allMsgs.length) return res.json({ empty: true })
 
-  const saved = await getSummaryPoint(conv.id)
-  const covered = saved?.summary_count || 0
-  const hasCache = !!saved?.summary
+  const { days = 0, from = '', to = '', prompt = '', savePrompt = false } = req.body || {}
+  // "Save as default" — persist the edited prompt globally (applies to all chats/agents).
+  if (savePrompt && prompt && String(prompt).trim()) { setSetting('summary_prompt', String(prompt).trim()); await flush() }
+
+  const windowed = (Number(days) > 0) || !!from || !!to
+  const defaultP = savedSummaryPrompt()
+  const promptGiven = prompt && String(prompt).trim()
+  const customPrompt = promptGiven && String(prompt).trim() !== defaultP.trim()
+  // Ad-hoc = any time window, OR a temporary (unsaved & different) prompt. These are a
+  // fresh one-off generation and do NOT overwrite the persisted running (full) summary.
+  const adhoc = windowed || (customPrompt && !savePrompt)
+  const effectivePrompt = promptGiven ? String(prompt) : defaultP
+
   try {
+    if (adhoc) {
+      const msgs = windowSummaryMsgs(allMsgs, { days: Number(days), from, to })
+      if (!msgs.length) return res.json({ ok: true, adhoc: true, empty: 'window', count: 0 })
+      const summary = await chatJSON(summaryPromptFull(effectivePrompt), msgs.map(fmtMsg).join('\n'))
+      return res.json({ ok: true, adhoc: true, summary, count: msgs.length, window: { days: Number(days) || 0, from, to } })
+    }
+
+    // Default running summary: incremental cache over the FULL chat, persisted.
+    const saved = await getSummaryPoint(conv.id)
+    const covered = saved?.summary_count || 0
+    const hasCache = !!saved?.summary
     let summary, mode
-    if (hasCache && msgs.length <= covered) {
-      summary = saved.summary; mode = 'unchanged'                // nothing new
+    if (hasCache && allMsgs.length <= covered) {
+      summary = saved.summary; mode = 'unchanged'
     } else if (hasCache && covered > 0) {
-      const fresh = msgs.slice(covered).map(fmtMsg).join('\n')   // only the NEW messages
+      const fresh = allMsgs.slice(covered).map(fmtMsg).join('\n')
       summary = await chatJSON(SUMMARY_UPDATE, `EXISTING SUMMARY:\n${JSON.stringify(saved.summary)}\n\nNEW MESSAGES:\n${fresh}`)
       mode = 'incremental'
     } else {
-      summary = await chatJSON(SUMMARY_FULL, msgs.map(fmtMsg).join('\n'))  // first time, full
+      summary = await chatJSON(summaryPromptFull(effectivePrompt), allMsgs.map(fmtMsg).join('\n'))
       mode = 'full'
     }
     const summaryAt = new Date().toISOString()
-    await saveSummaryPoint(conv.id, summary, msgs.length, summaryAt)
-    res.json({ ok: true, mode, summary, coveredCount: msgs.length, totalCount: msgs.length, newCount: 0, summaryAt })
+    await saveSummaryPoint(conv.id, summary, allMsgs.length, summaryAt)
+    res.json({ ok: true, mode, summary, coveredCount: allMsgs.length, totalCount: allMsgs.length, newCount: 0, summaryAt })
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
   }
