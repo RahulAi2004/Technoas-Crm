@@ -40,9 +40,9 @@ const LEAD_COLUMNS = [
   { key: 'status', header: 'Lead Status', has: (l) => !!l._status },
   { key: 'qual', header: 'Qualification', has: (l) => l._score > 0 },
   { key: 'temp', header: 'Temperature', has: (l) => !!l._temp },
-  { key: 'product', header: 'Product / Intent', has: (l) => !!l._product },
+  { key: 'intent', header: 'Purchase Intent', has: (l) => l._intent != null },
+  { key: 'product', header: 'Product', has: (l) => !!l._product },
   { key: 'value', header: 'Est. Value', has: (l) => l._value > 0 },
-  { key: 'next', header: 'Next Action', has: (l) => !!l._next },
   { key: 'actions', header: 'Actions', always: true, right: true },
 ]
 
@@ -70,23 +70,28 @@ export default function Leads() {
   const [page, setPage] = useState(1); const [perPage, setPerPage] = useState(10)
   const [menuId, setMenuId] = useState(null)
 
-  // Real data: leads + conversations (join by id → accurate start-date + "engaged" = we replied).
-  // Live: har 20s refetch, taaki naye leads apne aap aa jayein (reload ke bina).
+  // Real enriched leads seedhe DB se (/api/leads/list): intent_score, temperature,
+  // purchase_probability, estimated_value, primary_product — sab dynamic. Har 20s refetch.
   useEffect(() => {
     let cancelled = false
-    const load = () => Promise.all([api.get('/api/leads').catch(() => []), api.get('/api/conversations').catch(() => [])])
-      .then(([leads, convs]) => {
+    const load = () => api.get('/api/leads/list').catch(() => [])
+      .then((rows) => {
         if (cancelled) return
-        const cmap = {}; for (const c of (convs || [])) cmap[c.id] = c
-        const merged = (leads || []).map((l) => {
-          const cid = l.conversation_id || l.id
-          const c = cmap[cid] || cmap[l.id] || {}
-          const firstTs = Number(c.first_ts) || (l.created_at ? Date.parse(l.created_at) : 0) || 0
-          return { ...l, _cid: cid, _firstTs: firstTs, _lastOut: Number(c.last_out_ts) || 0, _lastTs: Number(c.last_ts) || 0,
-            _stage: l.pipeline || l.stage || 'Initiated', _status: l.status || 'New', _source: l.source || l.channel || '',
-            _score: Number(l.score) || 0, _value: Number(l.value) || 0, _product: l.product || '',
-            _temp: l.temperature || (l.badge === 'Hot' ? 'Hot' : ''), _next: l.next_action || l.nextStep || '' }
-        })
+        const merged = (rows || []).map((l) => ({
+          ...l,
+          _cid: l.id,
+          _firstTs: Number(l.first_ts) || (l.created_at ? Date.parse(l.created_at) : 0) || 0,
+          _lastOut: Number(l.last_out_ts) || 0,
+          _stage: l.lead_stage || l.stage || 'Initiated',
+          _status: l.lead_status || l.status || 'New',
+          _source: l.source || '',
+          _score: Number(l.intent_score) || 0,                                       // real lead/intent score
+          _intent: l.purchase_probability != null ? Math.round(Number(l.purchase_probability)) : null,
+          _temp: String(l.temperature || '').toLowerCase(),                           // hot/warm/cold
+          _value: Number(l.estimated_value) || 0,
+          _product: l.primary_product || '',
+          _potential: l.business_potential || '',
+        }))
         setData(merged)
       })
     load()
@@ -118,7 +123,7 @@ export default function Leads() {
     total: inPeriod.length,
     engaged: inPeriod.filter((l) => l._lastOut > 0).length,
     qualified: inPeriod.filter((l) => l._score >= 60).length,
-    hot: inPeriod.filter((l) => l._score >= 80 || l.badge === 'Hot').length,
+    hot: inPeriod.filter((l) => l._temp === 'hot' || l._score >= 80).length,
     quotes: inPeriod.filter((l) => QUOTE_STAGES.includes(l._stage)).length,
     orders: inPeriod.filter((l) => ORDER_STAGES.includes(l._stage)).length,
   }), [inPeriod])
@@ -151,10 +156,14 @@ export default function Leads() {
           <span className="text-xs font-semibold text-slate-600">{l._score}<span className="text-slate-400">/100</span></span>
           <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100"><span className={`block h-full ${scoreCls(l._score)}`} style={{ width: `${Math.min(100, l._score)}%` }} /></span>
         </div>)
-      case 'temp': return <span className="text-slate-600">{l._temp === 'Hot' ? '🔥 Hot' : (l._temp || '—')}</span>
-      case 'product': return <span className="text-slate-500">{l._product || '—'}</span>
+      case 'temp': return <TempBadge t={l._temp} />
+      case 'intent': return l._intent == null ? <span className="text-slate-300">—</span> : (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-600">{l._intent}%</span>
+          <span className="h-1.5 w-14 overflow-hidden rounded-full bg-slate-100"><span className="block h-full bg-violet-500" style={{ width: `${Math.min(100, l._intent)}%` }} /></span>
+        </div>)
+      case 'product': return <span className="text-slate-600">{l._product || '—'}</span>
       case 'value': return <span className="whitespace-nowrap font-semibold text-slate-700">{fmt$(l._value)}</span>
-      case 'next': return <span className="text-slate-500">{l._next || '—'}</span>
       case 'actions': return (
         <RowMenu open={menuId === l._cid} onToggle={() => setMenuId(menuId === l._cid ? null : l._cid)}
           onChat={() => { setMenuId(null); openChat(l._cid) }}
@@ -285,6 +294,13 @@ export default function Leads() {
       </div>
     </div>
   )
+}
+
+function TempBadge({ t }) {
+  if (!t) return <span className="text-slate-300">—</span>
+  const cls = t === 'hot' ? 'bg-rose-50 text-rose-700' : t === 'warm' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'
+  const icon = t === 'hot' ? '🔥' : t === 'warm' ? '☀️' : '❄️'
+  return <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold capitalize ${cls}`}>{icon} {t}</span>
 }
 
 function RowMenu({ open, onToggle, onChat, onDetails }) {

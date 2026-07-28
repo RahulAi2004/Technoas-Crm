@@ -1467,6 +1467,26 @@ app.get('/api/ai/analyze/:id', authRequired, async (req, res) => {
 
 // ============================================================
 // Lead Details panel — saved values, AI extraction (chat se), per-field validate→save.
+// Leads dashboard list — REAL enriched columns seedhe app.leads se (intent_score, temperature,
+// purchase_probability, estimated_value, primary_product, business_potential). /api/leads (crud)
+// sirf static extra doc deta tha (score:50), isliye qualification/temperature static dikhte the.
+app.get('/api/leads/list', authRequired, async (req, res) => {
+  try {
+    const r = await dbQuery(`
+      SELECT l.legacy_id AS id,
+             COALESCE(NULLIF(l.extra->>'name',''), c.extra->>'name', 'Unknown') AS name,
+             COALESCE(NULLIF(l.source,''), c.extra->>'channel', 'Facebook') AS source,
+             l.stage, l.status, l.lead_stage, l.lead_status,
+             l.intent_score, l.purchase_probability, l.temperature,
+             l.business_potential, l.customer_type, l.primary_product, l.estimated_value,
+             (c.extra->>'first_ts') AS first_ts, (c.extra->>'last_out_ts') AS last_out_ts,
+             l.created_at
+        FROM app.leads l
+        LEFT JOIN app.conversations c ON c.legacy_id = l.legacy_id`)
+    res.json(r.rows)
+  } catch (e) { console.warn('[leads/list]', e.message); res.status(500).json({ error: 'leads list failed' }) }
+})
+
 // ============================================================
 // Panel khulte hi jo DB me pehle se saved hai wo values.
 app.get('/api/leads/panel/:id', authRequired, async (req, res) => {
