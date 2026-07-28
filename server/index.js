@@ -2475,25 +2475,33 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: err.message })
 })
 
-// Har conversation ka "hamra last reply" (last_out_ts) aur "customer ka last message" (last_in_ts)
-// messages se nikaal kar set karo — follow-up filter (kab hamne aakhri baar bheja) ke liye.
-function backfillDirTs() {
-  const outMax = {}, inMax = {}
-  for (const m of getAll('messages')) {
-    const t = Number(m.ts) || Date.parse(m.created_at) || 0
-    if (!t) continue
-    const cid = m.conversation_id
-    if (m.dir === 'out') { if (t > (outMax[cid] || 0)) outMax[cid] = t }
-    else if (m.dir === 'in') { if (t > (inMax[cid] || 0)) inMax[cid] = t }
-  }
-  let n = 0
-  for (const c of getAll('conversations')) {
-    const patch = {}
-    if (outMax[c.id] && c.last_out_ts !== outMax[c.id]) patch.last_out_ts = outMax[c.id]
-    if (inMax[c.id] && c.last_in_ts !== inMax[c.id]) patch.last_in_ts = inMax[c.id]
-    if (Object.keys(patch).length) { update('conversations', c.id, patch); n++ }
-  }
-  console.log(`🕒 dir-ts backfill: ${n} conversations (last_out_ts/last_in_ts) set`)
+// Har conversation ka "hamra last reply" (last_out_ts) + "customer ka last message" (last_in_ts).
+// SIDHE app.messages se (SQL) — in-memory messages incomplete hote hain (empty-extra rows load
+// nahi hote), isliye pehle wala in-memory backfill kuch chats miss kar raha tha.
+async function backfillDirTs() {
+  try {
+    const r = await dbQuery(`
+      SELECT c.legacy_id AS cid, m.direction AS dir,
+             max(CASE WHEN m.extra->>'ts' ~ '^[0-9]{10,}$' THEN (m.extra->>'ts')::bigint
+                      ELSE (extract(epoch FROM m.created_at)*1000)::bigint END) AS ts
+        FROM app.messages m
+        JOIN app.conversations c ON m.conversation_id = c.conversation_id
+       WHERE c.legacy_id IS NOT NULL AND m.direction IN ('out','in')
+       GROUP BY c.legacy_id, m.direction`)
+    const outMax = {}, inMax = {}
+    for (const row of r.rows) {
+      const t = Number(row.ts) || 0; if (!t) continue
+      if (row.dir === 'out') outMax[row.cid] = t; else if (row.dir === 'in') inMax[row.cid] = t
+    }
+    let n = 0
+    for (const c of getAll('conversations')) {
+      const patch = {}
+      if (outMax[c.id] && c.last_out_ts !== outMax[c.id]) patch.last_out_ts = outMax[c.id]
+      if (inMax[c.id] && c.last_in_ts !== inMax[c.id]) patch.last_in_ts = inMax[c.id]
+      if (Object.keys(patch).length) { update('conversations', c.id, patch); n++ }
+    }
+    console.log(`🕒 dir-ts backfill (SQL): ${n} conversations set`)
+  } catch (e) { console.warn('[dir-ts backfill]', e.message) }
 }
 
 app.listen(PORT, () => {

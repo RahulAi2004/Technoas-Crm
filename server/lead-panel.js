@@ -307,8 +307,6 @@ Return ONLY a JSON object with EXACTLY these keys (use "" or [] when unknown —
     "special_instructions": ""
   },
   "shipping": {
-    "shipping_postcode": customer's ZIP/postcode or "",
-    "shipping_city": "", "shipping_state": "", "shipping_country": "",
     "shipping_method": one of ["Standard","Express","Pickup"] or "",
     "is_rush_order": true or false,
     "required_delivery_date": "YYYY-MM-DD" or "",
@@ -326,6 +324,8 @@ Rules:
 - Extract ONLY the CUSTOMER's own details. NEVER extract the shop's/agent's own email/phone/address.
 - Sum of size_breakdown quantities should equal total_quantity when both are known.
 - required_delivery_date: only if the customer states an actual delivery deadline. If they only mention an EVENT date, fill event_date and leave required_delivery_date "".
+- Dates: use "Today's date" above as reference. required_delivery_date and event_date must be TODAY or LATER — never a past date. If a weekday ("Friday") or vague term is mentioned with no resolvable future date, leave it "" rather than guessing.
+- The customer's shipping address (street/city/state/zip) goes ONLY in customer.shipping_address — do not repeat it elsewhere.
 - Numbers: digits only, no "$"/commas. Dates: YYYY-MM-DD.
 - If no quote/pricing discussed, return "line_items": [] and "" for totals.
 - Output valid JSON only, no commentary.`
@@ -337,7 +337,8 @@ export async function extractFields(conversationId) {
   const transcript = msgs.map((m) =>
     `${m.dir === 'in' ? 'Customer' : m.dir === 'out' ? 'Agent' : 'System'}: ${m.text || (m.attachments?.length ? '[sent an attachment/image]' : '')}`
   ).join('\n').slice(-9000)
-  const user = `Customer name: ${conv?.name || 'Unknown'}\nChannel: ${conv?.channel || ''}\n\nConversation transcript (oldest to newest):\n${transcript}`
+  const today = new Date().toISOString().slice(0, 10)
+  const user = `Today's date: ${today}\nCustomer name: ${conv?.name || 'Unknown'}\nChannel: ${conv?.channel || ''}\n\nConversation transcript (oldest to newest):\n${transcript}`
   const fields = await chatJSON(EXTRACT_SYSTEM, user)
   return { ok: true, fields }
 }

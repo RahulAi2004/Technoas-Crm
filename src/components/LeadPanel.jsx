@@ -52,9 +52,8 @@ const ART_FIELDS = [
   ['artwork_required', 'Artwork Required', 'toggle'], ['artwork_status', 'Artwork Status', 'select'],
   ['artwork_instructions', 'Artwork Instructions', 'textarea'], ['designer_notes', 'Designer Notes (internal)', 'textarea'],
 ]
+// Address (street/city/state/zip) upar AddressBlock me — yahan sirf delivery/logistics fields.
 const SHIP_FIELDS = [
-  ['shipping_postcode', 'Shipping ZIP', 'text'], ['shipping_city', 'City', 'text'],
-  ['shipping_state', 'State', 'text'], ['shipping_country', 'Country', 'text'],
   ['shipping_method', 'Shipping Method', 'select'], ['is_rush_order', 'Rush Order', 'toggle'],
   ['required_delivery_date', 'Required Delivery Date', 'date'], ['event_date', 'Event Date', 'date'],
   ['estimated_shipping_cost', 'Est. Shipping Cost', 'number'], ['delivery_instructions', 'Delivery Instructions', 'textarea'],
@@ -69,9 +68,9 @@ const QUOTE_FIELDS = [
 // Har tab ke saare field keys — "Confirm all" + unsaved-count ke liye.
 const TAB_KEYS = {
   lead: [...LEAD_FIELDS.map((f) => f[0]), 'lost_reason'],
-  customer: [...CUST_FIELDS.map((f) => f[0]), 'shipping_address', 'billing_address'],
+  customer: [...CUST_FIELDS.map((f) => f[0]), 'billing_address'],
   product: [...PROD_FIELDS.map((f) => f[0]), 'size_breakdown', 'print_locations', 'special_instructions', ...ART_FIELDS.map((f) => f[0])],
-  shipping: SHIP_FIELDS.map((f) => f[0]),
+  shipping: ['shipping_address', ...SHIP_FIELDS.map((f) => f[0])],
   quote: [...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes'],
 }
 
@@ -283,7 +282,7 @@ function computeMissing(vals, hasQuote) {
   if (!hasVal(vals.total_quantity)) items.push({ label: 'Quantity', level: 'block' })
   const arts = String(vals.artwork_status || '')
   if (!/received|review|approved|changes/i.test(arts)) items.push({ label: 'Artwork', level: 'block' })
-  if (!hasVal(vals.shipping_postcode)) items.push({ label: 'Shipping ZIP', level: 'warn' })
+  if (!hasVal(vals.shipping_address?.zip)) items.push({ label: 'Shipping ZIP', level: 'warn' })
   if (!hasVal(vals.required_delivery_date) && !hasVal(vals.event_date)) items.push({ label: 'Delivery date', level: 'warn' })
   if (!hasQuote) items.push({ label: 'Quote', level: 'warn' })
   return items
@@ -456,12 +455,11 @@ export default function LeadPanel({ conv, onClose }) {
 
         {tab === 'customer' && (<div className="space-y-3">
           <div className={grid}>{renderFields(CUST_FIELDS)}</div>
-          <AddressBlock title="Shipping Address" addr={vals.shipping_address} filled={filled.shipping_address} state={fs.shipping_address}
-            onChange={(v) => setVal('shipping_address', v)} onValidate={validate('shipping_address')} />
           <AddressBlock title="Billing Address" addr={sameBilling ? vals.shipping_address : vals.billing_address} filled={filled.billing_address} state={fs.billing_address}
             sameAs={sameBilling} onSame={setSameBilling}
             onChange={(v) => setVal('billing_address', v)}
             onValidate={() => saveOne('billing_address', sameBilling ? vals.shipping_address : vals.billing_address)} />
+          <p className="text-[10px] text-slate-400">Shipping address ab "Shipping & Delivery" tab me hai. "Same as shipping" tick karo to wahi yahan aa jayega.</p>
         </div>)}
 
         {tab === 'product' && (<div className="space-y-3">
@@ -477,6 +475,8 @@ export default function LeadPanel({ conv, onClose }) {
         </div>)}
 
         {tab === 'shipping' && (<div className="space-y-3">
+          <AddressBlock title="Shipping Address" addr={vals.shipping_address} filled={filled.shipping_address} state={fs.shipping_address}
+            onChange={(v) => setVal('shipping_address', v)} onValidate={validate('shipping_address')} />
           <div className={grid}>{renderFields(SHIP_FIELDS)}</div>
         </div>)}
 
