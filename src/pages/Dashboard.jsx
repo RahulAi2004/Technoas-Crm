@@ -1232,6 +1232,14 @@ const DOC_ITEMS = [
   { label: 'Preview Invoice', msg: '🧾 Here is your invoice.' },
 ]
 
+// Safety-net: agar backend se aaye items me `key` (zelle/paypal) na ho, to defaults se
+// label match karke key recover kar do — warna QR upload (⬆ set) button gayab ho jata hai.
+const withKeys = (items, defaults) => {
+  if (!Array.isArray(items)) return defaults
+  const keyByLabel = Object.fromEntries(defaults.filter((d) => d.key).map((d) => [d.label.toLowerCase(), d.key]))
+  return items.map((it) => (it.key || !keyByLabel[String(it.label || '').toLowerCase()]) ? it : { ...it, key: keyByLabel[it.label.toLowerCase()] })
+}
+
 function SendPanel({ title, hint, items, onSendReply, onSendImage }) {
   const toast = useToast()
   const [checked, setChecked] = useState({})
@@ -1955,7 +1963,7 @@ function ResponsesTab({ onSendReply, onSendImage, conv, msgCount }) {
           auto-fit reacts to the AI panel's actual width (not the viewport). */}
       <div className="mt-3 grid items-start gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))' }}>
         <SendPanel title="Communication Actions" items={qa?.communication || COMM_ITEMS} onSendReply={onSendReply} onSendImage={onSendImage} />
-        <SendPanel title="Payment Methods" hint="tick + Send" items={qa?.payment || PAY_ITEMS} onSendReply={onSendReply} onSendImage={onSendImage} />
+        <SendPanel title="Payment Methods" hint="tick + Send" items={withKeys(qa?.payment, PAY_ITEMS)} onSendReply={onSendReply} onSendImage={onSendImage} />
         <SendPanel title="Document" items={qa?.document || DOC_ITEMS} onSendReply={onSendReply} onSendImage={onSendImage} />
       </div>
     </>

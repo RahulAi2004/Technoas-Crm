@@ -2394,9 +2394,9 @@ const DEFAULT_QUICK_ACTIONS = {
     { label: 'Our Brochure (PDF)',        msg: '📄 Our brochure: https://decoinks.com/brochure.pdf' },
   ],
   payment: [
-    { label: 'Zelle QR Code',          msg: '💳 Pay via Zelle: info@decoinks.com' },
-    { label: 'Cash App QR Code',       msg: '💵 Cash App: $decoinks' },
-    { label: 'PayPal QR Code',         msg: '🅿️ PayPal: https://paypal.me/decoinks' },
+    { label: 'Zelle QR Code',          key: 'zelle',   msg: '💳 Pay via Zelle: info@decoinks.com' },
+    { label: 'Cash App QR Code',       key: 'cashapp', msg: '💵 Cash App: $decoinks' },
+    { label: 'PayPal QR Code',         key: 'paypal',  msg: '🅿️ PayPal: https://paypal.me/decoinks' },
     { label: 'PayPal Invoice (Cards)', msg: '🧾 We will send a secure PayPal invoice link (cards accepted).' },
   ],
   document: [
@@ -2404,7 +2404,13 @@ const DEFAULT_QUICK_ACTIONS = {
     { label: 'Preview Invoice', msg: '🧾 Here is your invoice.' },
   ],
 }
-const cleanItems = (a) => (Array.isArray(a) ? a : []).map((x) => ({ label: String(x?.label || '').trim(), msg: String(x?.msg || '').trim() })).filter((x) => x.label)
+// NOTE: `key` (zelle/cashapp/paypal) ko preserve karna zaroori hai — isi se image-upload
+// (QR) button dikhta hai. Pehle ye strip ho jata tha, is liye save karte hi upload icon gayab.
+const cleanItems = (a) => (Array.isArray(a) ? a : []).map((x) => {
+  const item = { label: String(x?.label || '').trim(), msg: String(x?.msg || '').trim() }
+  if (x?.key) item.key = String(x.key).trim()
+  return item
+}).filter((x) => x.label)
 
 // ---- Customer-sent (SOURCE) artworks — SRC-ART-YY-NNNN, stored in PostgreSQL ----
 app.get('/api/artworks', authRequired, async (req, res) => {
