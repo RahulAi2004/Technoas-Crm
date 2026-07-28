@@ -38,9 +38,6 @@ const LEAD_COLUMNS = [
   { key: 'source', header: 'Source', has: (l) => !!l._source },
   { key: 'stage', header: 'Stage', has: (l) => !!l._stage },
   { key: 'status', header: 'Lead Status', has: (l) => !!l._status },
-  { key: 'qual', header: 'Qualification', has: (l) => l._score > 0 },
-  { key: 'temp', header: 'Temperature', has: (l) => !!l._temp },
-  { key: 'intent', header: 'Purchase Intent', has: (l) => l._intent != null },
   { key: 'actions', header: 'Actions', always: true, right: true },
 ]
 

@@ -275,37 +275,46 @@ function QualCard({ q, temp }) {
   )
 }
 
-// AI-enriched read-only insights — wahi fields jo Leads dashboard me dikhte hain.
-function AIInsights({ ai }) {
+// AI-enriched read-only insights — panel ke baaki fields ki tarah (label + value box).
+function AIInsights({ ai, grid }) {
   if (!ai) return null
   const cap = (s) => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1)
-  const rows = [
-    ['Purchase Intent', ai.intent_score != null ? `${ai.intent_score}/100` : null],
-    ['Buy Probability', ai.purchase_probability != null ? `${Math.round(Number(ai.purchase_probability))}%` : null],
-    ['Temperature', ai.temperature ? cap(ai.temperature) : null],
-    ['Business Potential', ai.business_potential || null],
-    ['Customer Type', ai.customer_type ? ai.customer_type.replace(/_/g, ' ') : null],
-    ['Primary Product', ai.primary_product || null],
-    ['Est. Value', (ai.estimated_value != null && Number(ai.estimated_value) > 0) ? `$${Number(ai.estimated_value).toLocaleString()}` : null],
-    ['Reseller Likelihood', ai.reseller_likelihood != null ? `${ai.reseller_likelihood}%` : null],
-    ['Industry', ai.industry || null],
+  const fields = [
+    ['Purchase Intent', ai.intent_score != null ? `${ai.intent_score}/100` : ''],
+    ['Buy Probability', ai.purchase_probability != null ? `${Math.round(Number(ai.purchase_probability))}%` : ''],
+    ['Temperature', ai.temperature ? cap(ai.temperature) : ''],
+    ['Business Potential', ai.business_potential || ''],
+    ['Customer Type', ai.customer_type ? ai.customer_type.replace(/_/g, ' ') : ''],
+    ['Primary Product', ai.primary_product || ''],
+    ['Est. Value', (ai.estimated_value != null && Number(ai.estimated_value) > 0) ? `$${Number(ai.estimated_value).toLocaleString()}` : ''],
+    ['Reseller Likelihood', ai.reseller_likelihood != null ? `${ai.reseller_likelihood}%` : ''],
+    ['Industry', ai.industry || ''],
   ].filter(([, v]) => v)
-  if (!rows.length && !ai.ai_observations && !ai.lead_summary) return null
+  if (!fields.length && !ai.ai_observations && !ai.lead_summary) return null
+  const box = 'rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-slate-800'
   return (
-    <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-2.5">
-      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-violet-800">✨ AI Insights <span className="rounded bg-violet-100 px-1 text-[9px] font-semibold text-violet-600">auto</span></h4>
-      {rows.length > 0 && (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-          {rows.map(([k, v]) => (
-            <div key={k} className="flex items-center justify-between gap-2 text-[11px]">
-              <span className="shrink-0 text-slate-500">{k}</span>
-              <span className="truncate text-right font-semibold capitalize text-slate-800">{v}</span>
-            </div>
-          ))}
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-violet-500">✨ AI Insights <span className="rounded bg-violet-100 px-1 text-[9px] normal-case text-violet-600">auto · read-only</span></div>
+      <div className={grid}>
+        {fields.map(([label, value]) => (
+          <div key={label}>
+            <label className="mb-0.5 block text-[11px] font-medium text-slate-500">{label}</label>
+            <div className={`${box} text-[13px] font-semibold capitalize`}>{value}</div>
+          </div>
+        ))}
+      </div>
+      {ai.lead_summary && (
+        <div>
+          <label className="mb-0.5 block text-[11px] font-medium text-slate-500">AI Summary</label>
+          <div className={`${box} text-[12px] leading-relaxed`}>{ai.lead_summary}</div>
         </div>
       )}
-      {ai.lead_summary && <p className="mt-1.5 border-t border-violet-100 pt-1.5 text-[11px] text-slate-700"><b className="text-violet-700">Summary:</b> {ai.lead_summary}</p>}
-      {ai.ai_observations && <p className="mt-1 text-[11px] text-slate-600"><b className="text-violet-700">Observations:</b> {ai.ai_observations}</p>}
+      {ai.ai_observations && (
+        <div>
+          <label className="mb-0.5 block text-[11px] font-medium text-slate-500">AI Observations</label>
+          <div className={`${box} text-[12px] leading-relaxed`}>{ai.ai_observations}</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -483,7 +492,7 @@ export default function LeadPanel({ conv, onClose }) {
       {/* Body */}
       <div className="nice-scroll flex-1 overflow-y-auto px-4 py-3">
         {tab === 'lead' && (<div className="space-y-3">
-          <AIInsights ai={ai} />
+          <AIInsights ai={ai} grid={grid} />
           <QualCard q={score} temp={autoTemp} />
           <div className={grid}>{renderFields(LEAD_FIELDS)}</div>
           {vals.stage === 'Lost' && <div className={grid}><Field k="lost_reason" label="Lost Reason" type="text" val={vals.lost_reason} filled={filled.lost_reason} state={fs.lost_reason} onChange={(v) => setVal('lost_reason', v)} onValidate={validate('lost_reason')} /></div>}
