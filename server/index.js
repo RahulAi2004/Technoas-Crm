@@ -1399,6 +1399,10 @@ function knownOutgoing(convId, mid, text, ts, hasAtt) {
 function saveMessage(row) {
   const m = insert('messages', row)
   ingestMessage(m)
+  // "chat kab shuru hui" — sabse pehle message ka time. Pehle message par set; koi purana
+  // message aaye (backfill/reorder) to neeche le aao. Established chats me kuch update nahi hota.
+  const t = Number(m.ts) || Date.parse(m.created_at) || 0
+  if (t) { const c = findById('conversations', m.conversation_id); if (c && (!c.first_ts || t < c.first_ts)) update('conversations', m.conversation_id, { first_ts: t }) }
   // customer ke bheje artworks auto-capture → app.customer_artwork (SRC-ART-YY-NNNN), fire-and-forget
   captureSourceArtworks(m).catch(() => {})
   return m
@@ -2534,21 +2538,26 @@ async function backfillDirTs() {
     const r = await dbQuery(`
       SELECT c.legacy_id AS cid, m.direction AS dir,
              max(CASE WHEN m.extra->>'ts' ~ '^[0-9]{10,}$' THEN (m.extra->>'ts')::bigint
-                      ELSE (extract(epoch FROM m.created_at)*1000)::bigint END) AS ts
+                      ELSE (extract(epoch FROM m.created_at)*1000)::bigint END) AS ts,
+             min(CASE WHEN m.extra->>'ts' ~ '^[0-9]{10,}$' THEN (m.extra->>'ts')::bigint
+                      ELSE (extract(epoch FROM m.created_at)*1000)::bigint END) AS mints
         FROM app.messages m
         JOIN app.conversations c ON m.conversation_id = c.conversation_id
        WHERE c.legacy_id IS NOT NULL AND m.direction IN ('out','in')
        GROUP BY c.legacy_id, m.direction`)
-    const outMax = {}, inMax = {}
+    const outMax = {}, inMax = {}, firstMin = {}
     for (const row of r.rows) {
-      const t = Number(row.ts) || 0; if (!t) continue
-      if (row.dir === 'out') outMax[row.cid] = t; else if (row.dir === 'in') inMax[row.cid] = t
+      const t = Number(row.ts) || 0
+      const mn = Number(row.mints) || 0
+      if (row.dir === 'out') { if (t) outMax[row.cid] = t } else if (row.dir === 'in') { if (t) inMax[row.cid] = t }
+      if (mn && (!firstMin[row.cid] || mn < firstMin[row.cid])) firstMin[row.cid] = mn  // chat kab shuru hui
     }
     let n = 0
     for (const c of getAll('conversations')) {
       const patch = {}
       if (outMax[c.id] && c.last_out_ts !== outMax[c.id]) patch.last_out_ts = outMax[c.id]
       if (inMax[c.id] && c.last_in_ts !== inMax[c.id]) patch.last_in_ts = inMax[c.id]
+      if (firstMin[c.id] && c.first_ts !== firstMin[c.id]) patch.first_ts = firstMin[c.id]
       if (Object.keys(patch).length) { update('conversations', c.id, patch); n++ }
     }
     console.log(`🕒 dir-ts backfill (SQL): ${n} conversations set`)

@@ -21,6 +21,7 @@ const normalizeConv = (c) => c && ({
   lastDir:     c.last_dir    ?? c.lastDir,
   lastOutTs:   c.last_out_ts ?? c.lastOutTs,   // hamra last reply kab gaya
   lastInTs:    c.last_in_ts  ?? c.lastInTs,     // customer ka last message
+  firstTs:     c.first_ts    ?? c.firstTs,      // chat kab shuru hui (pehla message)
 })
 
 const channelIcon = (channel) => {
@@ -280,6 +281,12 @@ export default function Dashboard() {
       if (!inTs || inTs <= outTs) return false                                  // customer aakhri nahi bola -> skip
       if (filters.from && inTs < dayStartLocal(filters.from)) return false
       if (filters.to && inTs > dayEndLocal(filters.to)) return false
+    } else if (filters.dateBasis === 'created') {
+      // 'created' = chat kab shuru hui / customer pehli baar kab aaya (pehla message ka time).
+      const fTs = Number(c.firstTs) || (c.created_at ? Date.parse(c.created_at) : 0) || 0
+      if (!fTs) return false
+      if (filters.from && fTs < dayStartLocal(filters.from)) return false
+      if (filters.to && fTs > dayEndLocal(filters.to)) return false
     } else {
       const bTs = convTs(c)
       if (filters.from && bTs < dayStartLocal(filters.from)) return false
@@ -738,6 +745,7 @@ export default function Dashboard() {
                   <div className="col-span-2"><label className="mb-1 block font-semibold text-slate-600">Date filter by</label>
                     <select value={filters.dateBasis} onChange={(e) => setFilter('dateBasis', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
                       <option value="activity">Last activity (any message)</option>
+                      <option value="created">Chat started (customer first came)</option>
                       <option value="out">We replied last — awaiting customer</option>
                       <option value="in">Customer replied last — needs our reply</option>
                     </select>
