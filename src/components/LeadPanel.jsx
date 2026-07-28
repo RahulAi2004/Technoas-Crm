@@ -275,6 +275,41 @@ function QualCard({ q, temp }) {
   )
 }
 
+// AI-enriched read-only insights — wahi fields jo Leads dashboard me dikhte hain.
+function AIInsights({ ai }) {
+  if (!ai) return null
+  const cap = (s) => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1)
+  const rows = [
+    ['Purchase Intent', ai.intent_score != null ? `${ai.intent_score}/100` : null],
+    ['Buy Probability', ai.purchase_probability != null ? `${Math.round(Number(ai.purchase_probability))}%` : null],
+    ['Temperature', ai.temperature ? cap(ai.temperature) : null],
+    ['Business Potential', ai.business_potential || null],
+    ['Customer Type', ai.customer_type ? ai.customer_type.replace(/_/g, ' ') : null],
+    ['Primary Product', ai.primary_product || null],
+    ['Est. Value', (ai.estimated_value != null && Number(ai.estimated_value) > 0) ? `$${Number(ai.estimated_value).toLocaleString()}` : null],
+    ['Reseller Likelihood', ai.reseller_likelihood != null ? `${ai.reseller_likelihood}%` : null],
+    ['Industry', ai.industry || null],
+  ].filter(([, v]) => v)
+  if (!rows.length && !ai.ai_observations && !ai.lead_summary) return null
+  return (
+    <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-2.5">
+      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-violet-800">✨ AI Insights <span className="rounded bg-violet-100 px-1 text-[9px] font-semibold text-violet-600">auto</span></h4>
+      {rows.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+          {rows.map(([k, v]) => (
+            <div key={k} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="shrink-0 text-slate-500">{k}</span>
+              <span className="truncate text-right font-semibold capitalize text-slate-800">{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {ai.lead_summary && <p className="mt-1.5 border-t border-violet-100 pt-1.5 text-[11px] text-slate-700"><b className="text-violet-700">Summary:</b> {ai.lead_summary}</p>}
+      {ai.ai_observations && <p className="mt-1 text-[11px] text-slate-600"><b className="text-violet-700">Observations:</b> {ai.ai_observations}</p>}
+    </div>
+  )
+}
+
 // derived "missing / blocking" for the bottom strip
 function computeMissing(vals, hasQuote) {
   const items = []
@@ -299,6 +334,7 @@ export default function LeadPanel({ conv, onClose }) {
   const [savingAll, setSavingAll] = useState(false)
   const [err, setErr] = useState('')
   const [sameBilling, setSameBilling] = useState(false)
+  const [ai, setAi] = useState(null)            // AI-enriched read-only insights (Leads dashboard wale fields)
 
   const cid = conv?.id
 
@@ -325,9 +361,9 @@ export default function LeadPanel({ conv, onClose }) {
   useEffect(() => {
     if (!cid) return
     let cancelled = false
-    setVals({}); setFilled({}); setFs({}); setErr(''); setScore(null); setSameBilling(false); setTab('lead')
+    setVals({}); setFilled({}); setFs({}); setErr(''); setScore(null); setSameBilling(false); setTab('lead'); setAi(null)
     api.get(`/api/leads/panel/${encodeURIComponent(cid)}`)
-      .then((b) => { if (!cancelled) setVals(flatten(b)) })
+      .then((b) => { if (!cancelled) { setVals(flatten(b)); setAi(b?.ai || null) } })
       .catch(() => {})
       .finally(() => { if (!cancelled) runExtract() })
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`)
@@ -447,6 +483,7 @@ export default function LeadPanel({ conv, onClose }) {
       {/* Body */}
       <div className="nice-scroll flex-1 overflow-y-auto px-4 py-3">
         {tab === 'lead' && (<div className="space-y-3">
+          <AIInsights ai={ai} />
           <QualCard q={score} temp={autoTemp} />
           <div className={grid}>{renderFields(LEAD_FIELDS)}</div>
           {vals.stage === 'Lost' && <div className={grid}><Field k="lost_reason" label="Lost Reason" type="text" val={vals.lost_reason} filled={filled.lost_reason} state={fs.lost_reason} onChange={(v) => setVal('lost_reason', v)} onValidate={validate('lost_reason')} /></div>}

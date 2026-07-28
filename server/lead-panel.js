@@ -206,6 +206,20 @@ export async function getLeadBundle(conversationId) {
       lost_reason: lead.lost_reason || '',
       estimated_value: lead.estimated_value ?? '',
     }
+    // AI-enriched read-only insights (wahi fields jo Leads dashboard me dikhte hain).
+    out.ai = {
+      intent_score: lead.intent_score ?? null,
+      purchase_probability: lead.purchase_probability ?? null,
+      temperature: lead.temperature || '',
+      business_potential: lead.business_potential || '',
+      customer_type: lead.customer_type || '',
+      primary_product: lead.primary_product || '',
+      estimated_value: lead.estimated_value ?? null,
+      reseller_likelihood: lead.reseller_likelihood ?? null,
+      industry: lead.industry || '',
+      lead_summary: lead.lead_summary || '',
+      ai_observations: lead.ai_observations || '',
+    }
   }
   if (co.customer_id) {
     const cr = await dbQuery(`SELECT * FROM app.customers WHERE customer_id = $1`, [co.customer_id])

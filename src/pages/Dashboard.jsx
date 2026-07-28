@@ -793,7 +793,7 @@ export default function Dashboard() {
               {visibleConvs.map((c) => {
                 const id = c.id; const active = id === currentId
                 return (
-                  <button key={id} onClick={() => setCurrentId(id)} className={`group relative mx-1.5 my-0.5 flex w-[calc(100%-0.75rem)] gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition ${active ? 'bg-brand-50 ring-1 ring-inset ring-brand-100' : 'hover:bg-slate-100/70'}`}>
+                  <button key={id} onClick={() => { setCurrentId(id); if (search) setSearch('') }} className={`group relative mx-1.5 my-0.5 flex w-[calc(100%-0.75rem)] gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition ${active ? 'bg-brand-50 ring-1 ring-inset ring-brand-100' : 'hover:bg-slate-100/70'}`}>
                     {active && <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-brand-500" />}
                     <div className="relative shrink-0">
                       <span className={`grid h-10 w-10 place-items-center rounded-full ${c.avatarBg} text-sm font-bold`}>{c.initials}</span>
