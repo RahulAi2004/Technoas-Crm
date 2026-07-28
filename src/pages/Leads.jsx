@@ -74,7 +74,7 @@ export default function Leads() {
   // purchase_probability, estimated_value, primary_product — sab dynamic. Har 20s refetch.
   useEffect(() => {
     let cancelled = false
-    const load = () => api.get('/api/leads/list').catch(() => [])
+    const load = () => api.get('/api/leads-list').catch(() => [])
       .then((rows) => {
         if (cancelled) return
         const merged = (rows || []).map((l) => ({

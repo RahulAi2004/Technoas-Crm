@@ -1470,7 +1470,7 @@ app.get('/api/ai/analyze/:id', authRequired, async (req, res) => {
 // Leads dashboard list — REAL enriched columns seedhe app.leads se (intent_score, temperature,
 // purchase_probability, estimated_value, primary_product, business_potential). /api/leads (crud)
 // sirf static extra doc deta tha (score:50), isliye qualification/temperature static dikhte the.
-app.get('/api/leads/list', authRequired, async (req, res) => {
+app.get('/api/leads-list', authRequired, async (req, res) => {
   try {
     const r = await dbQuery(`
       SELECT l.legacy_id AS id,
