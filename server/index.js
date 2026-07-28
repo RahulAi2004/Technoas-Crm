@@ -811,7 +811,7 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
       via,
       agent: agentName(req),
     })
-    if (conv) update('conversations', conv.id, { list_preview: text, list_time: nowTime(), last_ts: Date.now(), last_dir: 'out' })
+    if (conv) update('conversations', conv.id, { list_preview: text, list_time: nowTime(), last_ts: Date.now(), last_dir: 'out', last_out_ts: Date.now() })
     broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })
     res.json({ ok: true, via, message: msg, result })
   } catch (e) {
@@ -865,7 +865,7 @@ app.post('/api/meta/send-file', authRequired, async (req, res) => {
       attachments: [{ type: isImg ? 'image' : 'file', url: null, name: artworkNo || fileName }],
       time: nowTime(), ts: Number(req.body?.clientTs) || Date.now(), via, agent: agentName(req),
     })
-    if (conv) update('conversations', conv.id, { list_preview: isImg ? '📷 Photo' : `📎 ${fileName}`, list_time: nowTime(), last_ts: Date.now(), last_dir: 'out' })
+    if (conv) update('conversations', conv.id, { list_preview: isImg ? '📷 Photo' : `📎 ${fileName}`, list_time: nowTime(), last_ts: Date.now(), last_dir: 'out', last_out_ts: Date.now() })
     broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })
     res.json({ ok: true, via, message: msg })
   } catch (e) {
@@ -1065,12 +1065,15 @@ async function syncMetaConversations() {
 
         const msgs = (c.messages?.data || []).slice().reverse() // oldest → newest
         let lastText = conv.list_preview, lastTime = conv.list_time, lastDir = conv.last_dir, added = false
+        let lastOutTs = conv.last_out_ts || 0, lastInTs = conv.last_in_ts || 0
         for (const m of msgs) {
           const fromId = String(m.from?.id || '')
           const dir = (fromId === pageId || fromId === igId) ? 'out' : 'in'
           const atts = metaAttachments(m.attachments)
           const txt = m.message || ''
           const ts = Date.parse(m.created_time) || Date.now()   // ASLI FB time — sort isi se
+          if (dir === 'out' && ts > lastOutTs) lastOutTs = ts        // hamra last reply kab gaya
+          else if (dir === 'in' && ts > lastInTs) lastInTs = ts      // customer ka last message
 
           // OUTGOING (Meta Business Suite / AI se bheja) bhi ab CRM mein aata hai, taaki agent ke
           // bheje replies bhi dikhein. CRM-se-bheje (Chatwoot) ka echo duplicate na bane: mid ya
@@ -1098,6 +1101,8 @@ async function syncMetaConversations() {
         // Track last-activity timestamp so the inbox can sort newest-first.
         const lastTs = c.updated_time ? Date.parse(c.updated_time) : (conv.last_ts || null)
         const patch = { last_ts: lastTs }
+        if (lastOutTs && lastOutTs !== conv.last_out_ts) patch.last_out_ts = lastOutTs
+        if (lastInTs && lastInTs !== conv.last_in_ts) patch.last_in_ts = lastInTs
         if (added) { patch.list_preview = lastText; patch.list_time = lastTime; patch.last_dir = lastDir }
         const updated = update('conversations', convId, patch)
         if (updated && (added || updated.last_ts !== conv.last_ts)) {
@@ -1189,7 +1194,7 @@ app.post('/api/webhooks/meta', async (req, res) => {
         ts: Date.now(),
         via: 'meta',
       })
-      const patch = { list_preview: text || attachPreview(atts), list_time: nowTime(), last_ts: Date.now(), last_dir: isEcho ? 'out' : 'in' }
+      const patch = { list_preview: text || attachPreview(atts), list_time: nowTime(), last_ts: Date.now(), last_dir: isEcho ? 'out' : 'in', [isEcho ? 'last_out_ts' : 'last_in_ts']: Date.now() }
       if (!isEcho) patch.unread = (conv.unread || 0) + 1
       const updated = update('conversations', conv.id, patch)
       broadcast({ type: 'message', conversationId: conv.id, message: stored })
@@ -2470,6 +2475,27 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: err.message })
 })
 
+// Har conversation ka "hamra last reply" (last_out_ts) aur "customer ka last message" (last_in_ts)
+// messages se nikaal kar set karo — follow-up filter (kab hamne aakhri baar bheja) ke liye.
+function backfillDirTs() {
+  const outMax = {}, inMax = {}
+  for (const m of getAll('messages')) {
+    const t = Number(m.ts) || Date.parse(m.created_at) || 0
+    if (!t) continue
+    const cid = m.conversation_id
+    if (m.dir === 'out') { if (t > (outMax[cid] || 0)) outMax[cid] = t }
+    else if (m.dir === 'in') { if (t > (inMax[cid] || 0)) inMax[cid] = t }
+  }
+  let n = 0
+  for (const c of getAll('conversations')) {
+    const patch = {}
+    if (outMax[c.id] && c.last_out_ts !== outMax[c.id]) patch.last_out_ts = outMax[c.id]
+    if (inMax[c.id] && c.last_in_ts !== inMax[c.id]) patch.last_in_ts = inMax[c.id]
+    if (Object.keys(patch).length) { update('conversations', c.id, patch); n++ }
+  }
+  console.log(`🕒 dir-ts backfill: ${n} conversations (last_out_ts/last_in_ts) set`)
+}
+
 app.listen(PORT, () => {
   console.log(`✅ Technocas CRM API running on http://localhost:${PORT}`)
   refreshDbSchema()            // give the AI assistant the full live DB schema
@@ -2479,6 +2505,7 @@ app.listen(PORT, () => {
   startShareWorker()           // NextCloud share-links (slow, rate-limit-safe)
   startBackfillWorker()        // missing image bytes ko source_url se dobara download (broken images fix)
   startChatwootReconcile()     // Chatwoot: webhook ke gaps API se bharo (server-down safety)
+  setTimeout(backfillDirTs, 15000)   // data load hone ke baad last_out_ts/last_in_ts bhar do
 })
 
 // Auto-refresh AI profiles + lead intelligence for NEW/CHANGED chats (stale-aware scripts).

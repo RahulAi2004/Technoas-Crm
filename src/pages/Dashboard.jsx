@@ -19,6 +19,8 @@ const normalizeConv = (c) => c && ({
   listPreview: c.list_preview ?? c.listPreview,
   listTime:    c.list_time   ?? c.listTime,
   lastDir:     c.last_dir    ?? c.lastDir,
+  lastOutTs:   c.last_out_ts ?? c.lastOutTs,   // hamra last reply kab gaya
+  lastInTs:    c.last_in_ts  ?? c.lastInTs,     // customer ka last message
 })
 
 const channelIcon = (channel) => {
@@ -225,11 +227,11 @@ export default function Dashboard() {
   const [search, setSearch] = useState('')
   const [view, setView] = useState('all')
   const [sortDir, setSortDir] = useState('latest') // 'latest' | 'oldest'
-  const emptyFilters = { channel: '', agent: '', status: '', tag: '', from: '', to: '' }
+  const emptyFilters = { channel: '', agent: '', status: '', tag: '', from: '', to: '', dateBasis: 'activity' }
   const [filters, setFilters] = useState(emptyFilters)
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
   const clearFilters = () => setFilters(emptyFilters)
-  const activeFilterCount = Object.values(filters).filter(Boolean).length
+  const activeFilterCount = ['channel', 'agent', 'status', 'tag', 'from', 'to'].filter((k) => filters[k]).length
 
   // Customer flags/tags — definitions shared with the Customers page (/api/flags),
   // yahan inbox mein conversation par lagte hain (conv.tags = [flagId,...]).
@@ -265,10 +267,13 @@ export default function Dashboard() {
     if (filters.agent && c.assigned_to !== filters.agent) return false
     if (filters.status && c.status !== filters.status) return false
     if (filters.tag && !(Array.isArray(c.tags) && c.tags.includes(filters.tag))) return false
-    // Date input "YYYY-MM-DD" ko LOCAL din ke hisaab se lo (Date.parse ise UTC maanta hai,
-    // jis se UTC+5 me boundary khisak kar aaj ke chats kat jate the).
-    if (filters.from && convTs(c) < dayStartLocal(filters.from)) return false
-    if (filters.to && convTs(c) > dayEndLocal(filters.to)) return false
+    // Date filter kis time pe lage: last activity (default) / hamra last reply / customer last msg.
+    // Date input "YYYY-MM-DD" ko LOCAL din ke hisaab se (Date.parse UTC maanta, boundary khisak jati thi).
+    const bTs = filters.dateBasis === 'out' ? (Number(c.lastOutTs) || 0)
+      : filters.dateBasis === 'in' ? (Number(c.lastInTs) || 0)
+      : convTs(c)
+    if (filters.from && bTs < dayStartLocal(filters.from)) return false
+    if (filters.to && bTs > dayEndLocal(filters.to)) return false
     if (search) {
       const q = search.toLowerCase()
       const hay = `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.listPreview || ''}`.toLowerCase()
@@ -719,6 +724,13 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="col-span-2"><label className="mb-1 block font-semibold text-slate-600">Date filter by</label>
+                    <select value={filters.dateBasis} onChange={(e) => setFilter('dateBasis', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                      <option value="activity">Last activity (any message)</option>
+                      <option value="out">Our last reply (jab humne bheja)</option>
+                      <option value="in">Customer's last message</option>
+                    </select>
+                  </div>
                   <div><label className="mb-1 block font-semibold text-slate-600">From</label><input type="date" value={filters.from} onChange={(e) => setFilter('from', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
                   <div><label className="mb-1 block font-semibold text-slate-600">To</label><input type="date" value={filters.to} onChange={(e) => setFilter('to', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
                   <div><label className="mb-1 block font-semibold text-slate-600">Channel</label>
