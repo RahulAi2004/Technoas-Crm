@@ -8,7 +8,7 @@ import { api } from '../lib/api.js'
 // Side panel; ⤢ se wide full-view (mockups jaisa).
 // ============================================================
 
-const INPUT = 'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-brand-400'
+const INPUT = 'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100'
 
 const OPT = {
   stage: ['Qualification', 'Contacted', 'Proposal', 'Negotiation', 'Won', 'Lost'],
@@ -66,6 +66,15 @@ const QUOTE_FIELDS = [
   ['shipping_charges', 'Shipping Charges', 'number'], ['grand_total', 'Grand Total', 'number'],
 ]
 
+// Har tab ke saare field keys — "Confirm all" + unsaved-count ke liye.
+const TAB_KEYS = {
+  lead: [...LEAD_FIELDS.map((f) => f[0]), 'lost_reason'],
+  customer: [...CUST_FIELDS.map((f) => f[0]), 'shipping_address', 'billing_address'],
+  product: [...PROD_FIELDS.map((f) => f[0]), 'size_breakdown', 'print_locations', 'special_instructions', ...ART_FIELDS.map((f) => f[0])],
+  shipping: SHIP_FIELDS.map((f) => f[0]),
+  quote: [...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes'],
+}
+
 const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}) })
 const hasVal = (v) =>
   v != null && v !== '' && v !== false &&
@@ -76,32 +85,36 @@ const hasVal = (v) =>
 const SCORE_COLOR = (s) => s >= 70 ? 'bg-emerald-500' : s >= 40 ? 'bg-amber-500' : 'bg-rose-500'
 const TEMP_CHIP = { Hot: 'bg-rose-50 text-rose-700 ring-rose-200', Warm: 'bg-amber-50 text-amber-700 ring-amber-200', Cold: 'bg-sky-50 text-sky-700 ring-sky-200' }
 
-// Compact validate control — chhota check button, rang se state pata chale (space bachta hai).
-//   🟢 green = Confirmed (saved) · 🟡 amber = Validate (value hai, dabao) · grey = empty · rose = retry
-function Validate({ state, filled, val, onClick }) {
+// Saaf validate control — text-wala (icon nahi), state turant samajh aaye:
+//   khaali -> "—" · value hai -> amber "Validate" (dabao) · saved -> green "✓ Saved" · fail -> "Retry"
+function Validate({ state, filled, val, onClick, label = 'Validate' }) {
   const confirmed = state === 'ok', saving = state === 'saving', err = state === 'err', empty = !hasVal(val)
-  let cls, title, icon = '✓'
-  if (confirmed) { cls = 'border-emerald-400 bg-emerald-500 text-white'; title = 'Confirmed — saved to database' }
-  else if (saving) { cls = 'border-slate-200 bg-white text-slate-400'; title = 'Saving…'; icon = '…' }
-  else if (err) { cls = 'border-rose-300 bg-rose-50 text-rose-600'; title = 'Failed — click to retry'; icon = '↻' }
-  else if (empty) { cls = 'border-slate-200 bg-slate-50 text-slate-300'; title = 'Not discussed' }
-  else { cls = filled ? 'border-violet-300 bg-violet-50 text-violet-600' : 'border-amber-300 bg-amber-50 text-amber-600'; title = filled ? 'AI-filled — click to Validate (save)' : 'Validate — save to database' }
+  if (empty) return <span className="shrink-0 select-none px-1 text-[11px] text-slate-300">—</span>
+  if (confirmed) return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-50 px-2 py-1.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>Saved
+    </span>
+  )
   return (
-    <button onClick={onClick} disabled={saving || empty} title={title}
-      className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-md border text-xs font-bold ${cls} ${empty ? 'cursor-default' : 'hover:brightness-95'}`}>
-      {icon}
+    <button onClick={onClick} disabled={saving} title="Is field ko database me save karo"
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-[10px] font-bold text-white ${err ? 'bg-rose-500 hover:bg-rose-600' : 'bg-amber-500 hover:bg-amber-600'} disabled:opacity-60`}>
+      {saving ? 'Saving…' : err ? 'Retry' : label}
     </button>
   )
 }
 
+// Field ke aage chhota status dot: green=saved, amber=value-hai-unsaved, grey=khaali
+const dotOf = (state, val) => state === 'ok' ? 'bg-emerald-500' : hasVal(val) ? 'bg-amber-400' : 'bg-slate-200'
+
 function Field({ k, label, type, val, filled, state, onChange, onValidate }) {
   return (
     <div className={`min-w-0 ${type === 'textarea' ? 'col-span-full' : ''}`}>
-      <div className="mb-0.5 flex items-center gap-1.5">
-        <label className="truncate text-[11px] font-semibold text-slate-600">{label}</label>
-        {filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}
+      <div className="mb-1 flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotOf(state, val)}`} />
+        <label className="truncate text-[11px] font-semibold text-slate-700">{label}</label>
+        {filled && <span className="rounded bg-violet-100 px-1 text-[8px] font-bold text-violet-700">AI</span>}
       </div>
-      <div className="flex items-start gap-1.5">
+      <div className="flex items-center gap-1.5">
         <div className="min-w-0 flex-1">
           {type === 'select' ? (
             <select value={val || ''} onChange={(e) => onChange(e.target.value)} className={INPUT}>
@@ -361,11 +374,20 @@ export default function LeadPanel({ conv, onClose }) {
 
   const missing = useMemo(() => computeMissing(vals, hasVal(vals.grand_total) || (Array.isArray(vals.line_items) && vals.line_items.length > 0)), [vals])
 
+  // Is tab me kitne fields bhare hain par save nahi hue + ek click me sab confirm.
+  const unsavedKeys = (TAB_KEYS[tab] || []).filter((k) => hasVal(vals[k]) && fs[k] !== 'ok')
+  const confirmTab = async () => {
+    setSavingAll(true)
+    for (const k of unsavedKeys) await saveOne(k)
+    setSavingAll(false)
+    api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
+  }
+
   const TABS = [['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Shipping & Delivery'], ['quote', 'Quote']]
-  // Auto-columns: jitni jagah utni fields ek row me (space waste nahi). Wide me capped.
+  // Readable columns: panel ki chaudai ke hisaab se (chhote panel me 1-2, wide me 3). Cramped nahi.
   const grid = wide
-    ? 'grid gap-2.5 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-    : 'grid gap-2.5 grid-cols-[repeat(auto-fill,minmax(185px,1fr))]'
+    ? 'grid gap-3 grid-cols-2 lg:grid-cols-3'
+    : 'grid gap-3 grid-cols-[repeat(auto-fill,minmax(215px,1fr))]'
 
   const renderFields = (defs) => defs.map(([k, label, type]) => (
     <Field key={k} k={k} label={label} type={type} val={vals[k]} filled={filled[k]} state={fs[k]}
@@ -409,6 +431,19 @@ export default function LeadPanel({ conv, onClose }) {
           <button key={id} onClick={() => setTab(id)} className={`shrink-0 whitespace-nowrap border-b-2 py-2.5 ${tab === id ? 'border-brand-500 font-semibold text-brand-600' : 'border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
         ))}
       </nav>
+
+      {/* "Confirm all" bar — is tab ke saare bhare fields ek click me save */}
+      {unsavedKeys.length > 0 && (
+        <div className="flex items-center justify-between gap-2 border-b border-amber-100 bg-amber-50/60 px-4 py-2">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-800">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />{unsavedKeys.length} field{unsavedKeys.length > 1 ? 's' : ''} bhare hain — save nahi hue
+          </span>
+          <button onClick={confirmTab} disabled={savingAll}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
+            {savingAll ? 'Saving…' : `✓ Confirm all (${unsavedKeys.length})`}
+          </button>
+        </div>
+      )}
 
       {/* Body */}
       <div className="nice-scroll flex-1 overflow-y-auto px-4 py-3">
