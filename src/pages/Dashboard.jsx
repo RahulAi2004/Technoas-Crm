@@ -576,24 +576,6 @@ export default function Dashboard() {
             </Link></li>
           </ul>
 
-          <p className="sb-section mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Channels</p>
-          <ul className="space-y-1">
-            {[
-              ['WhatsApp', 'bg-emerald-500', 'whatsapp', 8],
-              ['Instagram', 'bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600', 'instagram', 3],
-              ['Facebook', 'bg-blue-600', 'facebook', 2],
-              ['Email', 'bg-slate-700', 'email', 1],
-            ].map((ch) => (
-              <li key={ch[2]}><Link to={`/connect-meta?connect=${ch[2]}`} className="sb-item flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5" data-tip={`Connect ${ch[0]}`}>
-                <span className="flex items-center gap-3 text-sm font-medium">
-                  <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${ch[1]} text-white`}>{channelIcon(ch[0])}</span>
-                  <span className="sb-label">{ch[0]}</span>
-                </span>
-                <span className="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">{ch[3]}</span>
-              </Link></li>
-            ))}
-          </ul>
-
           {/* CRM 360 section — hidden from the Dashboard sidebar for now. To show again, change false → true */}
           {false && (<>
           <p className="sb-section mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">CRM 360</p>

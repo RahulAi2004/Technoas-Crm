@@ -99,46 +99,6 @@ export default function SidebarCrm({ active }) {
         </ul>
         </>)}
 
-        <p className="mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Channels</p>
-        <ul className="space-y-1">
-          <li><Link to="/dashboard" className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
-            <span className="flex items-center gap-3 text-sm font-medium">
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-white">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24z"/></svg>
-              </span>
-              WhatsApp
-            </span>
-            <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">8</span>
-          </Link></li>
-          <li><Link to="/dashboard" className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
-            <span className="flex items-center gap-3 text-sm font-medium">
-              <span className="grid h-6 w-6 place-items-center rounded-lg bg-gradient-to-br from-amber-400 via-rose-500 to-fuchsia-600 text-white">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/></svg>
-              </span>
-              Instagram
-            </span>
-            <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">3</span>
-          </Link></li>
-          <li><Link to="/dashboard" className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
-            <span className="flex items-center gap-3 text-sm font-medium">
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-blue-600 text-white">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.99 22 12z"/></svg>
-              </span>
-              Facebook
-            </span>
-            <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">2</span>
-          </Link></li>
-          <li><Link to="/dashboard" className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5">
-            <span className="flex items-center gap-3 text-sm font-medium">
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-slate-700 text-white">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-10 5L2 7"/></svg>
-              </span>
-              Email
-            </span>
-            <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">1</span>
-          </Link></li>
-        </ul>
-
         <p className="mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Settings</p>
         <ul className="space-y-1">
           <li><Link to="/team" className={itemCls('team')}>
