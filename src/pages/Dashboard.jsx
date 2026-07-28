@@ -267,13 +267,24 @@ export default function Dashboard() {
     if (filters.agent && c.assigned_to !== filters.agent) return false
     if (filters.status && c.status !== filters.status) return false
     if (filters.tag && !(Array.isArray(c.tags) && c.tags.includes(filters.tag))) return false
-    // Date filter kis time pe lage: last activity (default) / hamra last reply / customer last msg.
-    // Date input "YYYY-MM-DD" ko LOCAL din ke hisaab se (Date.parse UTC maanta, boundary khisak jati thi).
-    const bTs = filters.dateBasis === 'out' ? (Number(c.lastOutTs) || 0)
-      : filters.dateBasis === 'in' ? (Number(c.lastInTs) || 0)
-      : convTs(c)
-    if (filters.from && bTs < dayStartLocal(filters.from)) return false
-    if (filters.to && bTs > dayEndLocal(filters.to)) return false
+    // Date filter kis time pe lage. Date input "YYYY-MM-DD" ko LOCAL din ke hisaab se lo.
+    // 'out' = HUM aakhri bole (customer ne jawab nahi diya) — awaiting customer.
+    // 'in'  = CUSTOMER aakhri bola (humein reply karna hai) — needs reply.
+    // 'activity' = koi bhi message (last activity).
+    const outTs = Number(c.lastOutTs) || 0, inTs = Number(c.lastInTs) || 0
+    if (filters.dateBasis === 'out') {
+      if (!outTs || outTs < inTs) return false                                  // hum aakhri nahi bole -> skip
+      if (filters.from && outTs < dayStartLocal(filters.from)) return false
+      if (filters.to && outTs > dayEndLocal(filters.to)) return false
+    } else if (filters.dateBasis === 'in') {
+      if (!inTs || inTs <= outTs) return false                                  // customer aakhri nahi bola -> skip
+      if (filters.from && inTs < dayStartLocal(filters.from)) return false
+      if (filters.to && inTs > dayEndLocal(filters.to)) return false
+    } else {
+      const bTs = convTs(c)
+      if (filters.from && bTs < dayStartLocal(filters.from)) return false
+      if (filters.to && bTs > dayEndLocal(filters.to)) return false
+    }
     if (search) {
       const q = search.toLowerCase()
       const hay = `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.listPreview || ''}`.toLowerCase()
@@ -727,8 +738,8 @@ export default function Dashboard() {
                   <div className="col-span-2"><label className="mb-1 block font-semibold text-slate-600">Date filter by</label>
                     <select value={filters.dateBasis} onChange={(e) => setFilter('dateBasis', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
                       <option value="activity">Last activity (any message)</option>
-                      <option value="out">Our last reply (jab humne bheja)</option>
-                      <option value="in">Customer's last message</option>
+                      <option value="out">We replied last — awaiting customer</option>
+                      <option value="in">Customer replied last — needs our reply</option>
                     </select>
                   </div>
                   <div><label className="mb-1 block font-semibold text-slate-600">From</label><input type="date" value={filters.from} onChange={(e) => setFilter('from', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
