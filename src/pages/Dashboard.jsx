@@ -780,18 +780,19 @@ export default function Dashboard() {
               {visibleConvs.map((c) => {
                 const id = c.id; const active = id === currentId
                 return (
-                  <button key={id} onClick={() => setCurrentId(id)} className={`flex w-full gap-3 border-l-4 px-4 py-3 text-left ${active ? 'border-brand-500 bg-brand-50/50 hover:bg-brand-50' : 'border-transparent border-b border-slate-100 hover:bg-slate-50'}`}>
-                    <div className="relative">
-                      <span className={`grid h-10 w-10 place-items-center rounded-full ${c.avatarBg} font-bold text-sm`}>{c.initials}</span>
-                      <span className={`absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full ${c.channelBg} ring-2 ring-white text-white`}>{channelIcon(c.channel)}</span>
+                  <button key={id} onClick={() => setCurrentId(id)} className={`group relative mx-1.5 my-0.5 flex w-[calc(100%-0.75rem)] gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition ${active ? 'bg-brand-50 ring-1 ring-inset ring-brand-100' : 'hover:bg-slate-100/70'}`}>
+                    {active && <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-brand-500" />}
+                    <div className="relative shrink-0">
+                      <span className={`grid h-10 w-10 place-items-center rounded-full ${c.avatarBg} text-sm font-bold`}>{c.initials}</span>
+                      <span className={`absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full ${c.channelBg} text-white ring-2 ring-white`}>{channelIcon(c.channel)}</span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between">
-                        <div className="truncate text-sm font-semibold">{c.name}</div>
-                        <span className="text-[11px] text-slate-500">{c.listTime}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className={`truncate text-sm font-semibold ${active ? 'text-brand-900' : 'text-slate-800'}`}>{c.name}</div>
+                        <span className="shrink-0 text-[11px] text-slate-400">{c.listTime}</span>
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2">
-                        <p className="truncate text-xs text-slate-600">{c.lastDir === 'out' && <span className="font-semibold text-slate-500">You: </span>}{c.listPreview}</p>
+                        <p className="truncate text-xs text-slate-500">{c.lastDir === 'out' && <span className="font-semibold text-slate-400">You: </span>}{c.listPreview}</p>
                         {c.unread > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{c.unread}</span>}
                       </div>
                       {Array.isArray(c.tags) && c.tags.length > 0 && (
@@ -961,15 +962,15 @@ export default function Dashboard() {
                       <div key={m.id || i} className="mt-4 flex flex-col items-end">
                         {m.agent && <div className="mb-0.5 mr-10 text-[10px] font-semibold text-slate-500">{m.agent}</div>}
                         <div className="flex items-start justify-end gap-2">
-                          <div className={`max-w-md rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ring-1 ${failed ? 'bg-rose-50 text-rose-900 ring-rose-200' : 'bg-brand-50 text-brand-900 ring-brand-100'}`}>
+                          <div className={`max-w-md rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ${failed ? 'bg-rose-50 text-rose-900 ring-1 ring-rose-200' : 'bg-brand-600 text-white'}`}>
                             <MsgAttachments items={m.attachments} />{m.text}
-                            <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-500">
+                            <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${failed ? 'text-rose-500' : 'text-white/70'}`}>
                               {m.time}
                               {sending
-                                ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin text-slate-400"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                                ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin text-white/70"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                                 : failed
                                 ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
-                                : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 11 13 20"/></svg>}
+                                : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="22 11 13 20"/></svg>}
                             </div>
                           </div>
                           <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-600 text-[10px] font-bold text-white" title={m.agent || ''}>
