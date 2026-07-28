@@ -1380,8 +1380,11 @@ function knownOutgoing(convId, mid, text, ts, hasAtt) {
   const t = Number(ts) || Date.now()
   const txt = (text || '').trim()
   if (txt) {
-    // TEXT echo: same conv + same text + ~15 min ke andar CRM-se-bheja outgoing.
-    const echo = msgs.find((x) => x.conversation_id === convId && x.dir === 'out'
+    // TEXT echo: same conv + same text + ~15 min ke andar CRM-se-bheja outgoing JISKA ABHI MID NA HO.
+    // `!x.mid` zaroori hai — warna agent same reply dobara bheje (alag Meta mid) to wo galti se
+    // pehle wale message me collapse ho jata tha (repeat messages gayab). Sirf apna un-linked
+    // optimistic echo hi absorb karo; mid-wala distinct message hamesha naya row banega.
+    const echo = msgs.find((x) => x.conversation_id === convId && x.dir === 'out' && !x.mid
       && (x.text || '').trim() === txt && Math.abs((Number(x.ts) || 0) - t) < 15 * 60 * 1000)
     if (echo) return { link: echo.id }
   } else if (hasAtt) {
