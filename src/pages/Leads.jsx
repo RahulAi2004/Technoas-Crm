@@ -1,304 +1,289 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import SidebarCrm from '../components/SidebarCrm.jsx'
 import TopBarUser from '../components/TopBarUser.jsx'
 import { useToast } from '../components/ToastContext.jsx'
-import { LEADS as FALLBACK_LEADS, PIPELINE_STAGES, SCORE_CLS } from '../data/leads.js'
-import { fmt$ } from '../data/customers.js'
 import { api } from '../lib/api.js'
-import { currentUser } from '../lib/auth.js'
 
-const stat = (label, value, color, icon) => (
-  <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className="flex items-center gap-2 text-xs text-slate-500">
-      <span className={`grid h-7 w-7 place-items-center rounded-lg ${color}`}>{icon}</span>
-      {label}
+// --- helpers ---
+const fmt$ = (n) => (n == null || n === '' || Number(n) === 0) ? '—' : `$${Number(n).toLocaleString()}`
+const fmtDateTime = (ts) => ts ? new Date(Number(ts)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
+const leadNo = (id) => { const d = String(id || '').replace(/\D/g, ''); return 'LD-' + (d.slice(-6) || '000000') }
+const QUOTE_STAGES = ['Quotation', 'Quoted', 'Quote Sent', 'Proposal', 'Artwork Approval', 'Payment Pending']
+const ORDER_STAGES = ['Order Confirmed', 'Ready to Order', 'Completed', 'In Production']
+const AVATAR_BG = ['bg-brand-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-sky-500', 'bg-violet-500', 'bg-teal-500', 'bg-pink-500']
+const avatarFor = (name, id) => { const s = String(id || name || ''); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return AVATAR_BG[h % AVATAR_BG.length] }
+const initialsOf = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('') || '?'
+const scoreCls = (s) => s >= 70 ? 'bg-emerald-500' : s >= 40 ? 'bg-amber-500' : 'bg-slate-300'
+
+// Time-period → {from,to} ms. Rolling/calendar windows over the lead's start date.
+function periodRange(period, customFrom, customTo) {
+  const d = new Date(); const sod = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  if (period === 'today') return { from: sod(d), to: Infinity }
+  if (period === 'week') { const m = new Date(d); m.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return { from: sod(m), to: Infinity } }
+  if (period === 'month') return { from: new Date(d.getFullYear(), d.getMonth(), 1).getTime(), to: Infinity }
+  if (period === 'quarter') return { from: new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1).getTime(), to: Infinity }
+  if (period === 'year') return { from: new Date(d.getFullYear(), 0, 1).getTime(), to: Infinity }
+  if (period === 'custom') return { from: customFrom ? Date.parse(customFrom + 'T00:00:00') : 0, to: customTo ? Date.parse(customTo + 'T23:59:59') : Infinity }
+  return { from: 0, to: Infinity }
+}
+const PERIODS = [['today', 'Today'], ['week', 'This Week'], ['month', 'This Month'], ['quarter', 'This Quarter'], ['year', 'This Year'], ['custom', 'Custom'], ['all', 'All Time']]
+
+function StatCard({ label, value, icon, tint, sub }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
+      <div className="flex items-center gap-2">
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${tint}`}>{icon}</span>
+        <span className="text-xs font-medium text-slate-500">{label}</span>
+      </div>
+      <div className="mt-2 text-2xl font-extrabold tracking-tight text-slate-800">{value}</div>
+      {sub && <div className="text-[10px] text-slate-400">{sub}</div>}
     </div>
-    <div className="mt-2 text-xl font-extrabold">{value}</div>
-  </div>
-)
-
-const QUOTE_STAGES = ['Quotation', 'Artwork Approval', 'Payment Pending', 'Order Confirmed', 'Completed']
-const ORDER_STAGES = ['Order Confirmed', 'Completed']
+  )
+}
 
 export default function Leads() {
   const toast = useToast()
   const navigate = useNavigate()
-  const [view, setView] = useState('list') // list | kanban
-  const [tab, setTab] = useState('all')
-  const [query, setQuery] = useState('')
   const [data, setData] = useState(null)
+  const [query, setQuery] = useState('')
+  const [period, setPeriod] = useState('all')
+  const [stage, setStage] = useState(''); const [status, setStatus] = useState(''); const [source, setSource] = useState('')
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
+  const [page, setPage] = useState(1); const [perPage, setPerPage] = useState(10)
+  const [menuId, setMenuId] = useState(null)
 
+  // Real data: leads + conversations (join by id → accurate start-date + "engaged" = we replied).
   useEffect(() => {
     let cancelled = false
-    api.get('/api/leads')
-      .then((rows) => { if (!cancelled) setData(rows) })
-      .catch(() => { if (!cancelled) { setData(FALLBACK_LEADS); toast('Using offline leads data', 'info') } })
+    Promise.all([api.get('/api/leads').catch(() => []), api.get('/api/conversations').catch(() => [])])
+      .then(([leads, convs]) => {
+        if (cancelled) return
+        const cmap = {}; for (const c of (convs || [])) cmap[c.id] = c
+        const merged = (leads || []).map((l) => {
+          const cid = l.conversation_id || l.id
+          const c = cmap[cid] || cmap[l.id] || {}
+          const firstTs = Number(c.first_ts) || (l.created_at ? Date.parse(l.created_at) : 0) || 0
+          return { ...l, _cid: cid, _firstTs: firstTs, _lastOut: Number(c.last_out_ts) || 0, _lastTs: Number(c.last_ts) || 0,
+            _stage: l.pipeline || l.stage || 'Initiated', _status: l.status || 'New', _source: l.source || l.channel || '—',
+            _score: Number(l.score) || 0, _value: Number(l.value) || 0, _product: l.product || '' }
+        })
+        setData(merged)
+      })
     return () => { cancelled = true }
   }, [])
 
-  const source = data || []
-  const rows = useMemo(() => {
-    let r = source
-    if (tab === 'my') r = r.filter((l) => l.agent === currentUser()?.name)
-    else if (tab === 'archived') r = r.filter((l) => l.archived)
-    const q = query.trim().toLowerCase()
-    if (q) r = r.filter((l) =>
-      (l.name || '').toLowerCase().includes(q) || (l.company || '').toLowerCase().includes(q) || (l.source || '').toLowerCase().includes(q))
-    return r
-  }, [query, source, tab])
+  const src = data || []
+  const range = useMemo(() => periodRange(period, from, to), [period, from, to])
+  const inPeriod = useMemo(() => src.filter((l) => l._firstTs >= range.from && l._firstTs <= range.to), [src, range])
 
-  // Real stats computed from the actual leads in the DB
-  const s = useMemo(() => {
-    const won = source.filter((l) => l.status === 'Won')
-    return {
-      total: source.length,
-      new: source.filter((l) => l.status === 'New').length,
-      hot: source.filter((l) => l.badge === 'Hot').length,
-      quotes: source.filter((l) => QUOTE_STAGES.includes(l.pipeline)).length,
-      orders: source.filter((l) => ORDER_STAGES.includes(l.pipeline)).length,
-      revenue: won.reduce((a, l) => a + (l.value || 0), 0),
-      conversion: source.length ? Math.round((won.length / source.length) * 1000) / 10 : 0,
-      mine: source.filter((l) => l.agent === currentUser()?.name).length,
-    }
-  }, [source])
+  const stages = useMemo(() => [...new Set(src.map((l) => l._stage).filter(Boolean))].sort(), [src])
+  const statuses = useMemo(() => [...new Set(src.map((l) => l._status).filter(Boolean))].sort(), [src])
+  const sources = useMemo(() => [...new Set(src.map((l) => l._source).filter(Boolean))].sort(), [src])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return inPeriod.filter((l) => {
+      if (stage && l._stage !== stage) return false
+      if (status && l._status !== status) return false
+      if (source && l._source !== source) return false
+      if (q) { const hay = `${l.name || ''} ${l.company || ''} ${l._source} ${leadNo(l._cid)}`.toLowerCase(); if (!hay.includes(q)) return false }
+      return true
+    }).sort((a, b) => b._firstTs - a._firstTs)
+  }, [inPeriod, stage, status, source, query])
+
+  // stat cards (over the selected period)
+  const s = useMemo(() => ({
+    total: inPeriod.length,
+    engaged: inPeriod.filter((l) => l._lastOut > 0).length,
+    qualified: inPeriod.filter((l) => l._score >= 60).length,
+    hot: inPeriod.filter((l) => l._score >= 80 || l.badge === 'Hot').length,
+    quotes: inPeriod.filter((l) => QUOTE_STAGES.includes(l._stage)).length,
+    orders: inPeriod.filter((l) => ORDER_STAGES.includes(l._stage)).length,
+  }), [inPeriod])
+
+  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage])
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage))
+  const pageRows = filtered.slice((page - 1) * perPage, page * perPage)
+  const anyFilter = stage || status || source || from || to || query
+  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setFrom(''); setTo(''); setQuery(''); setPeriod('all') }
+
+  const openChat = (cid) => navigate(`/dashboard?conv=${encodeURIComponent(cid)}`)
+
+  const exportCsv = () => {
+    const cols = ['Lead No', 'Lead Date', 'Customer', 'Source', 'Stage', 'Status', 'Qualification', 'Est Value', 'Product']
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const lines = [cols.join(',')]
+    for (const l of filtered) lines.push([leadNo(l._cid), fmtDateTime(l._firstTs), l.name, l._source, l._stage, l._status, `${l._score}/100`, l._value || '', l._product].map(esc).join(','))
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(a.href)
+    toast(`Exported ${filtered.length} leads`, 'success')
+  }
 
   return (
-    <div className="crm-shell h-screen overflow-hidden grid">
+    <div className="crm-shell grid h-screen overflow-hidden">
       <SidebarCrm active="leads" />
       <div className="flex h-screen flex-col overflow-hidden">
         <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
-          <nav className="flex items-center gap-2 text-sm">
-            <span className="text-slate-500">CRM</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-300"><path d="m9 18 6-6-6-6"/></svg>
-            <span className="font-semibold">{view === 'list' ? 'Leads' : 'Lead Board'}</span>
-          </nav>
+          <h1 className="text-lg font-extrabold tracking-tight">Leads</h1>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-4">
-            <div className="relative min-w-0 flex-1 sm:flex-none">
-              <span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              </span>
-              <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search leads..." className="w-full sm:w-72 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-12 text-sm outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20" />
-              <kbd className="pointer-events-none absolute inset-y-0 right-2 my-auto grid h-6 place-items-center rounded border border-slate-200 bg-white px-1.5 text-[10px] font-semibold text-slate-500">⌘K</kbd>
+            <div className="relative hidden min-w-0 flex-1 sm:block sm:flex-none">
+              <span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search jobs, customers, products" className="w-full sm:w-80 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-500 focus:bg-white" />
             </div>
-            <button className="relative grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-              <span className="absolute -top-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full bg-rose-500 text-[10px] font-bold text-white">6</span>
-            </button>
             <TopBarUser role="Admin" />
           </div>
         </header>
 
-        <main className="nice-scroll flex-1 overflow-y-auto px-6 py-6">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-extrabold tracking-tight">{view === 'list' ? 'Leads' : 'Lead Board'}</h1>
-              <p className="text-sm text-slate-500">Manage all incoming leads and track your sales pipeline</p>
+        <main className="nice-scroll flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          {/* Search + actions */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[220px] flex-1">
+              <span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name, email, phone, company or lead number…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" />
             </div>
-            <div className="flex items-center gap-2">
-              <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                Import Leads
-              </button>
-              <button onClick={() => toast('Add Lead — coming next', 'info')} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
-                Add Lead
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg>
-              </button>
-            </div>
+            <button onClick={() => toast('Import Leads — coming soon', 'info')} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold hover:bg-slate-50">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>Import Leads
+            </button>
+            <button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold hover:bg-slate-50">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>Export
+            </button>
+            <button onClick={() => toast('Add Lead — coming soon', 'info')} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3.5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>Add Lead
+            </button>
+          </div>
+
+          {/* Period tabs */}
+          <div className="mt-4 flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+            {PERIODS.map(([k, lbl]) => (
+              <button key={k} onClick={() => setPeriod(k)} className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${period === k ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{lbl}</button>
+            ))}
           </div>
 
           {/* Stat cards */}
-          {view === 'list' ? (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-              {stat('Total Leads', s.total, 'bg-violet-50 text-violet-600', '👥')}
-              {stat('New Leads', s.new, 'bg-sky-50 text-sky-600', '✨')}
-              {stat('Hot Leads', s.hot, 'bg-rose-50 text-rose-600', '🔥')}
-              {stat('Quotes Sent', s.quotes, 'bg-amber-50 text-amber-600', '📨')}
-              {stat('Orders Confirmed', s.orders, 'bg-emerald-50 text-emerald-600', '✓')}
-              {stat('Revenue (Won)', fmt$(s.revenue), 'bg-emerald-50 text-emerald-600', '$')}
-              {stat('Conversion Rate', `${s.conversion}%`, 'bg-pink-50 text-pink-600', '🎯')}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-              {stat('Total Leads', s.total, 'bg-violet-50 text-violet-600', '👥')}
-              {stat('Quotes Sent', s.quotes, 'bg-amber-50 text-amber-600', '📨')}
-              {stat('Orders Confirmed', s.orders, 'bg-emerald-50 text-emerald-600', '✓')}
-              {stat('Revenue (Won)', fmt$(s.revenue), 'bg-emerald-50 text-emerald-600', '$')}
-              {stat('Conversion Rate', `${s.conversion}%`, 'bg-pink-50 text-pink-600', '🎯')}
-            </div>
-          )}
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <StatCard label="Total Inquiries" value={s.total.toLocaleString()} sub="in period" tint="bg-sky-50 text-sky-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>} />
+            <StatCard label="Engaged" value={s.engaged.toLocaleString()} sub="we replied" tint="bg-violet-50 text-violet-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>} />
+            <StatCard label="Qualified" value={s.qualified.toLocaleString()} sub="score ≥ 60" tint="bg-emerald-50 text-emerald-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>} />
+            <StatCard label="Hot Leads" value={s.hot.toLocaleString()} sub="score ≥ 80" tint="bg-rose-50 text-rose-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>} />
+            <StatCard label="Quotes Sent" value={s.quotes.toLocaleString()} sub="in pipeline" tint="bg-amber-50 text-amber-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>} />
+            <StatCard label="Ready to Order" value={s.orders.toLocaleString()} sub="confirmed" tint="bg-teal-50 text-teal-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" x2="21" y1="6" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>} />
+          </div>
 
-          {view === 'list' && (
-            <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative flex-1 min-w-[200px]">
-                  <span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search leads by name, email, phone..." className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-500 focus:bg-white" />
-                </div>
-                {['All Pipelines','All Sources','All Agents','All Tags','All Products'].map((s, i) => (
-                  <select key={i} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option>{s}</option></select>
-                ))}
-                <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                  Filters <span className="rounded-md bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">1</span>
-                </button>
-                <button className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700">✕ Clear All</button>
+          {/* Filters */}
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Lead Stage</label>
+                <select value={stage} onChange={(e) => setStage(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{stages.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Lead Status</label>
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{statuses.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Source</label>
+                <select value={source} onChange={(e) => setSource(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{sources.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date from</label>
+                <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPeriod('custom') }} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm" /></div>
+              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date to</label>
+                <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPeriod('custom') }} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm" /></div>
+              <div className="flex items-end gap-2">
+                {anyFilter && <button onClick={clearAll} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">✕ Clear</button>}
               </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-3 text-xs md:grid-cols-3 lg:grid-cols-7">
-                {['Date Range','Pipeline','Source','Agent','Tag','Product','Lead Score'].map((l, i) => (
-                  <div key={i}><label className="mb-1 block font-semibold text-slate-600">{l}</label><select className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">{l === 'Date Range' ? <option>May 1, 2024 – May 31, 2024</option> : <option>All {l}s</option>}</select></div>
-                ))}
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
-                <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50">Reset</button>
-                <button className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">Apply Filters</button>
-              </div>
-            </div>
-          )}
-
-          {/* Tabs row */}
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200">
-            <div className="flex items-center gap-2">
-              {[['all','All Leads',s.total],['my','My Leads',s.mine],['archived','Archived',source.filter((l)=>l.archived).length]].map(([id, lbl, n]) => (
-                <button key={id} onClick={() => setTab(id)} className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm ${tab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl} <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${tab === id ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>{n}</span></button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 pb-2">
-              <div className="flex overflow-hidden rounded-lg border border-slate-200">
-                <button onClick={() => setView('kanban')} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold ${view === 'kanban' ? 'bg-brand-600 text-white' : 'hover:bg-slate-50'}`}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="18"/><rect x="14" y="3" width="7" height="11"/></svg>
-                  Kanban View
-                </button>
-                <button onClick={() => setView('list')} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold ${view === 'list' ? 'bg-brand-600 text-white' : 'hover:bg-slate-50'}`}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/></svg>
-                  List View
-                </button>
-              </div>
-              <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold">Sort By: Last Activity <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg></button>
             </div>
           </div>
 
-          {view === 'list' ? <LeadsTable rows={rows} onOpen={(id) => navigate(`/leads/${id}`)} /> : <LeadsKanban leads={source} onOpen={(id) => navigate(`/leads/${id}`)} />}
+          {/* Table */}
+          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-card">
+            <table className="w-full min-w-[1000px] text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-3 text-left font-semibold">Lead No</th>
+                  <th className="px-3 py-3 text-left font-semibold">Lead Date &amp; Time</th>
+                  <th className="px-3 py-3 text-left font-semibold">Customer Name</th>
+                  <th className="px-3 py-3 text-left font-semibold">Source</th>
+                  <th className="px-3 py-3 text-left font-semibold">Stage</th>
+                  <th className="px-3 py-3 text-left font-semibold">Lead Status</th>
+                  <th className="px-3 py-3 text-left font-semibold">Qualification</th>
+                  <th className="px-3 py-3 text-left font-semibold">Temperature</th>
+                  <th className="px-3 py-3 text-left font-semibold">Product / Intent</th>
+                  <th className="px-3 py-3 text-left font-semibold">Est. Value</th>
+                  <th className="px-3 py-3 text-left font-semibold">Next Action</th>
+                  <th className="px-3 py-3 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data === null ? (
+                  <tr><td colSpan={12} className="px-3 py-10 text-center text-sm text-slate-400">Loading leads…</td></tr>
+                ) : pageRows.length === 0 ? (
+                  <tr><td colSpan={12} className="px-3 py-10 text-center text-sm text-slate-400">Koi lead nahi mila. {anyFilter && <button onClick={clearAll} className="font-semibold text-brand-600 underline">Clear filters</button>}</td></tr>
+                ) : pageRows.map((l) => (
+                  <tr key={l._cid} onClick={() => openChat(l._cid)} className="cursor-pointer transition hover:bg-brand-50/40">
+                    <td className="px-3 py-3 font-semibold text-brand-700">{leadNo(l._cid)}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-slate-600">{fmtDateTime(l._firstTs)}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${avatarFor(l.name, l._cid)} text-xs font-bold text-white`}>{initialsOf(l.name)}</span>
+                        <span className="font-semibold text-slate-800">{l.name || 'Unknown'}</span>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-slate-600">{l._source}</td>
+                    <td className="px-3 py-3"><span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">{l._stage}</span></td>
+                    <td className="px-3 py-3"><span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{l._status}</span></td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-600">{l._score}<span className="text-slate-400">/100</span></span>
+                        <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100"><span className={`block h-full ${scoreCls(l._score)}`} style={{ width: `${Math.min(100, l._score)}%` }} /></span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-center text-slate-300">{l.badge === 'Hot' ? '🔥' : '—'}</td>
+                    <td className="px-3 py-3 text-slate-500">{l._product || '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-3 font-semibold text-slate-700">{fmt$(l._value)}</td>
+                    <td className="px-3 py-3 text-slate-300">—</td>
+                    <td className="px-3 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <RowMenu open={menuId === l._cid} onToggle={() => setMenuId(menuId === l._cid ? null : l._cid)}
+                        onChat={() => { setMenuId(null); openChat(l._cid) }}
+                        onDetails={() => { setMenuId(null); navigate(`/leads/${encodeURIComponent(l._cid)}`) }} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+            <span>Showing {filtered.length === 0 ? 0 : (page - 1) * perPage + 1} to {Math.min(page * perPage, filtered.length)} of {filtered.length.toLocaleString()} leads</span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5"><span>Rows per page</span>
+                <select value={perPage} onChange={(e) => setPerPage(Number(e.target.value))} className="rounded-md border border-slate-200 bg-white px-1.5 py-1">{[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(1)} disabled={page === 1} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40 hover:bg-slate-50">«</button>
+                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40 hover:bg-slate-50">‹</button>
+                <span className="px-2 font-semibold text-slate-700">{page} / {totalPages}</span>
+                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40 hover:bg-slate-50">›</button>
+                <button onClick={() => setPage(totalPages)} disabled={page >= totalPages} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40 hover:bg-slate-50">»</button>
+              </div>
+            </div>
+          </div>
         </main>
       </div>
     </div>
   )
 }
 
-function LeadsTable({ rows, onOpen }) {
+function RowMenu({ open, onToggle, onChat, onDetails }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onToggle() }
+    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h)
+  }, [open, onToggle])
   return (
-    <>
-      <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-3 py-3 text-left">Created On</th>
-              <th className="px-3 py-3 text-left">Lead Name</th>
-              <th className="px-3 py-3 text-left">Company / School</th>
-              <th className="px-3 py-3 text-left">Source</th>
-              <th className="px-3 py-3 text-left">Product</th>
-              <th className="px-3 py-3 text-left">Pipeline</th>
-              <th className="px-3 py-3 text-left">Lead Score</th>
-              <th className="px-3 py-3 text-left">Status</th>
-              <th className="px-3 py-3 text-left">Estimated Value</th>
-              <th className="px-3 py-3 text-left">Assigned To</th>
-              <th className="px-3 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((l) => (
-              <tr key={l.id} onClick={() => onOpen(l.id)} className="cursor-pointer hover:bg-slate-50">
-                <td className="px-3 py-3 text-sm">{l.created}<div className="text-[10px] text-slate-400">{l.createdTime}</div></td>
-                <td className="px-3 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`grid h-8 w-8 place-items-center rounded-full ${l.av} text-xs font-bold text-white`}>{l.initials}</span>
-                    <div>
-                      <div className="font-semibold">{l.name}</div>
-                      {l.badge && <span className="inline-flex items-center gap-0.5 rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">🔥 {l.badge}</span>}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-3 py-3 text-sm">{l.company}</td>
-                <td className="px-3 py-3 text-sm">{l.source}</td>
-                <td className="px-3 py-3 text-sm">{l.product}<div className="text-[10px] text-slate-500">{l.units}</div></td>
-                <td className="px-3 py-3"><span className={`text-xs font-semibold ${l.pipelineCls}`}>● {l.pipeline}</span></td>
-                <td className="px-3 py-3 text-sm font-semibold"><span className={SCORE_CLS(l.score)}>{l.score}</span><span className="text-slate-400">/100</span></td>
-                <td className="px-3 py-3"><span className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${l.statusCls}`}>{l.status}</span></td>
-                <td className="px-3 py-3 text-sm font-semibold">{fmt$(l.value)}</td>
-                <td className="px-3 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <img alt="" src={`https://i.pravatar.cc/20?u=${encodeURIComponent(l.agent)}`} className="h-5 w-5 rounded-full" />
-                    <span className="text-xs">{l.agent}</span>
-                  </div>
-                </td>
-                <td className="px-3 py-3 text-right" onClick={(e) => e.stopPropagation()}><button className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-        <span>Showing {rows.length === 0 ? 0 : 1} to {rows.length} of {rows.length} leads</span>
-        <div className="flex items-center gap-1">
-          <button className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-sm font-semibold text-white">1</button>
+    <div ref={ref} className="relative inline-block text-left">
+      <button onClick={onToggle} className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-left text-sm shadow-pop">
+          <button onClick={onChat} className="flex w-full items-center gap-2 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Open chat</button>
+          <button onClick={onDetails} className="flex w-full items-center gap-2 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Open lead details</button>
         </div>
-        <div className="flex items-center gap-1"><span>Show</span><select className="rounded-md border border-slate-200 bg-white px-1.5 py-1"><option>10</option><option>20</option><option>50</option></select><span>per page</span></div>
-      </div>
-    </>
-  )
-}
-
-function LeadsKanban({ leads = [], onOpen }) {
-  const cardsByStage = PIPELINE_STAGES.reduce((acc, s) => {
-    acc[s.key] = leads.filter((l) => l.pipeline === s.key)
-    return acc
-  }, {})
-  return (
-    <div className="mt-5 grid grid-flow-col gap-4 overflow-x-auto pb-4" style={{ gridAutoColumns: 'minmax(260px, 1fr)' }}>
-      {PIPELINE_STAGES.map((stage) => {
-        const cards = cardsByStage[stage.key]
-        const est = cards.reduce((a, l) => a + (l.value || 0), 0)
-        return (
-        <div key={stage.key} className="rounded-xl bg-slate-50/60 p-3">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold"><span className={`h-2.5 w-2.5 rounded-full ${stage.dot}`}></span>{stage.key}</div>
-            <span className="text-xs font-bold text-slate-500">{cards.length}</span>
-          </div>
-          <div className="mb-3 text-[11px] text-slate-500">Est. Value: {fmt$(est)}</div>
-          <div className="space-y-2">
-            {cardsByStage[stage.key].map((l) => (
-              <div key={l.id} onClick={() => onOpen(l.id)} className="cursor-pointer rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm hover:shadow-md">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`grid h-7 w-7 place-items-center rounded-full ${l.av} text-[10px] font-bold text-white`}>{l.initials}</span>
-                    <div>
-                      <div className="text-sm font-semibold">{l.name}</div>
-                      <div className="text-[10px] text-slate-500">{l.company}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 text-[11px] text-slate-500">+ {l.units}</div>
-                <div className="mt-2 flex items-center justify-between">
-                  {l.badge ? <span className="rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">🔥 Hot Lead</span>
-                    : <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Warm Lead</span>}
-                  <span className="text-sm font-bold">{fmt$(l.value)}</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-                  <span>Source: {l.source}</span><span>2m ago</span>
-                </div>
-                <div className="mt-2 flex gap-1">
-                  <button className="flex-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold hover:bg-slate-50">Open</button>
-                  <button className="flex-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-brand-600 hover:bg-brand-50">Quote</button>
-                </div>
-              </div>
-            ))}
-            <button className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 py-2 text-xs font-semibold text-brand-600 hover:bg-white">+ Add Lead</button>
-          </div>
-        </div>
-        )
-      })}
+      )}
     </div>
   )
 }
