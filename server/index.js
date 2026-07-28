@@ -1082,7 +1082,7 @@ async function syncMetaConversations() {
             const k = knownOutgoing(convId, m.id, txt, ts, atts.length > 0)
             if (k?.skip) continue
             if (k?.link) { const ex = findById('messages', k.link); if (ex && !ex.mid) update('messages', k.link, { mid: m.id }); continue }
-            const stored = saveMessage({ id: m.id, conversation_id: convId, dir: 'out', text: txt, attachments: atts, time: fmtTimeFromISO(m.created_time), ts, via: 'meta' })
+            const stored = saveMessage({ id: m.id, mid: m.id, conversation_id: convId, dir: 'out', text: txt, attachments: atts, time: fmtTimeFromISO(m.created_time), ts, via: 'meta' })
             added = true; newMessages++
             lastText = stored.text || attachPreview(atts); lastTime = stored.time; lastDir = 'out'
             broadcast({ type: 'message', conversationId: convId, message: stored })
@@ -1091,7 +1091,7 @@ async function syncMetaConversations() {
 
           // INCOMING — dedup id/mid se (warna poller dobara insert karke duplicate + order scramble kare).
           const exists = findById('messages', m.id) || getAll('messages').find((x) => x.mid === m.id && x.conversation_id === convId)
-          const stored = saveMessage({ id: m.id, conversation_id: convId, dir, text: txt, attachments: atts, time: fmtTimeFromISO(m.created_time), ts, via: 'meta' })
+          const stored = saveMessage({ id: m.id, mid: m.id, conversation_id: convId, dir, text: txt, attachments: atts, time: fmtTimeFromISO(m.created_time), ts, via: 'meta' })
           if (!exists) {
             added = true; newMessages++
             lastText = stored.text || attachPreview(atts); lastTime = stored.time; lastDir = dir
@@ -1380,11 +1380,12 @@ function knownOutgoing(convId, mid, text, ts, hasAtt) {
   const t = Number(ts) || Date.now()
   const txt = (text || '').trim()
   if (txt) {
-    // TEXT echo: same conv + same text + ~15 min ke andar CRM-se-bheja outgoing JISKA ABHI MID NA HO.
-    // `!x.mid` zaroori hai — warna agent same reply dobara bheje (alag Meta mid) to wo galti se
-    // pehle wale message me collapse ho jata tha (repeat messages gayab). Sirf apna un-linked
-    // optimistic echo hi absorb karo; mid-wala distinct message hamesha naya row banega.
-    const echo = msgs.find((x) => x.conversation_id === convId && x.dir === 'out' && !x.mid
+    // TEXT echo: sirf apna CRM-se-bheja optimistic send (via !== 'meta' AND abhi mid na ho) absorb
+    // karo. `via !== 'meta'` zaroori hai — poller Meta messages ko id me store karta hai par mid
+    // field khaali, is liye `!x.mid` akele Meta message ko bhi match kar leta tha aur agent ke
+    // repeat/same-text replies collapse ho jate the. Meta-ingested message KABHI absorb na ho.
+    const echo = msgs.find((x) => x.conversation_id === convId && x.dir === 'out'
+      && x.via !== 'meta' && !x.mid
       && (x.text || '').trim() === txt && Math.abs((Number(x.ts) || 0) - t) < 15 * 60 * 1000)
     if (echo) return { link: echo.id }
   } else if (hasAtt) {
