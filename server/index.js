@@ -1518,7 +1518,7 @@ async function ensureMetaProfile(convId) {
 // Panel khulte hi jo DB me pehle se saved hai wo values.
 app.get('/api/leads/panel/:id', authRequired, async (req, res) => {
   try {
-    await ensureMetaProfile(req.params.id).catch(() => {})   // exact first/last Meta se
+    ensureMetaProfile(req.params.id).catch(() => {})   // background: exact first/last Meta se (agar permission ho)
     res.json(await getLeadBundle(req.params.id))
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
