@@ -520,7 +520,7 @@ export async function extractFields(conversationId) {
   ).join('\n').slice(-9000)
   const today = new Date().toISOString().slice(0, 10)
   const user = `Today's date: ${today}\nCustomer name: ${conv?.name || 'Unknown'}\nChannel: ${conv?.channel || ''}\n\nConversation transcript (oldest to newest):\n${transcript}`
-  const fields = await chatJSON(EXTRACT_SYSTEM, user, { model: 'gpt-4o' })   // extraction ke liye behtar accuracy
+  const fields = await chatJSON(EXTRACT_SYSTEM, user)   // gpt-4o-mini: fast + reliable; structured extraction ke liye accurate enough
   return { ok: true, fields }
 }
 
