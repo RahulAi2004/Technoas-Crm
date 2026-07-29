@@ -1491,11 +1491,36 @@ app.get('/api/leads-list', authRequired, async (req, res) => {
   } catch (e) { console.warn('[leads/list]', e.message); res.status(500).json({ error: 'leads list failed' }) }
 })
 
+// Meta se EXACT profile (first_name, last_name, pic) — AI-guess ki jagah. Ek baar fetch, cache.
+async function ensureMetaProfile(convId) {
+  const conv = findById('conversations', convId)
+  if (!conv) return
+  const isFb = String(convId).startsWith('fb:'), isIg = String(convId).startsWith('ig:')
+  if (!isFb && !isIg) return
+  if (conv.meta_first || conv.meta_profiled) return   // pehle fetch ho chuka
+  const token = metaToken(); if (!token) return
+  const psid = String(convId).replace(/^(fb|ig):/, '')
+  const client = new MetaClient(token)
+  let prof
+  try { prof = isIg ? await client.getInstagramProfile(psid) : await client.getMessengerProfile(psid) }
+  catch { update('conversations', convId, { meta_profiled: true }); return }   // fail -> dobara try mat karo
+  const nm = String(prof?.name || '').trim()
+  const first = prof?.first_name || (nm ? nm.split(/\s+/)[0] : '')
+  const last = prof?.last_name || (nm ? nm.split(/\s+/).slice(1).join(' ') : '')
+  const patch = { meta_profiled: true }
+  if (first) patch.meta_first = first
+  if (last) patch.meta_last = last
+  if (prof?.profile_pic && !conv.avatar_url) patch.avatar_url = prof.profile_pic
+  update('conversations', convId, patch)
+}
+
 // ============================================================
 // Panel khulte hi jo DB me pehle se saved hai wo values.
 app.get('/api/leads/panel/:id', authRequired, async (req, res) => {
-  try { res.json(await getLeadBundle(req.params.id)) }
-  catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+  try {
+    await ensureMetaProfile(req.params.id).catch(() => {})   // exact first/last Meta se
+    res.json(await getLeadBundle(req.params.id))
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 // Qualification score (0-100, deterministic) + purchase intent + auto temperature.
 app.get('/api/leads/score/:id', authRequired, async (req, res) => {

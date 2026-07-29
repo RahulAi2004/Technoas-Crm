@@ -293,6 +293,9 @@ export async function getLeadBundle(conversationId) {
   }
   const co = await resolveIds(conversationId)
   if (!co) return out
+  const memConv = findById('conversations', conversationId)   // meta_first/meta_last (Meta se EXACT)
+  const metaFirst = memConv?.meta_first || ''
+  const metaLast = memConv?.meta_last || ''
 
   const lead = await findLead(co.conversation_id)
   if (lead) {
@@ -332,8 +335,9 @@ export async function getLeadBundle(conversationId) {
       out.customerName = c.full_name || ''
       const _np = String(c.full_name || '').trim().split(/\s+/).filter(Boolean)
       out.customer = {
-        first_name: c.extra?.first_name || _np[0] || '',
-        last_name: c.extra?.last_name || _np.slice(1).join(' ') || '',
+        // priority: agent-override -> Meta exact -> full_name split
+        first_name: c.extra?.first_name || metaFirst || _np[0] || '',
+        last_name: c.extra?.last_name || metaLast || _np.slice(1).join(' ') || '',
         business_name: c.company || '', email: c.email || '',
         company_phone: c.extra?.company_phone || '',
         mobile_number: c.phone || '', phone: c.phone || '',
@@ -348,6 +352,12 @@ export async function getLeadBundle(conversationId) {
         billing_address: c.extra?.billing_address || {},
       }
     }
+  }
+  // Customer row abhi na bhi ho to bhi naam Meta/conversation se dikhao (exact).
+  if (!out.customer.first_name) {
+    const parts = String(memConv?.name || '').trim().split(/\s+/).filter(Boolean)
+    out.customer.first_name = metaFirst || parts[0] || ''
+    out.customer.last_name = out.customer.last_name || metaLast || parts.slice(1).join(' ') || ''
   }
   if (lead) {
     const pr = await dbQuery(`SELECT * FROM app.lead_requirements WHERE lead_id = $1`, [lead.lead_id])
