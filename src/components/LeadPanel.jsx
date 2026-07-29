@@ -450,6 +450,7 @@ export default function LeadPanel({ conv, onClose }) {
     try {
       const r = await api.post(`/api/leads/field/${encodeURIComponent(cid)}`, { field: k, value: v })
       if (r && r.saved === false) { setFs((s) => ({ ...s, [k]: 'idle' })); return false }  // backend ne empty skip kiya
+      if (r?.sync?.qualification) setScore(r.sync.qualification)
       setFs((s) => ({ ...s, [k]: 'ok' })); setFilled((a) => ({ ...a, [k]: false }))
       return true
     } catch { setFs((s) => ({ ...s, [k]: 'err' })); return false }

@@ -1520,10 +1520,12 @@ app.post('/api/leads/backfill-orders', authRequired, async (req, res) => {
 // Agent ne ek field pe Validate dabaya -> wahi ek field DB me save.
 app.post('/api/leads/field/:id', authRequired, async (req, res) => {
   try {
-    res.json(await saveLeadField({
+    const saved = await saveLeadField({
       conversationId: req.params.id, field: req.body?.field, value: req.body?.value,
       convName: findById('conversations', req.params.id)?.name,
-    }))
+    })
+    const sync = saved.saved ? await completeLead(req.params.id) : null
+    res.json({ ...saved, sync })
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 // Agent-reviewed fields ko idempotently Decoinks dashboard lead me sync karo.
