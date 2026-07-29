@@ -329,6 +329,14 @@ export default function Dashboard() {
   const [mode, setMode] = useState('reply')
   const [draft, setDraft] = useState('')
   const chatRef = useRef(null)
+  // Lambi message par textarea khud badhta hai (max ~6 lines); send/clear par wapas chhota.
+  const draftRef = useRef(null)
+  useEffect(() => {
+    const el = draftRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    if (draft) el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+  }, [draft])
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, [messages.length, pending.length, currentId])
 
   const sendMessage = async (text, kind = mode) => {
@@ -564,10 +572,7 @@ export default function Dashboard() {
               </span>
               {unassignedCount > 0 && <span className="sb-badge rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">{unassignedCount}</span>}
             </button></li>
-            <li><button onClick={() => setView('all')} className={`sb-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${view === 'all' ? 'text-white' : 'hover:bg-white/5'}`} data-tip="All Conversations">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              <span className="sb-label">All Conversations</span>
-            </button></li>
+            {/* "All Conversations" hata diya — Inbox wahi kaam karta tha (duplicate item, sidebar clutter) */}
             <li><button onClick={() => setView('bookmarks')} className={`sb-item flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium ${view === 'bookmarks' ? 'bg-brand-600 text-white' : 'hover:bg-white/5'}`} data-tip="Bookmarks">
               <span className="flex items-center gap-3">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
@@ -911,13 +916,13 @@ export default function Dashboard() {
                   {conv.assigned_to && <span className="max-w-[80px] truncate text-xs">{conv.assigned_to.split(' ')[0]}</span>}
                 </button>
                 {!leadOpen && (
-                  <button onClick={openLeadPanel} title="Open Lead Details" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-100">
+                  <button onClick={openLeadPanel} title="Open Lead Details" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>
                     Lead Details
                   </button>
                 )}
                 {!aiOpen && (
-                  <button onClick={openAiPanel} title="Open AI Supervisor" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100">
+                  <button onClick={openAiPanel} title="Open AI Supervisor" className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
                     AI Supervisor
                   </button>
@@ -966,12 +971,12 @@ export default function Dashboard() {
                     if (m.dir === 'in') return (
                       <div key={m.id || i} className="mt-4 flex items-start gap-2">
                         <span className={`mt-1 grid h-8 w-8 place-items-center rounded-full ${conv.avatarBg} text-xs font-bold`}>{conv.initials}</span>
-                        <div className="max-w-md rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 text-[10px] text-slate-400">{fmtClock(m.ts, m.time)}</div></div>
+                        <div className="max-w-[min(85%,38rem)] rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 text-[10px] text-slate-400">{fmtClock(m.ts, m.time)}</div></div>
                       </div>
                     )
                     if (m.dir === 'note') return (
                       <div key={m.id || i} className="mt-4 flex items-start justify-end gap-2">
-                        <div className="max-w-md rounded-2xl rounded-tr-md bg-amber-50 px-4 py-2.5 text-sm text-amber-900 shadow-sm ring-1 ring-amber-200">
+                        <div className="max-w-[min(85%,38rem)] rounded-2xl rounded-tr-md bg-amber-50 px-4 py-2.5 text-sm text-amber-900 shadow-sm ring-1 ring-amber-200">
                           <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">📝 Internal note{m.agent ? ` · ${m.agent}` : ''}</div>
                           <div>{m.text}</div>
                           <div className="mt-1 text-right text-[10px] text-amber-700/70">{fmtClock(m.ts, m.time)}</div>
@@ -984,7 +989,7 @@ export default function Dashboard() {
                       <div key={m.id || i} className="mt-4 flex flex-col items-end">
                         {m.agent && <div className="mb-0.5 mr-10 text-[10px] font-semibold text-slate-500">{m.agent}</div>}
                         <div className="flex items-start justify-end gap-2">
-                          <div className={`max-w-md rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ${failed ? 'bg-rose-50 text-rose-900 ring-1 ring-rose-200' : 'bg-brand-600 text-white'}`}>
+                          <div className={`max-w-[min(85%,38rem)] rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ${failed ? 'bg-rose-50 text-rose-900 ring-1 ring-rose-200' : 'bg-brand-600 text-white'}`}>
                             <MsgAttachments items={m.attachments} />{m.text}
                             <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${failed ? 'text-rose-500' : 'text-white/70'}`}>
                               {fmtClock(m.ts, m.time)}
@@ -1017,7 +1022,7 @@ export default function Dashboard() {
                     <button onClick={() => setMode('reply')} className={`pb-1 ${mode === 'reply' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Reply</button>
                     <button onClick={() => setMode('note')} className={`pb-1 ${mode === 'note' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Note</button>
                   </div>
-                  <textarea rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message...'} className="block w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
+                  <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message...'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
                   <input ref={fileInputRef} type="file" onChange={onFileChosen} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.ai,.psd,.eps,.zip" />
                   <div className="mt-2 flex items-center justify-between">
                     <div className="flex items-center gap-1 text-slate-500">
@@ -1085,9 +1090,9 @@ export default function Dashboard() {
             </div>
             {ai.error && <div className="border-b border-rose-100 bg-rose-50 px-5 py-2 text-xs text-rose-700">{ai.error}</div>}
 
-            <nav className="nice-scroll flex items-center gap-5 overflow-x-auto border-b border-slate-200 px-5 text-sm">
+            <nav className="nice-scroll flex items-center gap-3.5 overflow-x-auto border-b border-slate-200 px-4 text-[13px]">
               {[['responses','Responses'],['translate','Translation'],['summary','Summary'],['actions','Actions'],['designer','Designer Jobs'],['intent','Intent & Insights']].map(([id, lbl]) => (
-                <button key={id} onClick={() => setAiTab(id)} className={`shrink-0 whitespace-nowrap border-b-2 py-3 ${aiTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
+                <button key={id} onClick={() => setAiTab(id)} className={`shrink-0 whitespace-nowrap border-b-2 py-2.5 ${aiTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
               ))}
             </nav>
 

@@ -68,8 +68,10 @@ input:focus, select:focus, textarea:focus { outline: none; }
   .crm-mobile-header, .crm-nav-overlay { display: none !important; }
 }
 
-/* Collapsible sidebar */
-#app-shell { grid-template-columns: 240px 1fr; transition: grid-template-columns .25s ease; }
+/* Collapsible sidebar.
+   NOTE: no transition on grid-template-columns — Chrome freezes the animation
+   mid-flight (column kept its old width forever), so collapse/expand did nothing. */
+#app-shell { grid-template-columns: 240px 1fr; }
 #app-shell[data-collapsed="true"] { grid-template-columns: 72px 1fr; }
 #app-shell[data-collapsed="true"] .sb-label,
 #app-shell[data-collapsed="true"] .sb-section,
@@ -81,13 +83,18 @@ input:focus, select:focus, textarea:focus { outline: none; }
 #app-shell[data-collapsed="true"] .sb-help { padding: .5rem; justify-content: center; }
 #app-shell[data-collapsed="true"] #sb-toggle-icon { transform: rotate(180deg); }
 
-/* Panels grid (filters/chat/ai) */
+/* Panels grid (filters/chat/ai) — defaults step down with the screen so the CHAT
+   column always gets the most room (small laptops were squeezing it to ~400px).
+   NOTE: plain px only — clamp()/vw in the track list freezes the grid transition
+   in Chrome, leaving a blank column when the AI panel is closed. */
 #panels {
   --col-filters: 300px;
-  --col-ai: 400px;
+  --col-ai: 380px;
   grid-template-columns: var(--col-filters) 8px minmax(0,1fr) 8px var(--col-ai);
-  transition: grid-template-columns .25s ease;
 }
+@media (max-width: 1500px) { #panels { --col-ai: 350px; } }
+@media (max-width: 1400px) { #panels { --col-filters: 270px; --col-ai: 330px; } }
+@media (max-width: 1300px) { #panels { --col-filters: 250px; --col-ai: 305px; } }
 #panels[data-filters="collapsed"] { --col-filters: 52px !important; }
 #panels[data-ai="closed"]         { --col-ai: 0px !important; }
 #panels.is-resizing { transition: none !important; }
