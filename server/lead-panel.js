@@ -70,6 +70,19 @@ export const FIELD_MAP = {
   subtotal:         { t: 'quotes', c: 'subtotal', num: true },
   shipping_charges: { t: 'quotes', c: 'shipping_cost', num: true },
   grand_total:      { t: 'quotes', c: 'total_amount', num: true },
+  // SALES ORDER -> app.orders (1 order per lead/conversation). Keys prefixed to avoid
+  // collisions (currency/status/special_instructions already used above).
+  order_products:      { t: 'orders', c: 'products' },
+  order_items_count:   { t: 'orders', c: 'items_count', num: true },
+  order_total:         { t: 'orders', c: 'total_amount', num: true },
+  order_currency:      { t: 'orders', c: 'currency' },
+  order_status:        { t: 'orders', c: 'order_status' },
+  payment_status:      { t: 'orders', c: 'payment_status' },
+  order_deadline:      { t: 'orders', c: 'deadline', date: true },
+  production_partner:  { t: 'orders', c: 'production_partner' },
+  order_summary:       { t: 'orders', c: 'order_summary' },
+  order_instructions:  { t: 'orders', c: 'special_instructions' },
+  order_lines:         { t: 'orders', childTable: 'order_lines' },   // app.order_lines rows
 }
 
 // conversation (in-memory id / DB uuid / legacy_id) -> DB conversation row
@@ -127,6 +140,38 @@ async function ensureExtRow(table, leadId) {
   return leadId
 }
 
+// SALES ORDER — ek order per conversation. Na ho to bana do (customer + latest quote se linked).
+async function findOrder(co) {
+  const r = await dbQuery(`SELECT * FROM app.orders WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1`, [co.conversation_id])
+  return r.rows[0] || null
+}
+async function ensureOrder(co, convName) {
+  const found = await findOrder(co)
+  if (found) return found.order_id
+  const custId = co.customer_id || await ensureCustomer(co, convName)
+  const leadId = await ensureLead(co)
+  const q = await dbQuery(`SELECT quote_id FROM app.quotes WHERE lead_id = $1 ORDER BY created_at DESC LIMIT 1`, [leadId])
+  const ins = await dbQuery(
+    `INSERT INTO app.orders (conversation_id, customer_id, quote_id, order_status, payment_status, currency, created_at, updated_at)
+     VALUES ($1, $2, $3, 'pending', 'pending', 'USD', now(), now()) RETURNING order_id`,
+    [co.conversation_id, custId, q.rows[0]?.quote_id || null])
+  const oid = ins.rows[0].order_id
+  await dbQuery(`UPDATE app.orders SET order_number = $1 WHERE order_id = $2 AND (order_number IS NULL OR order_number = '')`,
+    ['ORD-' + String(oid).replace(/-/g, '').slice(-6).toUpperCase(), oid])
+  return oid
+}
+// order_lines child-table sync — poore set ko replace karo (validate par).
+async function saveOrderLines(orderId, lines) {
+  await dbQuery(`DELETE FROM app.order_lines WHERE order_id = $1`, [orderId])
+  for (const ln of (Array.isArray(lines) ? lines : [])) {
+    const qty = Number(ln.qty) || 0, up = Number(ln.unit_price) || 0
+    if (!ln.product && !ln.sku && !qty) continue
+    await dbQuery(
+      `INSERT INTO app.order_lines (order_id, sku, product, qty, unit_price, total) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [orderId, ln.sku || '', ln.product || '', qty || null, up || null, (qty * up) || null])
+  }
+}
+
 async function writeCol(table, idCol, idVal, map, value) {
   if (map.j) {
     await dbQuery(
@@ -172,6 +217,10 @@ export async function saveField({ conversationId, field, value, convName }) {
     const id = await ensureCustomer(co, convName); await writeCol('app.customers', 'customer_id', id, map, value)
   } else if (map.t === 'quotes') {
     const id = await ensureQuote(co, convName); await writeCol('app.quotes', 'quote_id', id, map, value)
+  } else if (map.t === 'orders') {
+    const oid = await ensureOrder(co, convName)
+    if (map.childTable === 'order_lines') await saveOrderLines(oid, value)
+    else await writeCol('app.orders', 'order_id', oid, map, value)
   } else if (map.t === 'lead_requirements' || map.t === 'lead_shipping_details') {
     const lid = await ensureLead(co); await ensureExtRow(map.t, lid)
     await writeCol('app.' + map.t, 'lead_id', lid, map, value)
@@ -184,8 +233,8 @@ const dstr = (d) => { try { return d ? new Date(d).toISOString().slice(0, 10) : 
 // Panel kholte hi: DB me jo pehle se saved hai wo values (agent ko dikhane ko).
 export async function getLeadBundle(conversationId) {
   const out = {
-    lead: {}, customer: {}, product: {}, shipping: {}, quote: {},
-    has: { lead: false, customer: false, product: false, shipping: false, quote: false },
+    lead: {}, customer: {}, product: {}, shipping: {}, quote: {}, order: {},
+    has: { lead: false, customer: false, product: false, shipping: false, quote: false, order: false },
     customerName: '',
   }
   const co = await resolveIds(conversationId)
@@ -280,6 +329,28 @@ export async function getLeadBundle(conversationId) {
         valid_until: dstr(q.valid_until), currency: q.currency || 'USD',
         discount: q.discount ?? '', subtotal: q.subtotal ?? '',
         shipping_charges: q.shipping_cost ?? '', grand_total: q.total_amount ?? '',
+      }
+    }
+  }
+  // SALES ORDER (by conversation) — fields + order_lines rows.
+  {
+    const or = await findOrder(co)
+    if (or) {
+      out.has.order = true
+      const lr = await dbQuery(`SELECT sku, product, qty, unit_price, total FROM app.order_lines WHERE order_id = $1 ORDER BY line_id`, [or.order_id])
+      out.order = {
+        order_number: or.order_number || '',
+        order_products: or.products || '',
+        order_items_count: or.items_count ?? '',
+        order_total: or.total_amount ?? '',
+        order_currency: or.currency || 'USD',
+        order_status: or.order_status || '',
+        payment_status: or.payment_status || '',
+        order_deadline: dstr(or.deadline),
+        production_partner: or.production_partner || '',
+        order_summary: or.order_summary || '',
+        order_instructions: or.special_instructions || '',
+        order_lines: lr.rows.map((x) => ({ sku: x.sku || '', product: x.product || '', qty: x.qty ?? '', unit_price: x.unit_price ?? '', total: x.total ?? '' })),
       }
     }
   }

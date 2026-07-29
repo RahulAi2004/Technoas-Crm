@@ -26,6 +26,9 @@ const OPT = {
   shipping_method: ['Standard', 'Express', 'Pickup'],
   quote_status: ['Draft', 'Sent', 'Viewed', 'Accepted', 'Rejected', 'Expired'],
   currency: ['USD', 'PKR', 'EUR', 'GBP'],
+  order_currency: ['USD', 'PKR', 'EUR', 'GBP'],
+  order_status: ['pending', 'in_production', 'shipped', 'delivered', 'cancelled'],
+  payment_status: ['pending', 'partial', 'paid'],
 }
 const PRINT_LOCATIONS = ['Front', 'Back', 'Left Chest', 'Right Chest', 'Sleeves']
 
@@ -64,6 +67,13 @@ const QUOTE_FIELDS = [
   ['discount', 'Discount', 'number'], ['subtotal', 'Subtotal', 'number'],
   ['shipping_charges', 'Shipping Charges', 'number'], ['grand_total', 'Grand Total', 'number'],
 ]
+const ORDER_FIELDS = [
+  ['order_status', 'Order Status', 'select'], ['payment_status', 'Payment Status', 'select'],
+  ['order_currency', 'Currency', 'select'], ['order_items_count', 'Items Count', 'number'],
+  ['order_total', 'Total Amount', 'number'], ['order_deadline', 'Deadline', 'date'],
+  ['production_partner', 'Production Partner', 'text'], ['order_products', 'Products', 'text'],
+  ['order_summary', 'Order Summary', 'textarea'], ['order_instructions', 'Special Instructions', 'textarea'],
+]
 
 // Har tab ke saare field keys — "Confirm all" + unsaved-count ke liye.
 const TAB_KEYS = {
@@ -72,9 +82,10 @@ const TAB_KEYS = {
   product: [...PROD_FIELDS.map((f) => f[0]), 'size_breakdown', 'print_locations', 'special_instructions', ...ART_FIELDS.map((f) => f[0])],
   shipping: ['shipping_address', ...SHIP_FIELDS.map((f) => f[0])],
   quote: [...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes'],
+  order: [...ORDER_FIELDS.map((f) => f[0]), 'order_lines'],
 }
 
-const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}) })
+const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}), ...(b?.order || {}) })
 const hasVal = (v) =>
   v != null && v !== '' && v !== false &&
   !(Array.isArray(v) && v.length === 0) &&
@@ -242,6 +253,41 @@ function QuoteItems({ items, filled, state, onChange, onValidate }) {
         {!list.length && <div className="rounded-md border border-dashed border-slate-200 py-2 text-center text-[11px] text-slate-400">No items yet</div>}
       </div>
       <button onClick={add} className="mt-1.5 w-full rounded-md border border-dashed border-slate-300 py-1 text-[11px] font-semibold text-brand-600 hover:bg-slate-50">+ Add Item</button>
+    </div>
+  )
+}
+
+// Sales Order line items -> app.order_lines (SKU, Product, Qty, Unit Price, Total).
+function OrderLines({ items, filled, state, onChange, onValidate }) {
+  const list = Array.isArray(items) ? items : []
+  const set = (i, kk, v) => onChange(list.map((r, j) => (j === i ? { ...r, [kk]: v } : r)))
+  const add = () => onChange([...list, { sku: '', product: '', qty: 1, unit_price: 0 }])
+  const del = (i) => onChange(list.filter((_, j) => j !== i))
+  const amt = (r) => (Number(r.qty) || 0) * (Number(r.unit_price) || 0)
+  return (
+    <div className="rounded-lg border border-slate-200 p-2.5">
+      <div className="mb-1.5 flex items-center justify-between">
+        <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Order Line Items{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
+        <Validate state={state} val={list} filled={filled} onClick={onValidate} />
+      </div>
+      <div className="space-y-1.5">
+        {list.map((r, i) => (
+          <div key={i} className="rounded-md border border-slate-200 p-1.5">
+            <div className="flex items-center gap-1.5">
+              <input placeholder="SKU" value={r.sku || ''} onChange={(e) => set(i, 'sku', e.target.value)} className={`${INPUT} w-24`} />
+              <input placeholder="Product" value={r.product || ''} onChange={(e) => set(i, 'product', e.target.value)} className={`${INPUT} flex-1`} />
+              <button onClick={() => del(i)} className="text-rose-400 hover:text-rose-600">✕</button>
+            </div>
+            <div className="mt-1 grid grid-cols-3 gap-1">
+              <input type="number" placeholder="Qty" value={r.qty ?? ''} onChange={(e) => set(i, 'qty', e.target.value)} className={INPUT} />
+              <input type="number" placeholder="Unit $" value={r.unit_price ?? ''} onChange={(e) => set(i, 'unit_price', e.target.value)} className={INPUT} />
+              <div className="grid place-items-center rounded-lg bg-slate-50 text-[11px] font-semibold text-slate-600">${amt(r).toFixed(2)}</div>
+            </div>
+          </div>
+        ))}
+        {!list.length && <div className="rounded-md border border-dashed border-slate-200 py-2 text-center text-[11px] text-slate-400">No line items yet</div>}
+      </div>
+      <button onClick={add} className="mt-1.5 w-full rounded-md border border-dashed border-slate-300 py-1 text-[11px] font-semibold text-brand-600 hover:bg-slate-50">+ Add Line</button>
     </div>
   )
 }
@@ -427,7 +473,7 @@ export default function LeadPanel({ conv, onClose }) {
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
   }
 
-  const TABS = [['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Shipping & Delivery'], ['quote', 'Quote']]
+  const TABS = [['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Shipping & Delivery'], ['quote', 'Quote'], ['order', 'Sales Order']]
   // Readable columns: panel ki chaudai ke hisaab se (chhote panel me 1-2, wide me 3). Cramped nahi.
   const grid = wide
     ? 'grid gap-3 grid-cols-2 lg:grid-cols-3'
@@ -530,6 +576,14 @@ export default function LeadPanel({ conv, onClose }) {
             onChange={(v) => setVal('line_items', v)} onValidate={validate('line_items')} />
           <div className={grid}><Field k="quote_notes" label="Notes (to customer)" type="textarea" val={vals.quote_notes} filled={filled.quote_notes} state={fs.quote_notes} onChange={(v) => setVal('quote_notes', v)} onValidate={validate('quote_notes')} /></div>
           <div className={grid}>{renderFields(QUOTE_FIELDS)}</div>
+        </div>)}
+
+        {tab === 'order' && (<div className="space-y-3">
+          {vals.order_number && <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"><span className="text-slate-500">Order No:</span> <span className="font-bold text-slate-800">{vals.order_number}</span></div>}
+          <OrderLines items={vals.order_lines} filled={filled.order_lines} state={fs.order_lines}
+            onChange={(v) => setVal('order_lines', v)} onValidate={validate('order_lines')} />
+          <div className={grid}>{renderFields(ORDER_FIELDS)}</div>
+          <p className="text-[10px] text-slate-400">Validate karte hi <b>app.orders / app.order_lines</b> me save — POS Decoinks yahi se auto-populate karega.</p>
         </div>)}
       </div>
 
