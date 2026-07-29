@@ -5,7 +5,7 @@
 //   leads · customers · lead_requirements · lead_shipping_details · quotes
 // Row na ho to pehli validate par apne aap ban jaati hai.
 // ============================================================
-import { query as dbQuery, getAll, findById } from './db.js'
+import { query as dbQuery, getClient, getAll, findById } from './db.js'
 import { chatJSON } from './ai.js'
 import { createHash } from 'node:crypto'
 
@@ -646,6 +646,8 @@ export async function completeLead(conversationId) {
   const legacyId = co.legacy_id || String(conversationId)
   const leadId = stableUuidFromText(`crm:${legacyId}`)
   const productId = stableUuidFromText(`crm-product:${legacyId}`)
+  const customerId = stableUuidFromText(`crm-customer:${co.customer_id || legacyId}`)
+  const customerNumber = `CUST-CRM-${createHash('md5').update(String(co.customer_id || legacyId)).digest('hex').slice(0, 10).toUpperCase()}`
   const leadNumber = `CRM-${String(legacyId).replace(/[^a-zA-Z0-9]/g, '-').slice(0, 24)}`
   const intentScore = Math.max(0, Math.min(100, Number(bundle.ai?.intent_score ?? score.score) || 0))
   const temperature = bundle.ai?.temperature || deriveTemperature(intentScore, lead.purchase_intent || '')
@@ -656,8 +658,16 @@ export async function completeLead(conversationId) {
   const artworkReceived = /received|review|approved|changes/i.test(product.artwork_status || '')
   const shippingAddress = addressText(customer.shipping_address)
   const billingAddress = addressText(customer.billing_address)
+  const customerName = bundle.customerName || [customer.first_name, customer.last_name].filter(Boolean).join(' ') || conv?.name || 'Unknown'
+  const customerStatus = ['prospect', 'active', 'inactive', 'blocked', 'archived'].includes(String(customer.cust_status || '').toLowerCase())
+    ? String(customer.cust_status).toLowerCase()
+    : 'prospect'
 
-  const { rows } = await dbQuery(
+  const client = await getClient()
+  let rows
+  try {
+    await client.query('BEGIN')
+    ;({ rows } = await client.query(
     `WITH synced_lead AS (
        INSERT INTO public.leads (
          id, lead_number, display_number, source, description, stage, status, customer_name,
@@ -701,6 +711,88 @@ export async function completeLead(conversationId) {
          message_count=EXCLUDED.message_count,
          updated_at=now()
        RETURNING id
+     ), customer_target AS (
+       SELECT c.id
+         FROM public.customers c
+         JOIN synced_lead sl ON true
+        WHERE c.deleted_at IS NULL
+          AND (
+            c.lead_id = sl.id
+            OR c.id = (SELECT customer_id FROM public.leads WHERE id = sl.id)
+            OR ($51::text IS NOT NULL AND lower(c.email) = lower($51::text))
+          )
+        ORDER BY (c.lead_id = sl.id) DESC, c.created_at
+        LIMIT 1
+     ), updated_customer AS (
+       UPDATE public.customers c SET
+         lead_id=sl.id,
+         name=COALESCE(NULLIF($48,''),c.name),
+         first_name=COALESCE(NULLIF($49,''),c.first_name),
+         last_name=COALESCE(NULLIF($50,''),c.last_name),
+         company=COALESCE(NULLIF($52,''),c.company),
+         company_name=COALESCE(NULLIF($52,''),c.company_name),
+         email=CASE
+           WHEN NULLIF($51,'') IS NULL THEN c.email
+           WHEN EXISTS (
+             SELECT 1 FROM public.customers other
+              WHERE other.id<>c.id AND other.deleted_at IS NULL
+                AND lower(other.email)=lower($51)
+           ) THEN c.email
+           ELSE $51
+         END,
+         company_phone_number=COALESCE(NULLIF($53,''),c.company_phone_number),
+         mobile_number=COALESCE(NULLIF($54,''),c.mobile_number),
+         phone=COALESCE(NULLIF($54,''),c.phone),
+         whatsapp=COALESCE(NULLIF($55,''),c.whatsapp),
+         preferred_language=COALESCE(NULLIF($56,''),c.preferred_language),
+         customer_segment=COALESCE(NULLIF($57,''),c.customer_segment),
+         tier=COALESCE(NULLIF($58,''),c.tier),
+         status=$59,
+         internal_notes=COALESCE(NULLIF($60,''),c.internal_notes),
+         address_line1=COALESCE(NULLIF($61,''),c.address_line1),
+         billing_address=COALESCE(NULLIF($62,''),c.billing_address),
+         source='Technocas CRM',
+         updated_at=now()
+       FROM synced_lead sl
+       WHERE c.id=(SELECT id FROM customer_target)
+       RETURNING c.id
+     ), inserted_customer AS (
+       INSERT INTO public.customers
+         (id,customer_number,lead_id,name,first_name,last_name,company,company_name,email,
+          company_phone_number,mobile_number,phone,whatsapp,preferred_language,
+          customer_segment,tier,status,internal_notes,address_line1,billing_address,source)
+       SELECT $46,$47,sl.id,$48,NULLIF($49,''),NULLIF($50,''),NULLIF($52,''),NULLIF($52,''),
+              NULLIF($51,''),NULLIF($53,''),NULLIF($54,''),NULLIF($54,''),NULLIF($55,''),
+              COALESCE(NULLIF($56,''),'en'),NULLIF($57,''),NULLIF($58,''),$59,
+              NULLIF($60,''),NULLIF($61,''),NULLIF($62,''),'Technocas CRM'
+         FROM synced_lead sl
+        WHERE NOT EXISTS (SELECT 1 FROM customer_target)
+       ON CONFLICT (id) DO UPDATE SET
+         lead_id=EXCLUDED.lead_id,
+         name=COALESCE(NULLIF(EXCLUDED.name,''),public.customers.name),
+         first_name=COALESCE(EXCLUDED.first_name,public.customers.first_name),
+         last_name=COALESCE(EXCLUDED.last_name,public.customers.last_name),
+         company=COALESCE(EXCLUDED.company,public.customers.company),
+         company_name=COALESCE(EXCLUDED.company_name,public.customers.company_name),
+         email=COALESCE(EXCLUDED.email,public.customers.email),
+         company_phone_number=COALESCE(EXCLUDED.company_phone_number,public.customers.company_phone_number),
+         mobile_number=COALESCE(EXCLUDED.mobile_number,public.customers.mobile_number),
+         phone=COALESCE(EXCLUDED.phone,public.customers.phone),
+         whatsapp=COALESCE(EXCLUDED.whatsapp,public.customers.whatsapp),
+         preferred_language=COALESCE(EXCLUDED.preferred_language,public.customers.preferred_language),
+         customer_segment=COALESCE(EXCLUDED.customer_segment,public.customers.customer_segment),
+         tier=COALESCE(EXCLUDED.tier,public.customers.tier),
+         status=EXCLUDED.status,
+         internal_notes=COALESCE(EXCLUDED.internal_notes,public.customers.internal_notes),
+         address_line1=COALESCE(EXCLUDED.address_line1,public.customers.address_line1),
+         billing_address=COALESCE(EXCLUDED.billing_address,public.customers.billing_address),
+         source='Technocas CRM',
+         updated_at=now()
+       RETURNING id
+     ), synced_customer AS (
+       SELECT id FROM updated_customer
+       UNION ALL
+       SELECT id FROM inserted_customer
      ), synced_product AS (
        INSERT INTO public.lead_product_interest
          (id,lead_id,product_type,qty,sizes,colors,artwork_count,notes,sort_order)
@@ -709,6 +801,7 @@ export async function completeLead(conversationId) {
          product_type=EXCLUDED.product_type,qty=EXCLUDED.qty,sizes=EXCLUDED.sizes,
          colors=EXCLUDED.colors,artwork_count=EXCLUDED.artwork_count,notes=EXCLUDED.notes
      )
+     , synced_qualification AS (
      INSERT INTO public.lead_qualifications
        (lead_id,sizes_received,artwork_received,delivery_date_confirmed,
         shipping_address_confirmed,budget_confirmed,payment_method_pref,info_completeness_score,
@@ -725,7 +818,10 @@ export async function completeLead(conversationId) {
        product_identified=EXCLUDED.product_identified,quantity_discussed=EXCLUDED.quantity_discussed,
        quote_requested=EXCLUDED.quote_requested,mockup_requested=EXCLUDED.mockup_requested,
        updated_at=now()
-     RETURNING lead_id`,
+     RETURNING lead_id
+     )
+     SELECT sq.lead_id, sc.id AS customer_id
+       FROM synced_customer sc, synced_qualification sq`,
     [
       leadId, leadNumber, publicSource(co.channel || conv?.channel), lead.lead_summary || '',
       publicStage(lead.stage), bundle.customerName || conv?.name || 'Unknown',
@@ -748,7 +844,26 @@ export async function completeLead(conversationId) {
       !!score.facts.customer_responded, !!score.facts.human_engaged,
       !!score.facts.product, !!score.facts.quantity, !!score.facts.quote,
       !!score.facts.mockup_requested,
-    ])
+      customerId, customerNumber, customerName,
+      customer.first_name || null, customer.last_name || null, customer.email || null,
+      customer.business_name || null, customer.company_phone || null,
+      customer.mobile_number || customer.phone || null, customer.whatsapp || null,
+      customer.preferred_language || null, customer.segment || null,
+      customer.loyalty_tier || null, customerStatus, customer.customer_notes || null,
+      shippingAddress, billingAddress,
+    ]))
+    if (!rows[0]) throw new Error('Customer sync produced no linked record')
+    await client.query(
+      `UPDATE public.leads SET customer_id=$1, updated_at=now() WHERE id=$2`,
+      [rows[0].customer_id, rows[0].lead_id]
+    )
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
 
   return { ok: true, completed: true, lead_id: rows[0]?.lead_id || leadId, qualification: score, intent_score: intentScore, temperature }
 }

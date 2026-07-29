@@ -217,6 +217,7 @@ export function resetDb() {
 }
 // Raw read-only query (for the AI assistant's text-to-SQL). index.js validates it's a SELECT.
 export function query(sql, params) { return pool.query(sql, params) }
+export function getClient() { return pool.connect() }
 export function getSetting(key) { return (data.settings || {})[key] }
 export function setSetting(key, value) { if (!data.settings) data.settings = {}; data.settings[key] = value; upsertKv('settings', key, value) }
 export function deleteSetting(key) { if (data.settings) { delete data.settings[key]; deleteKv('settings', key) } }
