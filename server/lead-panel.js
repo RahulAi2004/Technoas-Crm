@@ -23,13 +23,20 @@ export const FIELD_MAP = {
   internal_notes:   { t: 'leads', c: 'internal_notes' },   // agent likhta hai (ai_observations = AI, alag)
   lost_reason:      { t: 'leads', c: 'lost_reason' },
   estimated_value:  { t: 'leads', c: 'estimated_value', num: true },
-  // CUSTOMER -> app.customers
-  email:            { t: 'customers', c: 'email' },
-  phone:            { t: 'customers', c: 'phone' },
-  segment:          { t: 'customers', c: 'customer_segment' },
-  cust_status:      { t: 'customers', c: 'status' },
+  // CUSTOMER -> app.customers (POS Decoinks profile ke fields; typed col ya extra JSON)
+  first_name:       { t: 'customers', j: 'first_name' },
+  last_name:        { t: 'customers', j: 'last_name' },
   business_name:    { t: 'customers', c: 'company' },
+  email:            { t: 'customers', c: 'email' },
+  company_phone:    { t: 'customers', j: 'company_phone' },
+  mobile_number:    { t: 'customers', c: 'phone' },       // primary phone (typed)
+  phone:            { t: 'customers', c: 'phone' },        // legacy alias (UI mobile_number use karta hai)
+  whatsapp:         { t: 'customers', j: 'whatsapp' },
+  preferred_language:{ t: 'customers', c: 'language_preference' },
   preferred_channel:{ t: 'customers', j: 'preferred_channel' },
+  segment:          { t: 'customers', c: 'customer_segment' },
+  loyalty_tier:     { t: 'customers', c: 'tier' },
+  cust_status:      { t: 'customers', c: 'status' },
   tax_exempt:       { t: 'customers', j: 'tax_exempt' },
   customer_notes:   { t: 'customers', j: 'customer_notes' },
   shipping_address: { t: 'customers', j: 'shipping_address' },
@@ -96,6 +103,8 @@ const FIELD_OPTS = {
   segment: ['Event Customer', 'Reseller', 'Wholesale', 'Individual', 'Business'],
   cust_status: ['Active', 'Inactive', 'Lead'],
   preferred_channel: ['WhatsApp', 'Facebook', 'Instagram', 'Email', 'Phone'],
+  preferred_language: ['English', 'Spanish', 'French', 'Arabic', 'Urdu', 'Portuguese', 'Other'],
+  loyalty_tier: ['Standard', 'Silver', 'Gold', 'Platinum', 'VIP'],
   product_type: ['T-Shirt', 'Hoodie', 'Polo', 'Sweatshirt', 'DTF Transfer', 'Gang Sheet', 'Other'],
   garment_source: ['Decoinks Supply', 'Customer Supplied'],
   print_method: ['DTF', 'Screen Print', 'Embroidery', 'Other'],
@@ -232,8 +241,8 @@ export async function saveField({ conversationId, field, value, convName }) {
 
   // 1) Email format
   if (field === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sval)) bad('Invalid email address')
-  // 2) Phone — kam se kam 7 digits
-  if (field === 'phone' && sval.replace(/\D/g, '').length < 7) bad('Phone number looks too short')
+  // 2) Phone fields — kam se kam 7 digits
+  if (['phone', 'mobile_number', 'company_phone', 'whatsapp'].includes(field) && sval && sval.replace(/\D/g, '').length < 7) bad('Phone number looks too short')
   // 3) Select fields — value allowed options me se honi chahiye
   if (FIELD_OPTS[field] && sval && !FIELD_OPTS[field].includes(sval)) bad(`Invalid ${field}. Allowed: ${FIELD_OPTS[field].join(', ')}`)
   // 4) Numbers — valid + 0 ya zyada
@@ -328,10 +337,15 @@ export async function getLeadBundle(conversationId) {
       out.has.customer = true
       out.customerName = c.full_name || ''
       out.customer = {
-        email: c.email || '', phone: c.phone || '',
-        segment: c.customer_segment || '', cust_status: c.status || '',
-        business_name: c.company || '',
+        first_name: c.extra?.first_name || '', last_name: c.extra?.last_name || '',
+        business_name: c.company || '', email: c.email || '',
+        company_phone: c.extra?.company_phone || '',
+        mobile_number: c.phone || '', phone: c.phone || '',
+        whatsapp: c.extra?.whatsapp || '',
+        preferred_language: c.language_preference || '',
         preferred_channel: c.extra?.preferred_channel || '',
+        segment: c.customer_segment || '', loyalty_tier: c.tier || '',
+        cust_status: c.status || '',
         tax_exempt: c.extra?.tax_exempt ?? false,
         customer_notes: c.extra?.customer_notes || '',
         shipping_address: c.extra?.shipping_address || {},
@@ -423,11 +437,16 @@ Return ONLY a JSON object with EXACTLY these keys (use "" or [] when unknown —
     "estimated_value": order/deal value in numbers if any price was discussed, else ""
   },
   "customer": {
-    "email": customer's OWN email or "",
-    "phone": customer's OWN phone or "",
-    "segment": one of ["Event Customer","Reseller","Wholesale","Individual","Business"] or "",
+    "first_name": customer's first name or "",
+    "last_name": customer's last/family name or "",
     "business_name": customer's company/brand name or "",
+    "email": customer's OWN email or "",
+    "company_phone": customer's business/office phone or "",
+    "mobile_number": customer's mobile/cell phone or "",
+    "whatsapp": customer's WhatsApp number or "",
+    "preferred_language": one of ["English","Spanish","French","Arabic","Urdu","Portuguese","Other"] or "",
     "preferred_channel": one of ["WhatsApp","Facebook","Instagram","Email","Phone"] or "",
+    "segment": one of ["Event Customer","Reseller","Wholesale","Individual","Business"] or "",
     "tax_exempt": true only if the customer explicitly says they are tax exempt, else false,
     "shipping_address": { "line1":"", "line2":"", "city":"", "state":"", "zip":"", "country":"" },
     "billing_address": { "line1":"", "line2":"", "city":"", "state":"", "zip":"", "country":"" }
