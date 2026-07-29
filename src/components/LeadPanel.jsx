@@ -29,6 +29,11 @@ const OPT = {
   order_currency: ['USD', 'PKR', 'EUR', 'GBP'],
   order_status: ['pending', 'in_production', 'shipped', 'delivered', 'cancelled'],
   payment_status: ['pending', 'partial', 'paid'],
+  // combo (dropdown + custom typeable) — variable values, isliye strict select nahi.
+  garment_color: ['Black', 'White', 'Navy', 'Royal Blue', 'Red', 'Sport Grey', 'Charcoal', 'Maroon', 'Forest Green', 'Purple', 'Pink', 'Gold', 'Orange', 'Heather Grey'],
+  brand_style: ['Gildan 5000', 'Gildan 18500', 'Gildan 64000', 'Bella+Canvas 3001', 'Next Level 3600', 'Hanes 5250', 'Comfort Colors 1717', 'Champion S700', 'Independent Trading', 'Port & Company'],
+  front_print_size: ['Left Chest ~4in', 'Full Front ~11in', 'Full Front ~12in', 'Pocket ~3.5in', 'A4', 'A3'],
+  back_print_size: ['Full Back ~11in', 'Full Back ~12in', 'Upper Back ~4in', 'A3'],
 }
 const PRINT_LOCATIONS = ['Front', 'Back', 'Left Chest', 'Right Chest', 'Sleeves']
 
@@ -47,9 +52,9 @@ const CUST_FIELDS = [
 ]
 const PROD_FIELDS = [
   ['product_type', 'Product Type', 'select'], ['garment_source', 'Garment Source', 'select'],
-  ['brand_style', 'Brand / Style', 'text'], ['garment_color', 'Color', 'text'],
+  ['brand_style', 'Brand / Style', 'combo'], ['garment_color', 'Color', 'combo'],
   ['total_quantity', 'Total Quantity', 'number'], ['print_method', 'Print Method', 'select'],
-  ['front_print_size', 'Front Print Size', 'text'], ['back_print_size', 'Back Print Size', 'text'],
+  ['front_print_size', 'Front Print Size', 'combo'], ['back_print_size', 'Back Print Size', 'combo'],
 ]
 const ART_FIELDS = [
   ['artwork_required', 'Artwork Required', 'toggle'], ['artwork_status', 'Artwork Status', 'select'],
@@ -131,6 +136,12 @@ function Field({ k, label, type, val, filled, state, onChange, onValidate }) {
               <option value="">—</option>
               {(OPT[k] || []).map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
+          ) : type === 'combo' ? (
+            // dropdown suggestions + custom bhi type kar sakte hain (variable values ke liye)
+            <>
+              <input list={`dl-${k}`} value={val ?? ''} onChange={(e) => onChange(e.target.value)} className={INPUT} placeholder="Select or type…" />
+              <datalist id={`dl-${k}`}>{(OPT[k] || []).map((o) => <option key={o} value={o} />)}</datalist>
+            </>
           ) : type === 'textarea' ? (
             <textarea value={val || ''} onChange={(e) => onChange(e.target.value)} rows={2} className={INPUT} />
           ) : type === 'toggle' ? (
