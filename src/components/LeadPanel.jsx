@@ -430,7 +430,16 @@ export default function LeadPanel({ conv, onClose }) {
     let cancelled = false
     setVals({}); setFilled({}); setFs({}); setErr(''); setCompleted(false); setScore(null); setSameBilling(false); setTab('lead'); setAi(null)
     api.get(`/api/leads/panel/${encodeURIComponent(cid)}`)
-      .then((b) => { if (!cancelled) { setVals(flatten(b)); setAi(b?.ai || null) } })
+      .then((b) => {
+        if (cancelled) return
+        const flat = flatten(b)
+        setVals(flat); setAi(b?.ai || null)
+        // DB me jo fields pehle se saved hain unhe turant "✓ Saved" (green) dikhao — taaki agent
+        // ko pata rahe kya ho chuka; wo baaki/naye fields incrementally validate karta rahe.
+        const savedFs = {}
+        for (const [k, v] of Object.entries(flat)) if (hasVal(v)) savedFs[k] = 'ok'
+        setFs(savedFs)
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) runExtract() })
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`)
