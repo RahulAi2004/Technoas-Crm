@@ -7,6 +7,7 @@
 // ============================================================
 import { query as dbQuery, getAll, findById } from './db.js'
 import { chatJSON } from './ai.js'
+import { createHash } from 'node:crypto'
 
 // ---- Field whitelist: panel SIRF yahi fields save kar sakta hai (SQL injection safe) ----
 //   t: table | c: column | j: key inside <table>.extra JSON | jsonCol: apna JSON column
@@ -112,7 +113,7 @@ const FUTURE_DATE_FIELDS = new Set(['required_delivery_date', 'event_date', 'ord
 // conversation (in-memory id / DB uuid / legacy_id) -> DB conversation row
 async function resolveIds(conversationId) {
   const r = await dbQuery(
-    `SELECT conversation_id, legacy_id, customer_id
+    `SELECT conversation_id, legacy_id, customer_id, channel
        FROM app.conversations
       WHERE conversation_id::text = $1 OR legacy_id = $1
       LIMIT 1`, [String(conversationId)])
@@ -569,6 +570,155 @@ export async function getLeadScore(conversationId) {
       [qualification.score, temperature, lead.lead_id]).catch(() => {})
   }
   return { qualification, purchase_intent, temperature }
+}
+
+const stableUuidFromText = (text) => {
+  const h = createHash('md5').update(String(text)).digest('hex')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`
+}
+
+const publicSource = (channel) => ({
+  Facebook: 'Facebook Messenger',
+  Instagram: 'Instagram',
+  WhatsApp: 'WhatsApp',
+  Email: 'Email',
+  Phone: 'Phone',
+}[channel] || 'Facebook Messenger')
+
+const publicStage = (stage) => ({
+  Qualification: 'initiated',
+  Contacted: 'initiated',
+  Proposal: 'quotation',
+  Negotiation: 'payment',
+  Won: 'confirmed',
+  Lost: 'initiated',
+}[stage] || 'initiated')
+
+const addressText = (address) => {
+  if (!address || typeof address !== 'object') return address || null
+  const parts = [
+    address.street || address.address || address.line1,
+    address.line2,
+    address.city,
+    address.state,
+    address.zip || address.postcode,
+    address.country,
+  ].filter(Boolean)
+  return parts.length ? parts.join(', ') : null
+}
+
+// Submit / Complete: copy the reviewed CRM bundle into the Decoinks lead workspace.
+// All three writes are one PostgreSQL statement, so the dashboard never sees a
+// half-synced lead. The deterministic IDs make retries and later edits idempotent.
+export async function completeLead(conversationId) {
+  const co = await resolveIds(conversationId)
+  if (!co) { const e = new Error('Conversation not found in DB'); e.status = 404; throw e }
+
+  const bundle = await getLeadBundle(conversationId)
+  const score = computeQualification(conversationId, bundle)
+  const lead = bundle.lead || {}
+  const customer = bundle.customer || {}
+  const product = bundle.product || {}
+  const shipping = bundle.shipping || {}
+  const conv = findById('conversations', conversationId)
+  const legacyId = co.legacy_id || String(conversationId)
+  const leadId = stableUuidFromText(`crm:${legacyId}`)
+  const productId = stableUuidFromText(`crm-product:${legacyId}`)
+  const leadNumber = `CRM-${String(legacyId).replace(/[^a-zA-Z0-9]/g, '-').slice(0, 24)}`
+  const temperature = deriveTemperature(score.score, lead.purchase_intent || '')
+  const sizes = Array.isArray(product.size_breakdown)
+    ? product.size_breakdown.map((x) => [x.size, x.qty ?? x.quantity].filter((v) => v !== undefined && v !== '').join(': ')).filter(Boolean).join(', ')
+    : null
+  const colors = [product.garment_color, product.brand_style].filter(Boolean).join(', ') || null
+  const artworkReceived = /received|review|approved|changes/i.test(product.artwork_status || '')
+  const shippingAddress = addressText(customer.shipping_address)
+  const billingAddress = addressText(customer.billing_address)
+
+  const { rows } = await dbQuery(
+    `WITH synced_lead AS (
+       INSERT INTO public.leads (
+         id, lead_number, display_number, source, description, stage, status, customer_name,
+         supplier_name, company_name, email, phone, communication_channel,
+         country, state, city, zip, shipping_address, billing_address, buyer_type,
+         conversion_score, estimated_value, urgency, customer_intent, internal_notes,
+         product_interest, has_artwork, delivery_date, priority,
+         conversation_primary_id, last_message, message_count, created_at, updated_at
+       ) VALUES (
+         $1::uuid,$2,('CRM-' || left(replace($1::text,'-',''),12)),$3,$4,$5,'New',$6,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+         $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,now(),now()
+       )
+       ON CONFLICT (id) DO UPDATE SET
+         source=EXCLUDED.source,
+         description=COALESCE(NULLIF(EXCLUDED.description,''),public.leads.description),
+         stage=EXCLUDED.stage,
+         customer_name=COALESCE(NULLIF(EXCLUDED.customer_name,''),public.leads.customer_name),
+         supplier_name=COALESCE(NULLIF(EXCLUDED.supplier_name,''),public.leads.supplier_name),
+         company_name=COALESCE(NULLIF(EXCLUDED.company_name,''),public.leads.company_name),
+         email=COALESCE(NULLIF(EXCLUDED.email,''),public.leads.email),
+         phone=COALESCE(NULLIF(EXCLUDED.phone,''),public.leads.phone),
+         communication_channel=EXCLUDED.communication_channel,
+         country=COALESCE(NULLIF(EXCLUDED.country,''),public.leads.country),
+         state=COALESCE(NULLIF(EXCLUDED.state,''),public.leads.state),
+         city=COALESCE(NULLIF(EXCLUDED.city,''),public.leads.city),
+         zip=COALESCE(NULLIF(EXCLUDED.zip,''),public.leads.zip),
+         shipping_address=COALESCE(NULLIF(EXCLUDED.shipping_address,''),public.leads.shipping_address),
+         billing_address=COALESCE(NULLIF(EXCLUDED.billing_address,''),public.leads.billing_address),
+         buyer_type=COALESCE(NULLIF(EXCLUDED.buyer_type,''),public.leads.buyer_type),
+         conversion_score=EXCLUDED.conversion_score,
+         estimated_value=COALESCE(EXCLUDED.estimated_value,public.leads.estimated_value),
+         urgency=EXCLUDED.urgency,
+         customer_intent=COALESCE(NULLIF(EXCLUDED.customer_intent,''),public.leads.customer_intent),
+         internal_notes=COALESCE(NULLIF(EXCLUDED.internal_notes,''),public.leads.internal_notes),
+         product_interest=COALESCE(NULLIF(EXCLUDED.product_interest,''),public.leads.product_interest),
+         has_artwork=EXCLUDED.has_artwork,
+         delivery_date=COALESCE(EXCLUDED.delivery_date,public.leads.delivery_date),
+         priority=COALESCE(NULLIF(EXCLUDED.priority,''),public.leads.priority),
+         conversation_primary_id=EXCLUDED.conversation_primary_id,
+         last_message=COALESCE(NULLIF(EXCLUDED.last_message,''),public.leads.last_message),
+         message_count=EXCLUDED.message_count,
+         updated_at=now()
+       RETURNING id
+     ), synced_product AS (
+       INSERT INTO public.lead_product_interest
+         (id,lead_id,product_type,qty,sizes,colors,artwork_count,notes,sort_order)
+       SELECT $30,id,$23,$31,$32,$33,$34,$35,0 FROM synced_lead
+       ON CONFLICT (id) DO UPDATE SET
+         product_type=EXCLUDED.product_type,qty=EXCLUDED.qty,sizes=EXCLUDED.sizes,
+         colors=EXCLUDED.colors,artwork_count=EXCLUDED.artwork_count,notes=EXCLUDED.notes
+     )
+     INSERT INTO public.lead_qualifications
+       (lead_id,sizes_received,artwork_received,delivery_date_confirmed,
+        shipping_address_confirmed,budget_confirmed,payment_method_pref,info_completeness_score)
+     SELECT id,$36,$24,$37,$38,$39,NULL,$18 FROM synced_lead
+     ON CONFLICT (lead_id) DO UPDATE SET
+       sizes_received=EXCLUDED.sizes_received,artwork_received=EXCLUDED.artwork_received,
+       delivery_date_confirmed=EXCLUDED.delivery_date_confirmed,
+       shipping_address_confirmed=EXCLUDED.shipping_address_confirmed,
+       budget_confirmed=EXCLUDED.budget_confirmed,
+       info_completeness_score=EXCLUDED.info_completeness_score,updated_at=now()
+     RETURNING lead_id`,
+    [
+      leadId, leadNumber, publicSource(co.channel || conv?.channel), lead.lead_summary || '',
+      publicStage(lead.stage), bundle.customerName || conv?.name || 'Unknown',
+      customer.business_name || null, customer.email || null, customer.phone || null,
+      co.channel || conv?.channel || 'CRM', shipping.shipping_country || null,
+      shipping.shipping_state || null, shipping.shipping_city || null,
+      shipping.shipping_postcode || null, shippingAddress, billingAddress,
+      customer.segment || null, score.score, lead.estimated_value || null, temperature,
+      lead.purchase_intent || null, lead.internal_notes || null, product.product_type || null,
+      artworkReceived, shipping.required_delivery_date || null,
+      String(lead.priority || 'medium').toLowerCase(), co.conversation_id,
+      conv?.list_preview || '', Number(conv?.message_count || conv?.total_messages || 0),
+      productId, product.total_quantity || null, sizes, colors,
+      artworkReceived ? 1 : 0,
+      [product.print_method, product.print_locations?.join?.(', '), product.special_instructions].filter(Boolean).join(' · ') || null,
+      Array.isArray(product.size_breakdown) && product.size_breakdown.length > 0,
+      !!(shipping.required_delivery_date || shipping.event_date),
+      !!(shippingAddress || shipping.shipping_postcode),
+      bundle.has.quote && (nonEmpty(bundle.quote?.grand_total) || (Array.isArray(bundle.quote?.line_items) && bundle.quote.line_items.length > 0)),
+    ])
+
+  return { ok: true, completed: true, lead_id: rows[0]?.lead_id || leadId, qualification: score, temperature }
 }
 
 // ---- BULK: jin conversations me order hua hai, unki fields AI se nikaal kar DB me bhar do ----

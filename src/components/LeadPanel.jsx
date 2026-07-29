@@ -388,6 +388,7 @@ export default function LeadPanel({ conv, onClose }) {
   const [extracting, setExtracting] = useState(false)
   const [savingAll, setSavingAll] = useState(false)
   const [err, setErr] = useState('')
+  const [completed, setCompleted] = useState(false)
   const [sameBilling, setSameBilling] = useState(false)
   const [ai, setAi] = useState(null)            // AI-enriched read-only insights (Leads dashboard wale fields)
 
@@ -416,7 +417,7 @@ export default function LeadPanel({ conv, onClose }) {
   useEffect(() => {
     if (!cid) return
     let cancelled = false
-    setVals({}); setFilled({}); setFs({}); setErr(''); setScore(null); setSameBilling(false); setTab('lead'); setAi(null)
+    setVals({}); setFilled({}); setFs({}); setErr(''); setCompleted(false); setScore(null); setSameBilling(false); setTab('lead'); setAi(null)
     api.get(`/api/leads/panel/${encodeURIComponent(cid)}`)
       .then((b) => { if (!cancelled) { setVals(flatten(b)); setAi(b?.ai || null) } })
       .catch(() => {})
@@ -428,7 +429,7 @@ export default function LeadPanel({ conv, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid])
 
-  const setVal = (k, v) => { setVals((c) => ({ ...c, [k]: v })); setFilled((a) => ({ ...a, [k]: false })); setFs((s) => ({ ...s, [k]: 'idle' })) }
+  const setVal = (k, v) => { setCompleted(false); setVals((c) => ({ ...c, [k]: v })); setFilled((a) => ({ ...a, [k]: false })); setFs((s) => ({ ...s, [k]: 'idle' })) }
 
   const saveOne = async (k, valueOverride) => {
     if (!cid) return false
@@ -448,10 +449,28 @@ export default function LeadPanel({ conv, onClose }) {
   const saveAll = async () => {
     setSavingAll(true)
     const keys = Object.keys(vals).filter((k) => hasVal(vals[k]) && fs[k] !== 'ok')
-    for (const k of keys) { if (FIELD_KEYS.has(k)) await saveOne(k) }  // eslint-disable-line
+    let ok = true
+    for (const k of keys) { if (FIELD_KEYS.has(k) && !(await saveOne(k))) ok = false }  // eslint-disable-line
     setSavingAll(false)
     // refresh score
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
+    return ok
+  }
+
+  const submitComplete = async () => {
+    setErr(''); setCompleted(false)
+    const saved = await saveAll()
+    if (!saved) { setErr('Some fields could not be saved. Please fix them and submit again.'); return }
+    setSavingAll(true)
+    try {
+      const result = await api.post(`/api/leads/complete/${encodeURIComponent(cid)}`, {})
+      if (result?.qualification) setScore(result.qualification)
+      setCompleted(true)
+    } catch (e) {
+      setErr(e?.message || 'Lead could not be submitted to Decoinks')
+    } finally {
+      setSavingAll(false)
+    }
   }
 
   const autoTemp = useMemo(() => {
@@ -514,6 +533,7 @@ export default function LeadPanel({ conv, onClose }) {
       </div>
 
       {err && <div className="border-b border-rose-100 bg-rose-50 px-4 py-1.5 text-[11px] text-rose-700">{err}</div>}
+      {completed && <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-1.5 text-[11px] font-semibold text-emerald-700">✓ Submitted to Decoinks — dashboard data is updated.</div>}
 
       {/* Tabs */}
       <nav className="nice-scroll flex items-center gap-4 overflow-x-auto border-b border-slate-200 px-4 text-[13px]">
@@ -604,7 +624,7 @@ export default function LeadPanel({ conv, onClose }) {
         <button onClick={saveAll} disabled={savingAll} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
           {savingAll ? 'Saving…' : '💾 Save Draft'}
         </button>
-        <button onClick={saveAll} disabled={savingAll}
+        <button onClick={submitComplete} disabled={savingAll}
           className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
           {savingAll ? 'Saving…' : '✓ Submit / Complete'}
         </button>

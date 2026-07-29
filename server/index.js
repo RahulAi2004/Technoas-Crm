@@ -12,7 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
-import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore } from './lead-panel.js'
+import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -1525,6 +1525,11 @@ app.post('/api/leads/field/:id', authRequired, async (req, res) => {
       convName: findById('conversations', req.params.id)?.name,
     }))
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+// Agent-reviewed fields ko idempotently Decoinks dashboard lead me sync karo.
+app.post('/api/leads/complete/:id', authRequired, async (req, res) => {
+  try { res.json(await completeLead(req.params.id)) }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 
 // ---- Quick-send asset images (Zelle/CashApp/PayPal QR, brochure, etc.) ----
