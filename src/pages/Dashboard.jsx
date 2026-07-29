@@ -384,25 +384,37 @@ export default function Dashboard() {
   const fileInputRef = useRef(null)
   const [attachBusy, setAttachBusy] = useState(false)
   const onPickFile = () => fileInputRef.current?.click()
-  const onFileChosen = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''                       // dobara wahi file chunne dena
+  // Ek File (attach ya paste) ko chat me bhejo (image/pdf/doc).
+  const sendFile = async (file) => {
     if (!file || !currentId) return
     if (file.size > 24 * 1024 * 1024) { toast('File 24MB se chhoti honi chahiye', 'error'); return }
-    const isImg = file.type.startsWith('image/')
-    const clientTs = Date.now()               // click ka waqt = asli order (upload der lage to bhi)
+    const isImg = (file.type || '').startsWith('image/')
+    const clientTs = Date.now()
     const clientId = `cid-${clientTs}-${Math.random().toString(36).slice(2, 8)}`
+    const fname = file.name || `pasted-${clientTs}.${(file.type || 'image/png').split('/')[1] || 'png'}`
     const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file) })
     const pid = clientId
     setPending((p) => [...p, { id: pid, dir: 'out', text: draft.trim() || '', time: nowTime(), agent: currentUser()?.name,
-      attachments: [{ type: isImg ? 'image' : 'file', url: dataUrl, name: file.name }], _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
+      attachments: [{ type: isImg ? 'image' : 'file', url: dataUrl, name: fname }], _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
     const caption = draft.trim(); setDraft(''); setAttachBusy(true)
     const mark = (s, err) => setPending((p) => p.map((x) => x.id === pid ? { ...x, _status: s, _error: err } : x))
     try {
-      await api.post('/api/meta/send-file', { conversationId: currentId, fileName: file.name, fileType: file.type, dataBase64: dataUrl, text: caption, clientTs, clientId })
+      await api.post('/api/meta/send-file', { conversationId: currentId, fileName: fname, fileType: file.type || 'image/png', dataBase64: dataUrl, text: caption, clientTs, clientId })
       mark('sent')
     } catch (ex) { mark('failed', ex.message) }
     finally { setAttachBusy(false) }
+  }
+  const onFileChosen = async (e) => { const file = e.target.files?.[0]; e.target.value = ''; await sendFile(file) }
+  // Reply box me Ctrl+V se image (screenshot) paste -> turant chat me send. Text normal paste hoga.
+  const onPaste = (e) => {
+    if (mode === 'note') return   // note mode me image customer ko na bheje
+    const items = e.clipboardData?.items || []
+    for (const it of items) {
+      if (it.kind === 'file' && (it.type || '').startsWith('image/')) {
+        const file = it.getAsFile()
+        if (file) { e.preventDefault(); sendFile(file); return }
+      }
+    }
   }
 
   // Quick-send asset (Zelle QR image etc.) ko chat me bhej — send-file (base64) ke raste.
@@ -1022,7 +1034,7 @@ export default function Dashboard() {
                     <button onClick={() => setMode('reply')} className={`pb-1 ${mode === 'reply' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Reply</button>
                     <button onClick={() => setMode('note')} className={`pb-1 ${mode === 'note' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Note</button>
                   </div>
-                  <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message...'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
+                  <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message... (image Ctrl+V se paste bhi kar sakte ho)'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
                   <input ref={fileInputRef} type="file" onChange={onFileChosen} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.ai,.psd,.eps,.zip" />
                   <div className="mt-2 flex items-center justify-between">
                     <div className="flex items-center gap-1 text-slate-500">
