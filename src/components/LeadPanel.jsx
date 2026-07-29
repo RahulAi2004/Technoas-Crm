@@ -417,24 +417,35 @@ export default function LeadPanel({ conv, onClose }) {
 
   const cid = conv?.id
 
-  const runExtract = () => {
+  // gpt-4o extract 10-40s lamba hota hai; is dauran network blip / backend-restart se browser
+  // "Failed to fetch" de sakta hai. Aise transient fail par apne aap 2 baar retry (thoda ruk ke).
+  const runExtract = (attempt = 0) => {
     if (!cid) return
-    setExtracting(true); setErr('')
+    setExtracting(true); if (attempt === 0) setErr('')
     api.get(`/api/leads/extract/${encodeURIComponent(cid)}`)
       .then((r) => {
-        if (!r?.fields) return
-        const ai = flatten(r.fields)
-        setVals((cur) => {
-          const next = { ...cur }; const f = {}
-          for (const [k, v] of Object.entries(ai)) {
-            if (!hasVal(cur[k]) && hasVal(v)) { next[k] = v; f[k] = true }
-          }
-          setFilled((p) => ({ ...p, ...f }))
-          return next
-        })
+        if (r?.fields) {
+          const ai = flatten(r.fields)
+          setVals((cur) => {
+            const next = { ...cur }; const f = {}
+            for (const [k, v] of Object.entries(ai)) {
+              if (!hasVal(cur[k]) && hasVal(v)) { next[k] = v; f[k] = true }
+            }
+            setFilled((p) => ({ ...p, ...f }))
+            return next
+          })
+        }
+        setExtracting(false)
       })
-      .catch((e) => setErr(e?.message || 'AI extract failed'))
-      .finally(() => setExtracting(false))
+      .catch((e) => {
+        const msg = e?.message || 'AI extract failed'
+        if (/failed to fetch|network|load failed|aborted|fetch/i.test(msg) && attempt < 2) {
+          setErr(`Network dikkat — dobara koshish (${attempt + 1}/2)…`)
+          setTimeout(() => runExtract(attempt + 1), 2000)   // transient -> retry
+        } else {
+          setErr(msg); setExtracting(false)
+        }
+      })
   }
 
   useEffect(() => {
