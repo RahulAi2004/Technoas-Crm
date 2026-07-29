@@ -85,6 +85,30 @@ export const FIELD_MAP = {
   order_lines:         { t: 'orders', childTable: 'order_lines' },   // app.order_lines rows
 }
 
+// Allowed values for select fields — validate par galat value reject hoti hai.
+const FIELD_OPTS = {
+  stage: ['Qualification', 'Contacted', 'Proposal', 'Negotiation', 'Won', 'Lost'],
+  lead_status: ['Active', 'Inactive', 'Won', 'Lost'],
+  qualification: ['Qualified', 'Unqualified', 'Pending'],
+  purchase_intent: ['Researching', 'Browsing', 'Price Comparing', 'Interested', 'Ready to Buy', 'Waiting Payment', 'Returning Customer'],
+  priority: ['Low', 'Medium', 'High'],
+  segment: ['Event Customer', 'Reseller', 'Wholesale', 'Individual', 'Business'],
+  cust_status: ['Active', 'Inactive', 'Lead'],
+  preferred_channel: ['WhatsApp', 'Facebook', 'Instagram', 'Email', 'Phone'],
+  product_type: ['T-Shirt', 'Hoodie', 'Polo', 'Sweatshirt', 'DTF Transfer', 'Gang Sheet', 'Other'],
+  garment_source: ['Decoinks Supply', 'Customer Supplied'],
+  print_method: ['DTF', 'Screen Print', 'Embroidery', 'Other'],
+  artwork_status: ['Missing', 'Received', 'In Review', 'Changes Required', 'Approved'],
+  shipping_method: ['Standard', 'Express', 'Pickup'],
+  quote_status: ['Draft', 'Sent', 'Viewed', 'Accepted', 'Rejected', 'Expired'],
+  currency: ['USD', 'PKR', 'EUR', 'GBP'],
+  order_currency: ['USD', 'PKR', 'EUR', 'GBP'],
+  order_status: ['pending', 'in_production', 'shipped', 'delivered', 'cancelled'],
+  payment_status: ['pending', 'partial', 'paid'],
+}
+// Fields jinki date past me nahi honi chahiye (delivery/event/order deadline).
+const FUTURE_DATE_FIELDS = new Set(['required_delivery_date', 'event_date', 'order_deadline', 'valid_until'])
+
 // conversation (in-memory id / DB uuid / legacy_id) -> DB conversation row
 async function resolveIds(conversationId) {
   const r = await dbQuery(
@@ -202,11 +226,37 @@ export async function saveField({ conversationId, field, value, convName }) {
   // VALIDATION: khaali value save mat karo — empty field "confirm"/save nahi hona chahiye,
   // aur na hi khaali ke liye lead/customer/quote row banao. (toggle ka false valid hai.)
   if (map.bool !== true && _isEmpty(value)) return { ok: true, saved: false, reason: 'empty' }
-  if (field === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(value).trim())) {
-    const e = new Error('Invalid email'); e.status = 400; throw e
+  const bad = (msg) => { const e = new Error(msg); e.status = 400; throw e }
+  const sval = String(value == null ? '' : value).trim()
+
+  // 1) Email format
+  if (field === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sval)) bad('Invalid email address')
+  // 2) Phone — kam se kam 7 digits
+  if (field === 'phone' && sval.replace(/\D/g, '').length < 7) bad('Phone number looks too short')
+  // 3) Select fields — value allowed options me se honi chahiye
+  if (FIELD_OPTS[field] && sval && !FIELD_OPTS[field].includes(sval)) bad(`Invalid ${field}. Allowed: ${FIELD_OPTS[field].join(', ')}`)
+  // 4) Numbers — valid + 0 ya zyada
+  if (map.num && sval !== '') {
+    const n = Number(value)
+    if (isNaN(n)) bad('Must be a number')
+    if (n < 0) bad('Must be 0 or more')
   }
-  if (map.num && value !== '' && value != null && isNaN(Number(value))) {
-    const e = new Error('Must be a number'); e.status = 400; throw e
+  // 5) Dates — valid; delivery/event/order dates past me nahi
+  if (map.date && sval) {
+    const d = new Date(sval)
+    if (isNaN(d.getTime())) bad('Invalid date')
+    if (FUTURE_DATE_FIELDS.has(field)) {
+      const today = new Date(); today.setHours(0, 0, 0, 0)
+      if (d < today) bad('Date cannot be in the past')
+    }
+  }
+  // 6) Order line items — har row me product/sku ho aur qty/price valid (>=0)
+  if (field === 'order_lines' && Array.isArray(value)) {
+    for (const ln of value) {
+      if (!String(ln.product || ln.sku || '').trim()) bad('Each order line needs a product or SKU')
+      if (ln.qty != null && ln.qty !== '' && (isNaN(Number(ln.qty)) || Number(ln.qty) < 0)) bad('Line qty must be a number ≥ 0')
+      if (ln.unit_price != null && ln.unit_price !== '' && (isNaN(Number(ln.unit_price)) || Number(ln.unit_price) < 0)) bad('Line unit price must be ≥ 0')
+    }
   }
   const co = await resolveIds(conversationId)
   if (!co) { const e = new Error('Conversation not found in DB'); e.status = 404; throw e }
@@ -368,7 +418,8 @@ Return ONLY a JSON object with EXACTLY these keys (use "" or [] when unknown —
     "qualification": one of ["Qualified","Unqualified","Pending"] or "",
     "purchase_intent": one of ["Researching","Browsing","Price Comparing","Interested","Ready to Buy","Waiting Payment","Returning Customer"] or "",
     "priority": one of ["Low","Medium","High"] or "",
-    "lead_summary": one short sentence describing what the lead needs or ""
+    "lead_summary": one short sentence describing what the lead needs or "",
+    "estimated_value": order/deal value in numbers if any price was discussed, else ""
   },
   "customer": {
     "email": customer's OWN email or "",
@@ -376,7 +427,9 @@ Return ONLY a JSON object with EXACTLY these keys (use "" or [] when unknown —
     "segment": one of ["Event Customer","Reseller","Wholesale","Individual","Business"] or "",
     "business_name": customer's company/brand name or "",
     "preferred_channel": one of ["WhatsApp","Facebook","Instagram","Email","Phone"] or "",
-    "shipping_address": { "line1":"", "line2":"", "city":"", "state":"", "zip":"", "country":"" }
+    "tax_exempt": true only if the customer explicitly says they are tax exempt, else false,
+    "shipping_address": { "line1":"", "line2":"", "city":"", "state":"", "zip":"", "country":"" },
+    "billing_address": { "line1":"", "line2":"", "city":"", "state":"", "zip":"", "country":"" }
   },
   "product": {
     "product_type": one of ["T-Shirt","Hoodie","Polo","Sweatshirt","DTF Transfer","Gang Sheet","Other"] or "",
@@ -389,19 +442,36 @@ Return ONLY a JSON object with EXACTLY these keys (use "" or [] when unknown —
     "print_locations": array from ["Front","Back","Left Chest","Right Chest","Sleeves"] or [],
     "front_print_size": e.g. "3.5in wide" or "",
     "back_print_size": e.g. "11in wide" or "",
-    "special_instructions": ""
+    "special_instructions": "",
+    "artwork_required": true if the customer needs a design made / doesn't have print-ready art, false if they already have/sent artwork, else false,
+    "artwork_status": one of ["Missing","Received","In Review","Changes Required","Approved"] or "",
+    "artwork_instructions": customer's design/artwork wishes in their words or ""
   },
   "shipping": {
     "shipping_method": one of ["Standard","Express","Pickup"] or "",
     "is_rush_order": true or false,
     "required_delivery_date": "YYYY-MM-DD" or "",
     "event_date": "YYYY-MM-DD" or "",
-    "delivery_instructions": ""
+    "delivery_instructions": "",
+    "estimated_shipping_cost": number if a shipping cost was quoted/agreed, else ""
   },
   "quote": {
     "line_items": [ { "item_type":"garment|printing|shipping", "item_name":"", "quantity":0, "unit_price":0, "amount":0 } ],
     "quote_notes": "",
+    "currency": one of ["USD","PKR","EUR","GBP"] or "",
+    "discount": number if a discount was given, else "",
     "subtotal": number or "", "shipping_charges": number or "", "grand_total": number or ""
+  },
+  "order": {
+    "order_products": short text of what was ordered or "",
+    "order_items_count": total units ordered as a number or "",
+    "order_total": final agreed order total in numbers or "",
+    "order_currency": one of ["USD","PKR","EUR","GBP"] or "",
+    "payment_status": one of ["pending","partial","paid"] or "",
+    "order_deadline": "YYYY-MM-DD" required completion/delivery date or "",
+    "order_summary": one short sentence summarising the confirmed order or "",
+    "order_instructions": any special order instructions or "",
+    "order_lines": [ { "sku":"", "product":"", "qty":0, "unit_price":0 } ]
   }
 }
 
@@ -409,8 +479,10 @@ Rules:
 - Extract ONLY the CUSTOMER's own details. NEVER extract the shop's/agent's own email/phone/address.
 - Sum of size_breakdown quantities should equal total_quantity when both are known.
 - required_delivery_date: only if the customer states an actual delivery deadline. If they only mention an EVENT date, fill event_date and leave required_delivery_date "".
-- Dates: use "Today's date" above as reference. required_delivery_date and event_date must be TODAY or LATER — never a past date. If a weekday ("Friday") or vague term is mentioned with no resolvable future date, leave it "" rather than guessing.
-- The customer's shipping address (street/city/state/zip) goes ONLY in customer.shipping_address — do not repeat it elsewhere.
+- Dates: use "Today's date" above as reference. Delivery/event/order dates must be TODAY or LATER — never a past date. If a weekday ("Friday") or vague term is mentioned with no resolvable future date, leave it "" rather than guessing.
+- The customer's shipping address goes ONLY in customer.shipping_address; billing_address ONLY if it clearly differs from shipping (else leave it all "").
+- ORDER section: fill it ONLY if the customer has CONFIRMED / placed an order (agreed to buy). If it is still just an inquiry or a quote-in-progress, return "" / [] / no order fields. payment_status "paid"/"partial" only if payment was actually confirmed.
+- currency: infer "USD" from a "$" sign if a currency is implied but not named.
 - Numbers: digits only, no "$"/commas. Dates: YYYY-MM-DD.
 - If no quote/pricing discussed, return "line_items": [] and "" for totals.
 - Output valid JSON only, no commentary.`
