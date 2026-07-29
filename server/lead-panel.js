@@ -330,8 +330,10 @@ export async function getLeadBundle(conversationId) {
     if (c) {
       out.has.customer = true
       out.customerName = c.full_name || ''
+      const _np = String(c.full_name || '').trim().split(/\s+/).filter(Boolean)
       out.customer = {
-        first_name: c.extra?.first_name || '', last_name: c.extra?.last_name || '',
+        first_name: c.extra?.first_name || _np[0] || '',
+        last_name: c.extra?.last_name || _np.slice(1).join(' ') || '',
         business_name: c.company || '', email: c.email || '',
         company_phone: c.extra?.company_phone || '',
         mobile_number: c.phone || '', phone: c.phone || '',
@@ -431,8 +433,6 @@ Return ONLY a JSON object with EXACTLY these keys (use "" or [] when unknown —
     "estimated_value": order/deal value in numbers if any price was discussed, else ""
   },
   "customer": {
-    "first_name": customer's first name or "",
-    "last_name": customer's last/family name or "",
     "business_name": customer's company/brand name or "",
     "email": customer's OWN email or "",
     "company_phone": customer's business/office phone or "",
