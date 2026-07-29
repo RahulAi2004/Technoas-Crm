@@ -492,7 +492,6 @@ export default function LeadPanel({ conv, onClose }) {
       {/* Body */}
       <div className="nice-scroll flex-1 overflow-y-auto px-4 py-3">
         {tab === 'lead' && (<div className="space-y-3">
-          <AIInsights ai={ai} grid={grid} />
           <QualCard q={score} temp={autoTemp} />
           <div className={grid}>{renderFields(LEAD_FIELDS)}</div>
           {vals.stage === 'Lost' && <div className={grid}><Field k="lost_reason" label="Lost Reason" type="text" val={vals.lost_reason} filled={filled.lost_reason} state={fs.lost_reason} onChange={(v) => setVal('lost_reason', v)} onValidate={validate('lost_reason')} /></div>}
