@@ -55,6 +55,14 @@ async function main() {
         last_message = COALESCE(NULLIF(EXCLUDED.last_message, ''), public.leads.last_message),
         message_count = EXCLUDED.message_count,
         updated_at = now()
+      WHERE
+        public.leads.customer_name IS DISTINCT FROM COALESCE(EXCLUDED.customer_name, public.leads.customer_name)
+        OR public.leads.supplier_name IS DISTINCT FROM COALESCE(EXCLUDED.supplier_name, public.leads.supplier_name)
+        OR public.leads.company_name IS DISTINCT FROM COALESCE(EXCLUDED.company_name, public.leads.company_name)
+        OR public.leads.phone IS DISTINCT FROM COALESCE(EXCLUDED.phone, public.leads.phone)
+        OR public.leads.communication_channel IS DISTINCT FROM EXCLUDED.communication_channel
+        OR public.leads.last_message IS DISTINCT FROM COALESCE(NULLIF(EXCLUDED.last_message, ''), public.leads.last_message)
+        OR public.leads.message_count IS DISTINCT FROM EXCLUDED.message_count
     `, [
       leadId,
       leadNumber,
