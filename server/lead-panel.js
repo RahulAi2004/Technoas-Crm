@@ -116,8 +116,6 @@ const FIELD_OPTS = {
   order_status: ['pending', 'in_production', 'shipped', 'delivered', 'cancelled'],
   payment_status: ['pending', 'partial', 'paid'],
 }
-// Fields jinki date past me nahi honi chahiye (delivery/event/order deadline).
-const FUTURE_DATE_FIELDS = new Set(['required_delivery_date', 'event_date', 'order_deadline', 'valid_until'])
 
 // conversation (in-memory id / DB uuid / legacy_id) -> DB conversation row
 async function resolveIds(conversationId) {
@@ -251,14 +249,10 @@ export async function saveField({ conversationId, field, value, convName }) {
     if (isNaN(n)) bad('Must be a number')
     if (n < 0) bad('Must be 0 or more')
   }
-  // 5) Dates — valid; delivery/event/order dates past me nahi
+  // 5) Dates — sirf valid date honi chahiye (past/future dono OK — optional, block nahi).
   if (map.date && sval) {
     const d = new Date(sval)
     if (isNaN(d.getTime())) bad('Invalid date')
-    if (FUTURE_DATE_FIELDS.has(field)) {
-      const today = new Date(); today.setHours(0, 0, 0, 0)
-      if (d < today) bad('Date cannot be in the past')
-    }
   }
   // 6) Order line items — har row me product/sku ho aur qty/price valid (>=0)
   if (field === 'order_lines' && Array.isArray(value)) {
@@ -499,7 +493,7 @@ Rules:
 - Extract ONLY the CUSTOMER's own details. NEVER extract the shop's/agent's own email/phone/address.
 - Sum of size_breakdown quantities should equal total_quantity when both are known.
 - required_delivery_date: only if the customer states an actual delivery deadline. If they only mention an EVENT date, fill event_date and leave required_delivery_date "".
-- Dates: use "Today's date" above as reference. Delivery/event/order dates must be TODAY or LATER — never a past date. If a weekday ("Friday") or vague term is mentioned with no resolvable future date, leave it "" rather than guessing.
+- Dates: use "Today's date" above as reference to resolve relative terms ("this Friday", "next week") to a real YYYY-MM-DD. If a date cannot be resolved, leave it "".
 - The customer's shipping address goes ONLY in customer.shipping_address; billing_address ONLY if it clearly differs from shipping (else leave it all "").
 - ORDER section: fill it ONLY if the customer has CONFIRMED / placed an order (agreed to buy). If it is still just an inquiry or a quote-in-progress, return "" / [] / no order fields. payment_status "paid"/"partial" only if payment was actually confirmed.
 - currency: infer "USD" from a "$" sign if a currency is implied but not named.
