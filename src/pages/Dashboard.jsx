@@ -221,7 +221,7 @@ export default function Dashboard() {
   // Fetch messages whenever current conversation changes; also poll for new incoming
   useEffect(() => {
     if (!currentId) { setMessages([]); setPending([]); return }
-    setPending([])                          // nayi chat par purane optimistic saaf
+    setPending([]); setAttachQueue([])      // nayi chat par purane optimistic + attach-queue saaf
     let cancelled = false
     const load = () => api.get(`/api/conversations/${encodeURIComponent(currentId)}/messages`)
       .then((rows) => {
@@ -383,37 +383,47 @@ export default function Dashboard() {
   // ---- File/image attach + send (Chatwoot ke raste) ----
   const fileInputRef = useRef(null)
   const [attachBusy, setAttachBusy] = useState(false)
+  const [attachQueue, setAttachQueue] = useState([])   // paste/attach ki hui files — Send pe jaati hain
   const onPickFile = () => fileInputRef.current?.click()
-  // Ek File (attach ya paste) ko chat me bhejo (image/pdf/doc).
-  const sendFile = async (file) => {
+  // File (attach ya paste) ko QUEUE me daalo — preview dikhega, Send pe jayegi (turant nahi).
+  const queueFile = async (file) => {
     if (!file || !currentId) return
     if (file.size > 24 * 1024 * 1024) { toast('File 24MB se chhoti honi chahiye', 'error'); return }
-    const isImg = (file.type || '').startsWith('image/')
-    const clientTs = Date.now()
-    const clientId = `cid-${clientTs}-${Math.random().toString(36).slice(2, 8)}`
-    const fname = file.name || `pasted-${clientTs}.${(file.type || 'image/png').split('/')[1] || 'png'}`
     const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file) })
-    const pid = clientId
-    setPending((p) => [...p, { id: pid, dir: 'out', text: draft.trim() || '', time: nowTime(), agent: currentUser()?.name,
-      attachments: [{ type: isImg ? 'image' : 'file', url: dataUrl, name: fname }], _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
-    const caption = draft.trim(); setDraft(''); setAttachBusy(true)
-    const mark = (s, err) => setPending((p) => p.map((x) => x.id === pid ? { ...x, _status: s, _error: err } : x))
-    try {
-      await api.post('/api/meta/send-file', { conversationId: currentId, fileName: fname, fileType: file.type || 'image/png', dataBase64: dataUrl, text: caption, clientTs, clientId })
-      mark('sent')
-    } catch (ex) { mark('failed', ex.message) }
-    finally { setAttachBusy(false) }
+    const id = `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    setAttachQueue((q) => [...q, { id, dataUrl, isImg: (file.type || '').startsWith('image/'),
+      name: file.name || `pasted-${Date.now()}.${(file.type || 'image/png').split('/')[1] || 'png'}`, type: file.type || 'image/png' }])
   }
-  const onFileChosen = async (e) => { const file = e.target.files?.[0]; e.target.value = ''; await sendFile(file) }
-  // Reply box me Ctrl+V se image (screenshot) paste -> turant chat me send. Text normal paste hoga.
+  const onFileChosen = async (e) => { const file = e.target.files?.[0]; e.target.value = ''; await queueFile(file) }
+  // Reply box me Ctrl+V se image (screenshot) paste -> composer me preview aata hai (send nahi hota).
   const onPaste = (e) => {
-    if (mode === 'note') return   // note mode me image customer ko na bheje
+    if (mode === 'note') return
     const items = e.clipboardData?.items || []
     for (const it of items) {
       if (it.kind === 'file' && (it.type || '').startsWith('image/')) {
         const file = it.getAsFile()
-        if (file) { e.preventDefault(); sendFile(file); return }
+        if (file) { e.preventDefault(); queueFile(file); return }
       }
+    }
+  }
+  // Ek queued file ko chat me bhejo (Send dabane par).
+  const sendOneFile = async (it, caption) => {
+    const clientTs = Date.now() + Math.floor(Math.random() * 1000)
+    const clientId = `cid-${clientTs}-${Math.random().toString(36).slice(2, 8)}`
+    setPending((p) => [...p, { id: clientId, dir: 'out', text: caption || '', time: nowTime(), agent: currentUser()?.name,
+      attachments: [{ type: it.isImg ? 'image' : 'file', url: it.dataUrl, name: it.name }], _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
+    const mark = (s, err) => setPending((p) => p.map((x) => x.id === clientId ? { ...x, _status: s, _error: err } : x))
+    try { await api.post('/api/meta/send-file', { conversationId: currentId, fileName: it.name, fileType: it.type, dataBase64: it.dataUrl, text: caption || '', clientTs, clientId }); mark('sent') }
+    catch (ex) { mark('failed', ex.message) }
+  }
+  // Send: pehle queued attachments (caption = draft first pe), warna text.
+  const doSend = () => {
+    if (mode === 'reply' && attachQueue.length) {
+      const items = attachQueue, caption = draft.trim()
+      setAttachQueue([]); setDraft('')
+      items.forEach((it, i) => sendOneFile(it, i === 0 ? caption : ''))
+    } else {
+      sendMessage(draft)
     }
   }
 
@@ -432,7 +442,7 @@ export default function Dashboard() {
     } catch (ex) { mark('failed', ex.message) }
   }
 
-  const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(draft) } }
+  const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend() } }
 
   // Add an internal note (with a category). Optimistic; the 4s poll reconciles with
   // the persisted row, so we don't re-pull on every call (avoids a GET storm on bulk add).
@@ -1034,7 +1044,20 @@ export default function Dashboard() {
                     <button onClick={() => setMode('reply')} className={`pb-1 ${mode === 'reply' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Reply</button>
                     <button onClick={() => setMode('note')} className={`pb-1 ${mode === 'note' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Note</button>
                   </div>
-                  <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message... (image Ctrl+V se paste bhi kar sakte ho)'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
+                  {attachQueue.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {attachQueue.map((it) => (
+                        <div key={it.id} className="group relative">
+                          {it.isImg
+                            ? <img src={it.dataUrl} alt={it.name} className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200" />
+                            : <div className="grid h-16 w-16 place-items-center rounded-lg bg-slate-100 px-1 text-center text-[9px] font-semibold text-slate-500 ring-1 ring-slate-200">📎 {it.name.slice(0, 14)}</div>}
+                          <button onClick={() => setAttachQueue((q) => q.filter((x) => x.id !== it.id))} title="Hatao"
+                            className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-slate-700 text-[11px] font-bold text-white shadow hover:bg-rose-600">×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message… (image Ctrl+V se paste karo, Send pe jayegi)'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
                   <input ref={fileInputRef} type="file" onChange={onFileChosen} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.ai,.psd,.eps,.zip" />
                   <div className="mt-2 flex items-center justify-between">
                     <div className="flex items-center gap-1 text-slate-500">
@@ -1047,9 +1070,9 @@ export default function Dashboard() {
                         </button>
                       )}
                     </div>
-                    <button onClick={() => sendMessage(draft)} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+                    <button onClick={doSend} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
-                      Send
+                      Send{attachQueue.length > 0 ? ` (${attachQueue.length})` : ''}
                     </button>
                   </div>
                 </div>
