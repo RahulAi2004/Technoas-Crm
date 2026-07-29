@@ -260,12 +260,13 @@ export default function Dashboard() {
   const setConvTags = (id, next) => patchConv(id, { tags: next })   // optimistic UI + API save dono patchConv mein
 
   // Sabse HAAL ka customer (incoming) message — array order nahi, time (created_at) se.
-  const lastIncomingText = useMemo(() => {
+  // Recent customer (incoming) messages — oldest→newest. Translation tab N pick karega.
+  const incomingList = useMemo(() => {
     const ins = messages.filter((m) => (m.dir === 'in' || m.direction === 'in') && (m.text || m.body))
-    if (!ins.length) return ''
     ins.sort((a, b) => (Date.parse(a.created_at) || 0) - (Date.parse(b.created_at) || 0))
-    return ins[ins.length - 1].text || ins[ins.length - 1].body || ''
+    return ins.map((m) => m.text || m.body || '').filter(Boolean)
   }, [messages])
+  const lastIncomingText = incomingList[incomingList.length - 1] || ''
 
   const myName = currentUser()?.name
   const unassignedCount = conversations.filter((c) => !c.assigned_to).length
@@ -1133,7 +1134,7 @@ export default function Dashboard() {
 
             <div className="nice-scroll flex-1 overflow-y-auto px-5 py-4">
               {aiTab === 'responses' && <ResponsesTab onSendReply={(text) => sendMessage(text, 'reply')} onSendImage={sendAssetImage} conv={conv} msgCount={messages.length} />}
-              {aiTab === 'translate' && <TranslationTab onSendReply={(text) => sendMessage(text, 'reply')} lastIncoming={lastIncomingText} />}
+              {aiTab === 'translate' && <TranslationTab onSendReply={(text) => sendMessage(text, 'reply')} incoming={incomingList} />}
               {aiTab === 'summary' && <SummaryTab conv={conv} msgCount={messages.length} />}
               {aiTab === 'actions' && <ActionsTab ai={ai} onAnalyze={analyze} />}
               {aiTab === 'designer' && <DesignerTab conv={conv} />}
@@ -1370,8 +1371,9 @@ function SendPanel({ title, hint, items, onSendReply, onSendImage }) {
   )
 }
 
-function TranslationTab({ onSendReply, lastIncoming }) {
+function TranslationTab({ onSendReply, incoming }) {
   const toast = useToast()
+  const [count, setCount] = useState(1)     // last kitne customer messages translate karne hain
   const [data, setData] = useState(null)   // { detectedLanguage, explanation, replyEn, replyNative }
   const [loading, setLoading] = useState(false)
   const [replyEn, setReplyEn] = useState('')
@@ -1381,7 +1383,10 @@ function TranslationTab({ onSendReply, lastIncoming }) {
   const [verifyBusy, setVerifyBusy] = useState(false)
   useEffect(() => { setVerify(null) }, [native])   // reset when the Spanish reply changes
 
-  // Auto-run whenever the last customer message changes (new message → updates itself, no button).
+  const list = Array.isArray(incoming) ? incoming : []
+  const lastIncoming = list.slice(-count).join('\n')   // last N customer messages
+
+  // Auto-run whenever the selected messages change (new message / count badle → khud update).
   useEffect(() => {
     let cancelled = false
     setData(null); setReplyEn(''); setNative('')
@@ -1403,10 +1408,21 @@ function TranslationTab({ onSendReply, lastIncoming }) {
     catch (ex) { toast(ex.message || 'Translate failed', 'error') }
     finally { setTransBusy(false) }
   }
-  const send = () => {
-    const text = (isEnglish ? replyEn : native).trim()
-    if (text) { onSendReply(text); toast(`Sent${isEnglish ? '' : ' in ' + data.detectedLanguage}`, 'success') }
+  // Send: agar customer ki language English nahi, to jo type kiya wo pehle uski language me translate
+  // karke bhejo (fresh — taaki type kiya hua exactly match kare). English hai to seedha bhej do.
+  const send = async () => {
+    const en = replyEn.trim()
+    if (!en) return
+    if (isEnglish) { onSendReply(en); setReplyEn(''); toast('Sent', 'success'); return }
+    setTransBusy(true)
+    try {
+      const r = await api.post('/api/translate', { text: en, from: 'English', to: data.detectedLanguage })
+      const t = (r.translated || '').trim() || en
+      setNative(t); onSendReply(t); setReplyEn(''); setNative('')
+      toast(`Sent in ${data.detectedLanguage}`, 'success')
+    } catch (ex) { toast(ex.message || 'Translate failed', 'error') } finally { setTransBusy(false) }
   }
+  const COUNTS = [1, 2, 3, 5]
   const verifyTranslation = async () => {
     if (!native.trim()) return
     setVerifyBusy(true)
@@ -1415,16 +1431,27 @@ function TranslationTab({ onSendReply, lastIncoming }) {
     finally { setVerifyBusy(false) }
   }
 
-  if (!lastIncoming.trim()) {
+  const countBar = (
+    <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-2 text-[11px]">
+      <span className="font-semibold text-slate-500">Translate last:</span>
+      {COUNTS.map((n) => (
+        <button key={n} onClick={() => setCount(n)} disabled={n > list.length}
+          className={`rounded-full px-2.5 py-1 font-semibold transition ${count === n ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} disabled:opacity-30`}>{n}</button>
+      ))}
+      <span className="text-slate-400">message{count > 1 ? 's' : ''}</span>
+    </div>
+  )
+  if (!list.length) {
     return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Is chat mein abhi koi customer message nahi aaya.</div>
   }
   if (loading || !data) {
-    return <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center text-sm text-violet-700">🌐 Translating last message…</div>
+    return <>{countBar}<div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center text-sm text-violet-700">🌐 Translating…</div></>
   }
   return (
     <>
+      {countBar}
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between"><div className="text-sm font-bold">Customer's last message</div><span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{data.detectedLanguage}</span></div>
+        <div className="flex items-center justify-between"><div className="text-sm font-bold">Customer's last {count > 1 ? `${count} messages` : 'message'}</div><span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{data.detectedLanguage}</span></div>
         <p className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-2.5 text-sm text-slate-700">{lastIncoming}</p>
       </div>
 
@@ -1434,10 +1461,14 @@ function TranslationTab({ onSendReply, lastIncoming }) {
       </div>
 
       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="text-sm font-bold">Suggested reply (English — editable)</div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-bold">✍️ Your reply — type / edit {!isEnglish && <span className="font-normal text-slate-400">(→ {data.detectedLanguage})</span>}</div>
+          {replyEn && <button onClick={() => { setReplyEn(''); setNative('') }} className="shrink-0 text-[11px] font-semibold text-slate-400 hover:text-rose-600">Clear</button>}
+        </div>
         <textarea value={replyEn} onChange={(e) => setReplyEn(e.target.value)} onBlur={updateNative} rows={4}
+          placeholder="Yahan apna message / question type karo… Send pe customer ki language me chala jayega."
           className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white" />
-        {!isEnglish && <button onClick={updateNative} disabled={transBusy} className="mt-2 rounded-md border border-violet-200 px-2.5 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">{transBusy ? 'Translating…' : `↻ Update ${data.detectedLanguage} translation`}</button>}
+        {!isEnglish && <button onClick={updateNative} disabled={transBusy} className="mt-2 rounded-md border border-violet-200 px-2.5 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">{transBusy ? 'Translating…' : `↻ Preview ${data.detectedLanguage}`}</button>}
       </div>
 
       {!isEnglish && (
@@ -1477,7 +1508,7 @@ function TranslationTab({ onSendReply, lastIncoming }) {
       )}
 
       <div className="mt-4 flex items-center gap-2">
-        <button onClick={send} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">▶ Send {isEnglish ? '(English)' : `(${data.detectedLanguage})`}</button>
+        <button onClick={send} disabled={!replyEn.trim() || transBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{transBusy ? 'Sending…' : `▶ Send ${isEnglish ? '' : 'in ' + data.detectedLanguage}`}</button>
         <button onClick={() => { navigator.clipboard?.writeText(isEnglish ? replyEn : native); toast('Copied', 'success') }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Copy</button>
       </div>
     </>
