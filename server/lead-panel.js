@@ -625,7 +625,8 @@ export async function completeLead(conversationId) {
   const leadId = stableUuidFromText(`crm:${legacyId}`)
   const productId = stableUuidFromText(`crm-product:${legacyId}`)
   const leadNumber = `CRM-${String(legacyId).replace(/[^a-zA-Z0-9]/g, '-').slice(0, 24)}`
-  const temperature = deriveTemperature(score.score, lead.purchase_intent || '')
+  const intentScore = Math.max(0, Math.min(100, Number(bundle.ai?.intent_score ?? score.score) || 0))
+  const temperature = bundle.ai?.temperature || deriveTemperature(intentScore, lead.purchase_intent || '')
   const sizes = Array.isArray(product.size_breakdown)
     ? product.size_breakdown.map((x) => [x.size, x.qty ?? x.quantity].filter((v) => v !== undefined && v !== '').join(': ')).filter(Boolean).join(', ')
     : null
@@ -704,7 +705,7 @@ export async function completeLead(conversationId) {
       co.channel || conv?.channel || 'CRM', shipping.shipping_country || null,
       shipping.shipping_state || null, shipping.shipping_city || null,
       shipping.shipping_postcode || null, shippingAddress, billingAddress,
-      customer.segment || null, score.score, lead.estimated_value || null, temperature,
+      customer.segment || null, intentScore, lead.estimated_value || null, temperature,
       lead.purchase_intent || null, lead.internal_notes || null, product.product_type || null,
       artworkReceived, shipping.required_delivery_date || null,
       String(lead.priority || 'medium').toLowerCase(), co.conversation_id,
@@ -718,7 +719,7 @@ export async function completeLead(conversationId) {
       bundle.has.quote && (nonEmpty(bundle.quote?.grand_total) || (Array.isArray(bundle.quote?.line_items) && bundle.quote.line_items.length > 0)),
     ])
 
-  return { ok: true, completed: true, lead_id: rows[0]?.lead_id || leadId, qualification: score, temperature }
+  return { ok: true, completed: true, lead_id: rows[0]?.lead_id || leadId, qualification: score, intent_score: intentScore, temperature }
 }
 
 // ---- BULK: jin conversations me order hua hai, unki fields AI se nikaal kar DB me bhar do ----
