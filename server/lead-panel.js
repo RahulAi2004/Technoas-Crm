@@ -558,6 +558,8 @@ function computeQualification(conversationId, bundle) {
   const msgs = getAll('messages').filter((m) => m.conversation_id === conversationId)
   const hasImg = msgs.some((m) => (m.attachments || []).some((a) => a?.type === 'image'))
   const got = {
+    customer_responded: msgs.some((m) => m.direction === 'in' || m.dir === 'in'),
+    human_engaged: msgs.some((m) => m.direction === 'out' || m.dir === 'out'),
     contact:  nonEmpty(C.email) || nonEmpty(C.phone),
     product:  nonEmpty(P.product_type),
     quantity: nonEmpty(P.total_quantity),
@@ -568,11 +570,12 @@ function computeQualification(conversationId, bundle) {
     delivery: nonEmpty(S.required_delivery_date) || nonEmpty(S.event_date),
     zip:      nonEmpty(S.shipping_postcode) || nonEmpty(C.shipping_address?.zip),
     quote:    !!bundle?.has?.quote && (nonEmpty(Q.grand_total) || (Array.isArray(Q.line_items) && Q.line_items.length > 0)),
+    mockup_requested: /mockup/i.test([P.artwork_status, P.special_instructions, P.designer_notes].filter(Boolean).join(' ')),
   }
   let score = 0
   const breakdown = QUAL_CRITERIA.map((c) => { const g = !!got[c.key]; if (g) score += c.pts; return { key: c.key, label: c.label, points: c.pts, got: g } })
   score = Math.min(100, score)
-  return { score, band: scoreBand(score), breakdown }
+  return { score, band: scoreBand(score), breakdown, facts: got }
 }
 
 // Panel/grid ke liye: qualification (deterministic) + stored purchase intent + auto temperature.
@@ -708,14 +711,20 @@ export async function completeLead(conversationId) {
      )
      INSERT INTO public.lead_qualifications
        (lead_id,sizes_received,artwork_received,delivery_date_confirmed,
-        shipping_address_confirmed,budget_confirmed,payment_method_pref,info_completeness_score)
-     SELECT id,$36,$24,$37,$38,$39,NULL,$18 FROM synced_lead
+        shipping_address_confirmed,budget_confirmed,payment_method_pref,info_completeness_score,
+        customer_responded,human_engaged,product_identified,quantity_discussed,
+        quote_requested,mockup_requested)
+     SELECT id,$36,$24,$37,$38,$39,NULL,$18,$40,$41,$42,$43,$44,$45 FROM synced_lead
      ON CONFLICT (lead_id) DO UPDATE SET
        sizes_received=EXCLUDED.sizes_received,artwork_received=EXCLUDED.artwork_received,
        delivery_date_confirmed=EXCLUDED.delivery_date_confirmed,
        shipping_address_confirmed=EXCLUDED.shipping_address_confirmed,
        budget_confirmed=EXCLUDED.budget_confirmed,
-       info_completeness_score=EXCLUDED.info_completeness_score,updated_at=now()
+       info_completeness_score=EXCLUDED.info_completeness_score,
+       customer_responded=EXCLUDED.customer_responded,human_engaged=EXCLUDED.human_engaged,
+       product_identified=EXCLUDED.product_identified,quantity_discussed=EXCLUDED.quantity_discussed,
+       quote_requested=EXCLUDED.quote_requested,mockup_requested=EXCLUDED.mockup_requested,
+       updated_at=now()
      RETURNING lead_id`,
     [
       leadId, leadNumber, publicSource(co.channel || conv?.channel), lead.lead_summary || '',
@@ -735,7 +744,10 @@ export async function completeLead(conversationId) {
       Array.isArray(product.size_breakdown) && product.size_breakdown.length > 0,
       !!(shipping.required_delivery_date || shipping.event_date),
       !!(shippingAddress || shipping.shipping_postcode),
-      bundle.has.quote && (nonEmpty(bundle.quote?.grand_total) || (Array.isArray(bundle.quote?.line_items) && bundle.quote.line_items.length > 0)),
+      nonEmpty(bundle.quote?.grand_total),
+      !!score.facts.customer_responded, !!score.facts.human_engaged,
+      !!score.facts.product, !!score.facts.quantity, !!score.facts.quote,
+      !!score.facts.mockup_requested,
     ])
 
   return { ok: true, completed: true, lead_id: rows[0]?.lead_id || leadId, qualification: score, intent_score: intentScore, temperature }
