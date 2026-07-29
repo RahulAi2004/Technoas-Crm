@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api.js'
 
 // ============================================================
@@ -91,6 +91,12 @@ const TAB_KEYS = {
 }
 
 const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}), ...(b?.order || {}) })
+
+// field key -> human label + kis tab me hai (Submit error me batane ke liye).
+const FIELD_LABELS = Object.fromEntries([...LEAD_FIELDS, ...CUST_FIELDS, ...PROD_FIELDS, ...ART_FIELDS, ...SHIP_FIELDS, ...QUOTE_FIELDS, ...ORDER_FIELDS].map((f) => [f[0], f[1]]))
+Object.assign(FIELD_LABELS, { lost_reason: 'Lost Reason', shipping_address: 'Shipping Address', billing_address: 'Billing Address', size_breakdown: 'Size Breakdown', print_locations: 'Print Locations', special_instructions: 'Special Instructions', line_items: 'Quote Items', quote_notes: 'Quote Notes', order_lines: 'Order Line Items' })
+const labelOf = (k) => FIELD_LABELS[k] || k
+const tabOfKey = (k) => Object.keys(TAB_KEYS).find((t) => TAB_KEYS[t].includes(k)) || null
 const hasVal = (v) =>
   v != null && v !== '' && v !== false &&
   !(Array.isArray(v) && v.length === 0) &&
@@ -451,6 +457,7 @@ export default function LeadPanel({ conv, onClose }) {
 
   const setVal = (k, v) => { setCompleted(false); setVals((c) => ({ ...c, [k]: v })); setFilled((a) => ({ ...a, [k]: false })); setFs((s) => ({ ...s, [k]: 'idle' })) }
 
+  const saveErrs = useRef({})   // field key -> error message (Submit me batane ke liye)
   const saveOne = async (k, valueOverride) => {
     if (!cid) return false
     const v = valueOverride !== undefined ? valueOverride : (vals[k] ?? '')
@@ -458,30 +465,34 @@ export default function LeadPanel({ conv, onClose }) {
     setFs((s) => ({ ...s, [k]: 'saving' }))
     try {
       const r = await api.post(`/api/leads/field/${encodeURIComponent(cid)}`, { field: k, value: v })
-      if (r && r.saved === false) { setFs((s) => ({ ...s, [k]: 'idle' })); return false }  // backend ne empty skip kiya
+      if (r && r.saved === false) { setFs((s) => ({ ...s, [k]: 'idle' })); return false }  // backend ne empty skip kiya (error nahi)
       if (r?.sync?.qualification) setScore(r.sync.qualification)
-      setFs((s) => ({ ...s, [k]: 'ok' })); setFilled((a) => ({ ...a, [k]: false }))
+      setFs((s) => ({ ...s, [k]: 'ok' })); setFilled((a) => ({ ...a, [k]: false })); delete saveErrs.current[k]
       return true
-    } catch { setFs((s) => ({ ...s, [k]: 'err' })); return false }
+    } catch (ex) { setFs((s) => ({ ...s, [k]: 'err' })); saveErrs.current[k] = ex?.message || 'save failed'; return false }
   }
   const validate = (k) => () => saveOne(k)
 
   // Save Draft = jitne fields me value hai (aur confirmed nahi), sab save kar do.
+  // Return: sirf UNKI list jo ASLI me fail hui (validation error) — empty-skip failure nahi.
   const saveAll = async () => {
     setSavingAll(true)
-    const keys = Object.keys(vals).filter((k) => hasVal(vals[k]) && fs[k] !== 'ok')
-    let ok = true
-    for (const k of keys) { if (FIELD_KEYS.has(k) && !(await saveOne(k))) ok = false }  // eslint-disable-line
+    saveErrs.current = {}
+    const keys = Object.keys(vals).filter((k) => hasVal(vals[k]) && fs[k] !== 'ok' && FIELD_KEYS.has(k))
+    for (const k of keys) await saveOne(k)
     setSavingAll(false)
-    // refresh score
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
-    return ok
+    return Object.keys(saveErrs.current)   // sirf real errors
   }
 
   const submitComplete = async () => {
     setErr(''); setCompleted(false)
-    const saved = await saveAll()
-    if (!saved) { setErr('Some fields could not be saved. Please fix them and submit again.'); return }
+    const failed = await saveAll()
+    if (failed.length) {
+      const t = tabOfKey(failed[0]); if (t) setTab(t)   // pehle fail field wale tab pe le jao
+      setErr('Ye fields save nahi hue — theek karke dobara Submit karo: ' + failed.map((k) => `${labelOf(k)}${saveErrs.current[k] ? ` (${saveErrs.current[k]})` : ''}`).join(' · '))
+      return
+    }
     setSavingAll(true)
     try {
       const result = await api.post(`/api/leads/complete/${encodeURIComponent(cid)}`, {})

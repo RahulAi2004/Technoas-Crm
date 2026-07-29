@@ -1524,7 +1524,13 @@ app.post('/api/leads/field/:id', authRequired, async (req, res) => {
       conversationId: req.params.id, field: req.body?.field, value: req.body?.value,
       convName: findById('conversations', req.params.id)?.name,
     })
-    const sync = saved.saved ? await completeLead(req.params.id) : null
+    // Decoinks sync SECONDARY hai — field DB me save ho chuki. Sync fail ho to bhi field-save
+    // fail NAHI hona chahiye (warna Submit "could not be saved" dikhata hai jabki save ho gaya).
+    let sync = null
+    if (saved.saved) {
+      try { sync = await completeLead(req.params.id) }
+      catch (e) { console.warn('[decoinks sync]', e.message); sync = { ok: false, error: e.message } }
+    }
     res.json({ ...saved, sync })
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
