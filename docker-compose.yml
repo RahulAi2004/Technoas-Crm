@@ -21,3 +21,17 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+  # Read-only MCP server — ChatGPT/Claude ise connector ki tarah use karke live DB
+  # se natural-language query kar sakte hain (sirf SELECT). localhost par bind hai;
+  # public HTTPS exposure nginx ke through (Bearer MCP_TOKEN se protected).
+  mcp:
+    build: ./server
+    container_name: technocas_mcp
+    command: ["node", "mcp-server.js"]
+    env_file: ./server/.env       # DATABASE_URL + MCP_MODE/MCP_PORT/MCP_TOKEN
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8790:8790"     # sirf localhost — internet se seedha nahi
+    restart: unless-stopped
