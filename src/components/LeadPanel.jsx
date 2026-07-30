@@ -136,12 +136,6 @@ const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.pro
 
 // Saare field keys (Pending list ke liye — har tab ke).
 const ALL_FIELD_KEYS = [...new Set(Object.values(TAB_KEYS).flat())]
-// Pending row me value ka chhota preview.
-const previewVal = (v) => {
-  if (Array.isArray(v)) return v.length ? `${v.length} item${v.length > 1 ? 's' : ''}` : '—'
-  if (v && typeof v === 'object') return Object.values(v).filter(Boolean).slice(0, 2).join(', ') || '—'
-  const s = String(v ?? ''); return s.length > 42 ? s.slice(0, 42) + '…' : s
-}
 
 // field key -> human label + kis tab me hai (Submit error me batane ke liye).
 const FIELD_LABELS = Object.fromEntries([...LEAD_FIELDS, ...CUST_FIELDS, ...PROD_FIELDS, ...ART_FIELDS, ...SHIP_FIELDS, ...QUOTE_FIELDS, ...INVOICE_FIELDS, ...ORDER_FIELDS].map((f) => [f[0], f[1]]))
@@ -631,17 +625,23 @@ export default function LeadPanel({ conv, onClose }) {
   // AI-extracted (filled) + agent-typed + AI-suggested-change — sab yahan aate hain.
   const pendings = ALL_FIELD_KEYS.filter((k) => hasVal(vals[k]) && fs[k] !== 'ok')
 
-  // Pending row pe click -> us field ke tab pe jao, field tak scroll + focus + highlight.
-  const goTo = (k) => {
-    const t = tabOfKey(k)
-    if (t) setTab(t)
+  // Pending section pe click -> us tab pe jao aur us section ke SAARE pending fields
+  // ek saath highlight karo (pehle wale par scroll + focus).
+  const goToSection = (tabId, keys) => {
+    setTab(tabId)
     setTimeout(() => {
-      const el = document.getElementById(`fld-${k}`)
-      if (!el) return
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      el.querySelector('input, select, textarea, button')?.focus()
-      el.classList.add('ring-2', 'ring-brand-400', 'ring-offset-1', 'rounded-lg')
-      setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400', 'ring-offset-1'), 1900)
+      let first = null
+      keys.forEach((k) => {
+        const el = document.getElementById(`fld-${k}`)
+        if (!el) return
+        if (!first) first = el
+        el.classList.add('ring-2', 'ring-amber-400', 'ring-offset-1', 'rounded-lg')
+        setTimeout(() => el.classList.remove('ring-2', 'ring-amber-400', 'ring-offset-1'), 2600)
+      })
+      if (first) {
+        first.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        first.querySelector('input, select, textarea, button')?.focus()
+      }
     }, 180)
   }
 
@@ -741,27 +741,23 @@ export default function LeadPanel({ conv, onClose }) {
               const rows = (TAB_KEYS[id] || []).filter((k) => pendings.includes(k))
               if (!rows.length) return null
               return (
-                <div key={id} className="overflow-hidden rounded-lg border border-slate-200">
-                  <div className="border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">{lbl} <span className="text-slate-400">({rows.length})</span></div>
-                  <ul className="divide-y divide-slate-100">
+                <button key={id} onClick={() => goToSection(id, rows)}
+                  className="block w-full rounded-lg border border-slate-200 p-3 text-left transition hover:border-amber-300 hover:bg-amber-50/50">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-800">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />{lbl}
+                      <span className="grid h-4 min-w-4 place-items-center rounded-full bg-amber-100 px-1 text-[10px] font-bold text-amber-700">{rows.length}</span>
+                    </span>
+                    <span className="shrink-0 text-[11px] font-semibold text-brand-600">Open &amp; validate →</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
                     {rows.map((k) => (
-                      <li key={k}>
-                        <button onClick={() => goTo(k)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-amber-50/60">
-                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${fs[k] === 'err' ? 'bg-rose-500' : 'bg-amber-400'}`} />
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-1.5">
-                              <span className="truncate text-[12px] font-semibold text-slate-700">{labelOf(k)}</span>
-                              {filled[k] && <span className="rounded bg-violet-100 px-1 text-[8px] font-bold text-violet-700">AI</span>}
-                              {fs[k] === 'err' && <span className="rounded bg-rose-100 px-1 text-[8px] font-bold text-rose-700">error</span>}
-                            </span>
-                            <span className="block truncate text-[11px] text-slate-400">{previewVal(vals[k])}</span>
-                          </span>
-                          <span className="shrink-0 text-[11px] font-semibold text-brand-600">Validate →</span>
-                        </button>
-                      </li>
+                      <span key={k} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${fs[k] === 'err' ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {labelOf(k)}{filled[k] && <span className="text-[8px] font-bold text-violet-600">AI</span>}
+                      </span>
                     ))}
-                  </ul>
-                </div>
+                  </div>
+                </button>
               )
             })
           )}
