@@ -17,6 +17,7 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 4, connectionTimeoutMillis: 20000, query_timeout: 60000, statement_timeout: 60000 })
 const q = (sql, params) => pool.query(sql, params)
@@ -175,19 +176,43 @@ const MODE = (process.env.MCP_MODE || 'stdio').toLowerCase()
 if (MODE === 'http') {
   const TOKEN = process.env.MCP_TOKEN
   if (!TOKEN) { console.error('MCP_TOKEN is required in http mode (a long random string).'); process.exit(1) }
+  const BASE = process.env.MCP_BASE_PATH || ''   // public path prefix (nginx ke peeche, e.g. /crm-mcp)
   const app = express()
   app.use(express.json({ limit: '2mb' }))
+  // Token header (Authorization: Bearer ...) YA URL query (?key=... / ?token=...) — dono chalte hain,
+  // taaki ChatGPT/Claude ke jis bhi auth field ho (Custom header ya sirf URL) us se juda ja sake.
+  const authOk = (req) => {
+    const h = req.headers.authorization || ''
+    return h === `Bearer ${TOKEN}` || req.query.key === TOKEN || req.query.token === TOKEN
+  }
   app.get('/health', (_q, res) => res.json({ ok: true, server: 'decoinks-crm-mcp' }))
+
+  // ---- Streamable HTTP transport (naya MCP standard): POST /mcp ----
   app.post('/mcp', async (req, res) => {
-    const auth = req.headers.authorization || ''
-    if (auth !== `Bearer ${TOKEN}`) return res.status(401).json({ error: 'unauthorized' })
+    if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' })
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
     res.on('close', () => transport.close())
     await server.connect(transport)
     await transport.handleRequest(req, res, req.body)
   })
+
+  // ---- Legacy SSE transport (kai clients isko maangte hain): GET /sse + POST /messages ----
+  const sseTransports = {}
+  app.get('/sse', async (req, res) => {
+    if (!authOk(req)) return res.status(401).json({ error: 'unauthorized' })
+    const transport = new SSEServerTransport(`${BASE}/messages`, res)
+    sseTransports[transport.sessionId] = transport
+    res.on('close', () => { delete sseTransports[transport.sessionId] })
+    await server.connect(transport)
+  })
+  app.post('/messages', async (req, res) => {
+    const t = sseTransports[req.query.sessionId]
+    if (!t) return res.status(400).json({ error: 'no active SSE session' })
+    await t.handlePostMessage(req, res, req.body)
+  })
+
   const port = Number(process.env.MCP_PORT || 8790)
-  app.listen(port, () => console.error(`Decoinks CRM MCP (http) on :${port} — POST /mcp with Bearer token`))
+  app.listen(port, () => console.error(`Decoinks CRM MCP (http) on :${port} — /mcp (streamable) + /sse (legacy), token via header ya ?key=`))
 } else {
   await server.connect(new StdioServerTransport())
   console.error('Decoinks CRM MCP (stdio) ready')
