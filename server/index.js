@@ -12,7 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
-import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION } from './lead-panel.js'
+import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -1633,6 +1633,8 @@ app.post('/api/leads/field/:id', authRequired, async (req, res) => {
       conversationId: req.params.id, field: req.body?.field, value: req.body?.value,
       convName: findById('conversations', req.params.id)?.name,
     })
+    // Audit — kis user ne kaunsa field KAB validate/update kiya (id + naam + time)
+    if (saved.saved) { try { await saveFieldAudit(req.params.id, req.body?.field, agentName(req), req.user?.id) } catch {} }
     // Decoinks sync SECONDARY hai — field DB me save ho chuki. Sync fail ho to bhi field-save
     // fail NAHI hona chahiye (warna Submit "could not be saved" dikhata hai jabki save ho gaya).
     let sync = null

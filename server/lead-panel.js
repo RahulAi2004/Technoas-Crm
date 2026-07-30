@@ -348,6 +348,25 @@ export async function saveField({ conversationId, field, value, convName }) {
   return { ok: true, saved: true, field }
 }
 
+// Field-level audit: kis USER ne kaunsa field KAB validate/update kiya.
+// leads.extra.field_audit[<field>] = { by, byId, at } — no new table (restricted DB role safe).
+export async function saveFieldAudit(conversationId, field, by, byId) {
+  try {
+    const co = await resolveIds(conversationId)
+    if (!co || !field) return
+    const lid = await ensureLead(co)
+    const entry = JSON.stringify({ by: by || null, byId: byId ?? null, at: new Date().toISOString() })
+    await dbQuery(
+      `UPDATE app.leads
+         SET extra = jsonb_set(
+               CASE WHEN extra ? 'field_audit' THEN extra ELSE COALESCE(extra, '{}'::jsonb) || '{"field_audit":{}}'::jsonb END,
+               ARRAY['field_audit', $2], $3::jsonb, true),
+             updated_at = now()
+       WHERE lead_id = $1`,
+      [lid, field, entry])
+  } catch (e) { console.warn('[field audit]', e.message) }
+}
+
 const dstr = (d) => { try { return d ? new Date(d).toISOString().slice(0, 10) : '' } catch { return '' } }
 
 // Panel kholte hi: DB me jo pehle se saved hai wo values (agent ko dikhane ko).
@@ -355,7 +374,7 @@ export async function getLeadBundle(conversationId) {
   const out = {
     lead: {}, customer: {}, product: {}, shipping: {}, quote: {}, invoice: {}, order: {},
     has: { lead: false, customer: false, product: false, shipping: false, quote: false, invoice: false, order: false },
-    customerName: '',
+    field_audit: {}, customerName: '',
   }
   const co = await resolveIds(conversationId)
   if (!co) return out
@@ -520,6 +539,7 @@ export async function getLeadBundle(conversationId) {
   // Decoinks-parity capture fields (leads.extra) — inko unke logical section me daal do.
   if (lead) {
     const lx = lead.extra || {}
+    out.field_audit = lx.field_audit || {}   // { field: {by, byId, at} } — kaun-kab validate
     Object.assign(out.lead, {
       lead_source: lx.lead_source || '', source_campaign: lx.source_campaign || '',
       next_followup_date: lx.next_followup_date || '', pending_questions: lx.pending_questions || '',

@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api.js'
-import { can } from '../lib/auth.js'
+import { can, currentUser } from '../lib/auth.js'
+
+// Field audit tag — kis user ne KAB validate/update kiya.
+const fmtAudit = (at) => { try { return new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) } catch { return '' } }
+function AuditTag({ info }) {
+  if (!info?.at) return null
+  return <span className="truncate text-[9px] text-slate-400" title={`Updated by ${info.by || '?'}${info.byId != null ? ` (id ${info.byId})` : ''}`}>✓ {info.by || '—'} · {fmtAudit(info.at)}</span>
+}
 
 // ============================================================
 // Lead Details — 5 tabs (Lead/Customer/Product&Artwork/Shipping/Quote).
@@ -173,7 +180,7 @@ function Validate({ state, filled, val, onClick, label = 'Validate' }) {
 // Field ke aage chhota status dot: green=saved, amber=value-hai-unsaved, grey=khaali
 const dotOf = (state, val) => state === 'ok' ? 'bg-emerald-500' : hasVal(val) ? 'bg-amber-400' : 'bg-slate-200'
 
-function Field({ k, label, type, val, filled, state, onChange, onValidate, locked }) {
+function Field({ k, label, type, val, filled, state, onChange, onValidate, locked, auditInfo }) {
   const dis = locked ? INPUT + ' cursor-not-allowed bg-slate-50 text-slate-400' : INPUT
   return (
     <div id={`fld-${k}`} className={`min-w-0 scroll-mt-4 ${type === 'textarea' ? 'col-span-full' : ''}`}>
@@ -209,18 +216,19 @@ function Field({ k, label, type, val, filled, state, onChange, onValidate, locke
           ? <span title="Aapke role ko ye section validate/fill karne ki permission nahi" className="shrink-0 select-none px-1 text-[13px] text-slate-300">🔒</span>
           : <Validate k={k} state={state} filled={filled} val={val} onClick={onValidate} />}
       </div>
+      {auditInfo?.at && <div className="mt-0.5 text-right"><AuditTag info={auditInfo} /></div>}
     </div>
   )
 }
 
-function AddressBlock({ title, addr, filled, state, sameAs, onSame, onChange, onValidate }) {
+function AddressBlock({ title, addr, filled, state, sameAs, onSame, onChange, onValidate, auditInfo }) {
   const a = addr || {}
   const set = (kk, v) => onChange({ ...a, [kk]: v })
   return (
     <div className="rounded-lg border border-slate-200 p-2.5">
       <div className="mb-1.5 flex items-center justify-between">
         <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">{title}{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
-        <Validate state={state} val={a} filled={filled} onClick={onValidate} />
+        <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={a} filled={filled} onClick={onValidate} /></span>
       </div>
       {onSame && (
         <label className="mb-1.5 flex items-center gap-1.5 text-[11px] text-slate-600">
@@ -238,7 +246,7 @@ function AddressBlock({ title, addr, filled, state, sameAs, onSame, onChange, on
   )
 }
 
-function SizeBreakdown({ rows, total, filled, state, onChange, onValidate }) {
+function SizeBreakdown({ rows, total, filled, state, onChange, onValidate, auditInfo }) {
   const list = Array.isArray(rows) ? rows : []
   const sum = list.reduce((n, r) => n + (Number(r.quantity) || 0), 0)
   const set = (i, kk, v) => onChange(list.map((r, j) => (j === i ? { ...r, [kk]: v } : r)))
@@ -249,7 +257,7 @@ function SizeBreakdown({ rows, total, filled, state, onChange, onValidate }) {
     <div className="rounded-lg border border-slate-200 p-2.5">
       <div className="mb-1.5 flex items-center justify-between">
         <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Size Breakdown{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
-        <Validate state={state} val={list} filled={filled} onClick={onValidate} />
+        <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={list} filled={filled} onClick={onValidate} /></span>
       </div>
       <div className="space-y-1">
         {list.map((r, i) => (
@@ -268,14 +276,14 @@ function SizeBreakdown({ rows, total, filled, state, onChange, onValidate }) {
   )
 }
 
-function PrintLocations({ value, filled, state, onChange, onValidate }) {
+function PrintLocations({ value, filled, state, onChange, onValidate, auditInfo }) {
   const sel = Array.isArray(value) ? value : []
   const toggle = (loc) => onChange(sel.includes(loc) ? sel.filter((x) => x !== loc) : [...sel, loc])
   return (
     <div className="rounded-lg border border-slate-200 p-2.5">
       <div className="mb-1.5 flex items-center justify-between">
         <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Print Locations{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
-        <Validate state={state} val={sel} filled={filled} onClick={onValidate} />
+        <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={sel} filled={filled} onClick={onValidate} /></span>
       </div>
       <div className="flex flex-wrap gap-1">
         {PRINT_LOCATIONS.map((loc) => (
@@ -287,7 +295,7 @@ function PrintLocations({ value, filled, state, onChange, onValidate }) {
   )
 }
 
-function QuoteItems({ items, filled, state, onChange, onValidate }) {
+function QuoteItems({ items, filled, state, onChange, onValidate, auditInfo }) {
   const list = Array.isArray(items) ? items : []
   const set = (i, kk, v) => onChange(list.map((r, j) => (j === i ? { ...r, [kk]: v } : r)))
   const add = () => onChange([...list, { item_type: 'garment', item_name: '', quantity: 1, unit_price: 0 }])
@@ -297,7 +305,7 @@ function QuoteItems({ items, filled, state, onChange, onValidate }) {
     <div className="rounded-lg border border-slate-200 p-2.5">
       <div className="mb-1.5 flex items-center justify-between">
         <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Quote Items{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
-        <Validate state={state} val={list} filled={filled} onClick={onValidate} />
+        <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={list} filled={filled} onClick={onValidate} /></span>
       </div>
       <div className="space-y-1.5">
         {list.map((r, i) => (
@@ -324,7 +332,7 @@ function QuoteItems({ items, filled, state, onChange, onValidate }) {
 }
 
 // Sales Order line items -> app.order_lines (SKU, Product, Qty, Unit Price, Total).
-function OrderLines({ items, filled, state, onChange, onValidate }) {
+function OrderLines({ items, filled, state, onChange, onValidate, auditInfo }) {
   const list = Array.isArray(items) ? items : []
   const set = (i, kk, v) => onChange(list.map((r, j) => (j === i ? { ...r, [kk]: v } : r)))
   const add = () => onChange([...list, { sku: '', product: '', qty: 1, unit_price: 0 }])
@@ -334,7 +342,7 @@ function OrderLines({ items, filled, state, onChange, onValidate }) {
     <div className="rounded-lg border border-slate-200 p-2.5">
       <div className="mb-1.5 flex items-center justify-between">
         <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Order Line Items{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
-        <Validate state={state} val={list} filled={filled} onClick={onValidate} />
+        <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={list} filled={filled} onClick={onValidate} /></span>
       </div>
       <div className="space-y-1.5">
         {list.map((r, i) => (
@@ -359,7 +367,7 @@ function OrderLines({ items, filled, state, onChange, onValidate }) {
 }
 
 // Invoice items -> lead.extra.invoice_lines ({description, qty, unit_price}). Grand-total math live.
-function InvoiceLines({ items, filled, state, onChange, onValidate }) {
+function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo }) {
   const list = Array.isArray(items) ? items : []
   const set = (i, kk, v) => onChange(list.map((r, j) => (j === i ? { ...r, [kk]: v } : r)))
   const add = () => onChange([...list, { description: '', qty: 1, unit_price: 0 }])
@@ -370,7 +378,7 @@ function InvoiceLines({ items, filled, state, onChange, onValidate }) {
     <div className="rounded-lg border border-slate-200 p-2.5">
       <div className="mb-1.5 flex items-center justify-between">
         <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Invoice Items{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
-        <Validate state={state} val={list} filled={filled} onClick={onValidate} />
+        <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={list} filled={filled} onClick={onValidate} /></span>
       </div>
       <div className="space-y-1.5">
         {list.map((r, i) => (
@@ -495,6 +503,7 @@ export default function LeadPanel({ conv, onClose }) {
   const [completed, setCompleted] = useState(false)
   const [sameBilling, setSameBilling] = useState(false)
   const [ai, setAi] = useState(null)            // AI-enriched read-only insights (Leads dashboard wale fields)
+  const [audit, setAudit] = useState({})        // field -> { by, byId, at }  (kaun-kab validate)
 
   const cid = conv?.id
 
@@ -544,12 +553,12 @@ export default function LeadPanel({ conv, onClose }) {
   useEffect(() => {
     if (!cid) return
     let cancelled = false
-    setVals({}); setFilled({}); setFs({}); setErr(''); setCompleted(false); setScore(null); setSameBilling(false); setTab('pending'); setAi(null)
+    setVals({}); setFilled({}); setFs({}); setErr(''); setCompleted(false); setScore(null); setSameBilling(false); setTab('pending'); setAi(null); setAudit({})
     api.get(`/api/leads/panel/${encodeURIComponent(cid)}`)
       .then((b) => {
         if (cancelled) return
         const flat = flatten(b)
-        setVals(flat); setAi(b?.ai || null)
+        setVals(flat); setAi(b?.ai || null); setAudit(b?.field_audit || {})
         // DB me jo fields pehle se saved hain unhe turant "✓ Saved" (green) dikhao — taaki agent
         // ko pata rahe kya ho chuka; wo baaki/naye fields incrementally validate karta rahe.
         const savedFs = {}
@@ -578,6 +587,7 @@ export default function LeadPanel({ conv, onClose }) {
       if (r && r.saved === false) { setFs((s) => ({ ...s, [k]: 'idle' })); return false }  // backend ne empty skip kiya (error nahi)
       if (r?.sync?.qualification) setScore(r.sync.qualification)
       setFs((s) => ({ ...s, [k]: 'ok' })); setFilled((a) => ({ ...a, [k]: false })); delete saveErrs.current[k]
+      const _me = currentUser(); setAudit((a) => ({ ...a, [k]: { by: _me?.name || _me?.email || 'You', byId: _me?.id ?? null, at: new Date().toISOString() } }))
       return true
     } catch (ex) { setFs((s) => ({ ...s, [k]: 'err' })); saveErrs.current[k] = ex?.message || 'save failed'; return false }
   }
@@ -667,7 +677,7 @@ export default function LeadPanel({ conv, onClose }) {
 
   const renderFields = (defs) => defs.map(([k, label, type]) => (
     <Field key={k} k={k} label={label} type={type} val={vals[k]} filled={filled[k]} state={fs[k]}
-      onChange={(v) => setVal(k, v)} onValidate={validate(k)} locked={!canValidate(tabOfKey(k))} />
+      onChange={(v) => setVal(k, v)} onValidate={validate(k)} locked={!canValidate(tabOfKey(k))} auditInfo={audit[k]} />
   ))
 
   const shell = wide
@@ -774,15 +784,15 @@ export default function LeadPanel({ conv, onClose }) {
         {tab === 'lead' && (<div className="space-y-3">
           <QualCard q={score} temp={autoTemp} />
           <div className={grid}>{renderFields(LEAD_FIELDS)}</div>
-          {vals.stage === 'Lost' && <div className={grid}><Field k="lost_reason" label="Lost Reason" type="text" val={vals.lost_reason} filled={filled.lost_reason} state={fs.lost_reason} onChange={(v) => setVal('lost_reason', v)} onValidate={validate('lost_reason')} locked={!canValidate('lead')} /></div>}
+          {vals.stage === 'Lost' && <div className={grid}><Field k="lost_reason" label="Lost Reason" type="text" val={vals.lost_reason} filled={filled.lost_reason} state={fs.lost_reason} onChange={(v) => setVal('lost_reason', v)} onValidate={validate('lost_reason')} locked={!canValidate('lead')} auditInfo={audit['lost_reason']} /></div>}
           {vals.ai_summary && <div className="rounded-lg bg-violet-50 p-2.5 text-[11px] text-violet-800"><b>✨ AI Summary:</b> {vals.ai_summary}</div>}
         </div>)}
 
         {tab === 'customer' && (<div className="space-y-3">
           <div className={grid}>{renderFields(CUST_FIELDS)}</div>
-          <div id="fld-shipping_address" className="scroll-mt-4"><AddressBlock title="Shipping Address" addr={vals.shipping_address} filled={filled.shipping_address} state={fs.shipping_address}
+          <div id="fld-shipping_address" className="scroll-mt-4"><AddressBlock title="Shipping Address" addr={vals.shipping_address} filled={filled.shipping_address} state={fs.shipping_address} auditInfo={audit['shipping_address']}
             onChange={(v) => setVal('shipping_address', v)} onValidate={validate('shipping_address')} /></div>
-          <div id="fld-billing_address" className="scroll-mt-4"><AddressBlock title="Billing Address" addr={sameBilling ? vals.shipping_address : vals.billing_address} filled={filled.billing_address} state={fs.billing_address}
+          <div id="fld-billing_address" className="scroll-mt-4"><AddressBlock title="Billing Address" addr={sameBilling ? vals.shipping_address : vals.billing_address} filled={filled.billing_address} state={fs.billing_address} auditInfo={audit['billing_address']}
             sameAs={sameBilling} onSame={setSameBilling}
             onChange={(v) => setVal('billing_address', v)}
             onValidate={() => saveOne('billing_address', sameBilling ? vals.shipping_address : vals.billing_address)} /></div>
@@ -790,11 +800,11 @@ export default function LeadPanel({ conv, onClose }) {
 
         {tab === 'product' && (<div className="space-y-3">
           <div className={grid}>{renderFields(PROD_FIELDS)}</div>
-          <div id="fld-size_breakdown" className="scroll-mt-4"><SizeBreakdown rows={vals.size_breakdown} total={vals.total_quantity} filled={filled.size_breakdown} state={fs.size_breakdown}
+          <div id="fld-size_breakdown" className="scroll-mt-4"><SizeBreakdown rows={vals.size_breakdown} total={vals.total_quantity} filled={filled.size_breakdown} state={fs.size_breakdown} auditInfo={audit['size_breakdown']}
             onChange={(v) => setVal('size_breakdown', v)} onValidate={validate('size_breakdown')} /></div>
-          <div id="fld-print_locations" className="scroll-mt-4"><PrintLocations value={vals.print_locations} filled={filled.print_locations} state={fs.print_locations}
+          <div id="fld-print_locations" className="scroll-mt-4"><PrintLocations value={vals.print_locations} filled={filled.print_locations} state={fs.print_locations} auditInfo={audit['print_locations']}
             onChange={(v) => setVal('print_locations', v)} onValidate={validate('print_locations')} /></div>
-          <div className={grid}><Field k="special_instructions" label="Special Instructions" type="textarea" val={vals.special_instructions} filled={filled.special_instructions} state={fs.special_instructions} onChange={(v) => setVal('special_instructions', v)} onValidate={validate('special_instructions')} locked={!canValidate('product')} /></div>
+          <div className={grid}><Field k="special_instructions" label="Special Instructions" type="textarea" val={vals.special_instructions} filled={filled.special_instructions} state={fs.special_instructions} onChange={(v) => setVal('special_instructions', v)} onValidate={validate('special_instructions')} locked={!canValidate('product')} auditInfo={audit['special_instructions']} /></div>
           <div className="rounded-lg bg-slate-50 p-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Artwork</div>
           <div className={grid}>{renderFields(ART_FIELDS)}</div>
           <p className="text-[10px] text-slate-400">Artwork files chat se aati hain (Files tab me dikhti hain). "Received" auto; Quality/Approve agent set kare.</p>
@@ -806,23 +816,23 @@ export default function LeadPanel({ conv, onClose }) {
         </div>)}
 
         {tab === 'quote' && (<div className="space-y-3">
-          <div id="fld-line_items" className="scroll-mt-4"><QuoteItems items={vals.line_items} filled={filled.line_items} state={fs.line_items}
+          <div id="fld-line_items" className="scroll-mt-4"><QuoteItems items={vals.line_items} filled={filled.line_items} state={fs.line_items} auditInfo={audit['line_items']}
             onChange={(v) => setVal('line_items', v)} onValidate={validate('line_items')} /></div>
-          <div className={grid}><Field k="quote_notes" label="Notes (to customer)" type="textarea" val={vals.quote_notes} filled={filled.quote_notes} state={fs.quote_notes} onChange={(v) => setVal('quote_notes', v)} onValidate={validate('quote_notes')} locked={!canValidate('quote')} /></div>
+          <div className={grid}><Field k="quote_notes" label="Notes (to customer)" type="textarea" val={vals.quote_notes} filled={filled.quote_notes} state={fs.quote_notes} onChange={(v) => setVal('quote_notes', v)} onValidate={validate('quote_notes')} locked={!canValidate('quote')} auditInfo={audit['quote_notes']} /></div>
           <div className={grid}>{renderFields(QUOTE_FIELDS)}</div>
         </div>)}
 
         {tab === 'invoice' && (<div className="space-y-3">
-          <div id="fld-invoice_lines" className="scroll-mt-4"><InvoiceLines items={vals.invoice_lines} filled={filled.invoice_lines} state={fs.invoice_lines}
+          <div id="fld-invoice_lines" className="scroll-mt-4"><InvoiceLines items={vals.invoice_lines} filled={filled.invoice_lines} state={fs.invoice_lines} auditInfo={audit['invoice_lines']}
             onChange={(v) => setVal('invoice_lines', v)} onValidate={validate('invoice_lines')} /></div>
           <div className={grid}>{renderFields(INVOICE_FIELDS)}</div>
-          <div className={grid}><Field k="invoice_notes" label="Invoice Notes" type="textarea" val={vals.invoice_notes} filled={filled.invoice_notes} state={fs.invoice_notes} onChange={(v) => setVal('invoice_notes', v)} onValidate={validate('invoice_notes')} locked={!canValidate('invoice')} /></div>
+          <div className={grid}><Field k="invoice_notes" label="Invoice Notes" type="textarea" val={vals.invoice_notes} filled={filled.invoice_notes} state={fs.invoice_notes} onChange={(v) => setVal('invoice_notes', v)} onValidate={validate('invoice_notes')} locked={!canValidate('invoice')} auditInfo={audit['invoice_notes']} /></div>
           <p className="text-[10px] text-slate-400">Sales Order banne se pehle billing capture. Har field Validate karte hi lead ke saath save ho jaati hai.</p>
         </div>)}
 
         {tab === 'order' && (<div className="space-y-3">
           {vals.order_number && <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"><span className="text-slate-500">Order No:</span> <span className="font-bold text-slate-800">{vals.order_number}</span></div>}
-          <div id="fld-order_lines" className="scroll-mt-4"><OrderLines items={vals.order_lines} filled={filled.order_lines} state={fs.order_lines}
+          <div id="fld-order_lines" className="scroll-mt-4"><OrderLines items={vals.order_lines} filled={filled.order_lines} state={fs.order_lines} auditInfo={audit['order_lines']}
             onChange={(v) => setVal('order_lines', v)} onValidate={validate('order_lines')} /></div>
           <div className={grid}>{renderFields(ORDER_FIELDS)}</div>
           <p className="text-[10px] text-slate-400">Validate karte hi <b>app.orders / app.order_lines</b> me save — POS Decoinks yahi se auto-populate karega.</p>
