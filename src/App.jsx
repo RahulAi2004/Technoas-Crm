@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import RequireAuth from './components/RequireAuth.jsx'
+import { isAuthed, refreshMe } from './lib/auth.js'
 import Login from './pages/Login.jsx'
+import Roles from './pages/Roles.jsx'
 import CreateAccount from './pages/CreateAccount.jsx'
 import AiAssistant from './pages/AiAssistant.jsx'
 import AfterSession from './pages/AfterSession.jsx'
@@ -22,9 +25,14 @@ import Settings from './pages/Settings.jsx'
 import Team from './pages/Team.jsx'
 
 export default function App() {
+  // Purane session me permissions na hon to app dikhane se pehle /me refresh karo.
+  const [ready, setReady] = useState(!isAuthed())
+  useEffect(() => { if (isAuthed()) refreshMe().finally(() => setReady(true)) }, [])
+  if (!ready) return <div className="grid h-screen place-items-center text-sm text-slate-400">Loading…</div>
   return (
     <Routes>
       <Route path="/" element={<Login />} />
+      <Route path="/roles" element={<RequireAuth><Roles /></RequireAuth>} />
       <Route path="/create-account" element={<CreateAccount />} />
       <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
       <Route path="/inbox" element={<Navigate to="/dashboard" replace />} />

@@ -172,6 +172,17 @@ const FIELD_OPTS = {
   production_time: ['1 - 2 Business Days', '2 - 3 Business Days', '3 - 5 Business Days', '1 Week', '2 Weeks'],
 }
 
+// field key -> Lead Panel section (validate-permission ke liye). Frontend TAB_KEYS ke mutabik.
+export const FIELD_SECTION = Object.fromEntries([
+  ['lead', ['stage','lead_status','lead_source','source_campaign','purchase_intent','qualification','priority','next_followup_date','pending_questions','lead_summary','internal_notes','lost_reason']],
+  ['customer', ['first_name','last_name','business_name','email','company_phone','mobile_number','phone','whatsapp','preferred_language','preferred_channel','segment','loyalty_tier','cust_status','customer_source','website','facebook_id','instagram_id','wechat','tax_exempt','tax_number','customer_notes','shipping_address','billing_address']],
+  ['product', ['product_type','garment_source','brand_style','garment_color','total_quantity','print_method','front_print_size','back_print_size','artwork_count','sheet_size','size_breakdown','print_locations','special_instructions','designer_notes','artwork_required','artwork_status','artwork_instructions']],
+  ['shipping', ['shipping_method','is_rush_order','production_time','required_delivery_date','event_date','estimated_delivery','carrier','tracking_number','estimated_shipping_cost','package_weight_lbs','delivery_instructions','shipping_postcode','shipping_city','shipping_state','shipping_country']],
+  ['quote', ['line_items','quote_notes','quote_status','quote_date','valid_until','currency','estimated_value','discount','subtotal','quote_rush_services','shipping_charges','quote_tax_pct','quote_tax','grand_total','customer_requirement_summary']],
+  ['invoice', ['invoice_number','invoice_status','invoice_date','invoice_due_date','payment_terms','payment_method','invoice_currency','invoice_subtotal','invoice_discount','invoice_tax','invoice_shipping','invoice_total','amount_paid','balance_due','invoice_notes','invoice_lines']],
+  ['order', ['order_products','order_items_count','order_total','order_currency','order_status','payment_status','order_deadline','production_partner','order_summary','order_instructions','order_lines']],
+].flatMap(([section, keys]) => keys.map((k) => [k, section])))
+
 // conversation (in-memory id / DB uuid / legacy_id) -> DB conversation row
 async function resolveIds(conversationId) {
   const r = await dbQuery(

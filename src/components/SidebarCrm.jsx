@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useToast } from './ToastContext.jsx'
 import MobileNav, { closeNav } from './MobileNav.jsx'
+import { can } from '../lib/auth.js'
 
 export default function SidebarCrm({ active }) {
   const toast = useToast()
@@ -72,6 +73,7 @@ export default function SidebarCrm({ active }) {
               Bookmarks
             </Link>
           </li>
+          {can('page:ai-assistant') && (
           <li>
             <Link to="/ai-assistant" className={active === 'ai-assistant'
               ? 'flex items-center gap-3 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white'
@@ -80,6 +82,8 @@ export default function SidebarCrm({ active }) {
               AI Prompting
             </Link>
           </li>
+          )}
+          {can('page:after-session') && (
           <li>
             <Link to="/after-session" className={active === 'after-session'
               ? 'flex items-center gap-3 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white'
@@ -88,6 +92,7 @@ export default function SidebarCrm({ active }) {
               After Session
             </Link>
           </li>
+          )}
         </ul>
 
         {/* CRM 360 — hidden for now. To show again, change false → true */}
@@ -135,22 +140,26 @@ export default function SidebarCrm({ active }) {
 
         <p className="mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Settings</p>
         <ul className="space-y-1">
-          <li><Link to="/team" className={itemCls('team')}>
+          {can('page:team') && <li><Link to="/team" className={itemCls('team')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
-            Team
-          </Link></li>
-          <li><Link to="/connect-meta" className={itemCls('connect-meta')}>
+            Users
+          </Link></li>}
+          {can('cap:manage_roles') && <li><Link to="/roles" className={itemCls('roles')}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 4 5v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V5z"/><path d="m9 12 2 2 4-4"/></svg>
+            Roles &amp; Access
+          </Link></li>}
+          {can('page:connect-meta') && <li><Link to="/connect-meta" className={itemCls('connect-meta')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.99 22 12z"/></svg>
             Connect Meta
-          </Link></li>
-          <li><Link to="/integrations" className={itemCls('integrations')}>
+          </Link></li>}
+          {can('page:integrations') && <li><Link to="/integrations" className={itemCls('integrations')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
             Integrations
-          </Link></li>
-          <li><Link to="/settings" className={itemCls('settings')}>
+          </Link></li>}
+          {can('page:settings') && <li><Link to="/settings" className={itemCls('settings')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Settings
-          </Link></li>
+          </Link></li>}
         </ul>
       </nav>
     </aside>

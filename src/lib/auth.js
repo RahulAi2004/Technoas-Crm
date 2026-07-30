@@ -33,3 +33,19 @@ export function currentUser() {
     return null
   }
 }
+
+// ---- Permissions (app-level roles) ----
+export const permissions = () => (currentUser()?.permissions || [])
+// '*' = Admin (sab). Warna exact permission string chahiye (page:x · cap:x · validate:section)
+export const can = (perm) => { const p = permissions(); return p.includes('*') || p.includes(perm) }
+export const isAdmin = () => permissions().includes('*')
+
+// Purane session (jisme permissions save nahi) ko refresh karo — app load par.
+export async function refreshMe() {
+  try {
+    const me = await api.get('/api/auth/me')
+    const store = sessionStorage.getItem('tcUser') != null ? sessionStorage : localStorage
+    store.setItem('tcUser', JSON.stringify(me))
+    return me
+  } catch { return null }
+}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api.js'
+import { can } from '../lib/auth.js'
 
 // ============================================================
 // Lead Details — 5 tabs (Lead/Customer/Product&Artwork/Shipping/Quote).
@@ -172,7 +173,8 @@ function Validate({ state, filled, val, onClick, label = 'Validate' }) {
 // Field ke aage chhota status dot: green=saved, amber=value-hai-unsaved, grey=khaali
 const dotOf = (state, val) => state === 'ok' ? 'bg-emerald-500' : hasVal(val) ? 'bg-amber-400' : 'bg-slate-200'
 
-function Field({ k, label, type, val, filled, state, onChange, onValidate }) {
+function Field({ k, label, type, val, filled, state, onChange, onValidate, locked }) {
+  const dis = locked ? INPUT + ' cursor-not-allowed bg-slate-50 text-slate-400' : INPUT
   return (
     <div id={`fld-${k}`} className={`min-w-0 scroll-mt-4 ${type === 'textarea' ? 'col-span-full' : ''}`}>
       <div className="mb-1 flex items-center gap-1.5">
@@ -183,27 +185,29 @@ function Field({ k, label, type, val, filled, state, onChange, onValidate }) {
       <div className="flex items-center gap-1.5">
         <div className="min-w-0 flex-1">
           {type === 'select' ? (
-            <select value={val || ''} onChange={(e) => onChange(e.target.value)} className={INPUT}>
+            <select value={val || ''} disabled={locked} onChange={(e) => onChange(e.target.value)} className={dis}>
               <option value="">—</option>
               {(OPT[k] || []).map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
           ) : type === 'combo' ? (
             // dropdown suggestions + custom bhi type kar sakte hain (variable values ke liye)
             <>
-              <input list={`dl-${k}`} value={val ?? ''} onChange={(e) => onChange(e.target.value)} className={INPUT} placeholder="Select or type…" />
+              <input list={`dl-${k}`} value={val ?? ''} disabled={locked} onChange={(e) => onChange(e.target.value)} className={dis} placeholder="Select or type…" />
               <datalist id={`dl-${k}`}>{(OPT[k] || []).map((o) => <option key={o} value={o} />)}</datalist>
             </>
           ) : type === 'textarea' ? (
-            <textarea value={val || ''} onChange={(e) => onChange(e.target.value)} rows={2} className={INPUT} />
+            <textarea value={val || ''} disabled={locked} onChange={(e) => onChange(e.target.value)} rows={2} className={dis} />
           ) : type === 'toggle' ? (
-            <button onClick={() => onChange(!val)} className={`inline-flex h-6 w-11 items-center rounded-full px-0.5 transition ${val ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+            <button disabled={locked} onClick={() => !locked && onChange(!val)} className={`inline-flex h-6 w-11 items-center rounded-full px-0.5 transition ${val ? 'bg-emerald-500' : 'bg-slate-300'} ${locked ? 'opacity-50' : ''}`}>
               <span className={`h-5 w-5 rounded-full bg-white transition ${val ? 'translate-x-5' : ''}`} />
             </button>
           ) : (
-            <input type={type === 'number' ? 'number' : type === 'date' ? 'date' : 'text'} value={val ?? ''} onChange={(e) => onChange(e.target.value)} className={INPUT} />
+            <input type={type === 'number' ? 'number' : type === 'date' ? 'date' : 'text'} value={val ?? ''} disabled={locked} onChange={(e) => onChange(e.target.value)} className={dis} />
           )}
         </div>
-        <Validate k={k} state={state} filled={filled} val={val} onClick={onValidate} />
+        {locked
+          ? <span title="Aapke role ko ye section validate/fill karne ki permission nahi" className="shrink-0 select-none px-1 text-[13px] text-slate-300">🔒</span>
+          : <Validate k={k} state={state} filled={filled} val={val} onClick={onValidate} />}
       </div>
     </div>
   )
@@ -621,9 +625,10 @@ export default function LeadPanel({ conv, onClose }) {
 
   const missing = useMemo(() => computeMissing(vals, hasVal(vals.grand_total) || (Array.isArray(vals.line_items) && vals.line_items.length > 0)), [vals])
 
-  // PENDING — saare tabs ke woh fields jinme value hai par abhi tak "Saved" nahi (validate baaki).
-  // AI-extracted (filled) + agent-typed + AI-suggested-change — sab yahan aate hain.
-  const pendings = ALL_FIELD_KEYS.filter((k) => hasVal(vals[k]) && fs[k] !== 'ok')
+  const canValidate = (section) => can('validate:' + section)   // role permission per Lead Panel section
+  // PENDING — woh fields jinme value hai par abhi tak "Saved" nahi (validate baaki), AUR jinhe
+  // ye user validate kar sakta hai (uske role ki us section pe permission ho).
+  const pendings = ALL_FIELD_KEYS.filter((k) => hasVal(vals[k]) && fs[k] !== 'ok' && canValidate(tabOfKey(k)))
 
   // Pending section pe click -> us tab pe jao aur us section ke SAARE pending fields
   // ek saath highlight karo (pehle wale par scroll + focus).
@@ -662,7 +667,7 @@ export default function LeadPanel({ conv, onClose }) {
 
   const renderFields = (defs) => defs.map(([k, label, type]) => (
     <Field key={k} k={k} label={label} type={type} val={vals[k]} filled={filled[k]} state={fs[k]}
-      onChange={(v) => setVal(k, v)} onValidate={validate(k)} />
+      onChange={(v) => setVal(k, v)} onValidate={validate(k)} locked={!canValidate(tabOfKey(k))} />
   ))
 
   const shell = wide
@@ -722,6 +727,9 @@ export default function LeadPanel({ conv, onClose }) {
 
       {/* Body */}
       <div className="nice-scroll flex-1 overflow-y-auto px-4 py-3">
+        {tab !== 'pending' && !canValidate(tab) && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">🔒 Aapke role ko is section ke fields validate/fill karne ki permission nahi — view-only.</div>
+        )}
         {tab === 'pending' && (<div className="space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -766,7 +774,7 @@ export default function LeadPanel({ conv, onClose }) {
         {tab === 'lead' && (<div className="space-y-3">
           <QualCard q={score} temp={autoTemp} />
           <div className={grid}>{renderFields(LEAD_FIELDS)}</div>
-          {vals.stage === 'Lost' && <div className={grid}><Field k="lost_reason" label="Lost Reason" type="text" val={vals.lost_reason} filled={filled.lost_reason} state={fs.lost_reason} onChange={(v) => setVal('lost_reason', v)} onValidate={validate('lost_reason')} /></div>}
+          {vals.stage === 'Lost' && <div className={grid}><Field k="lost_reason" label="Lost Reason" type="text" val={vals.lost_reason} filled={filled.lost_reason} state={fs.lost_reason} onChange={(v) => setVal('lost_reason', v)} onValidate={validate('lost_reason')} locked={!canValidate('lead')} /></div>}
           {vals.ai_summary && <div className="rounded-lg bg-violet-50 p-2.5 text-[11px] text-violet-800"><b>✨ AI Summary:</b> {vals.ai_summary}</div>}
         </div>)}
 
@@ -786,7 +794,7 @@ export default function LeadPanel({ conv, onClose }) {
             onChange={(v) => setVal('size_breakdown', v)} onValidate={validate('size_breakdown')} /></div>
           <div id="fld-print_locations" className="scroll-mt-4"><PrintLocations value={vals.print_locations} filled={filled.print_locations} state={fs.print_locations}
             onChange={(v) => setVal('print_locations', v)} onValidate={validate('print_locations')} /></div>
-          <div className={grid}><Field k="special_instructions" label="Special Instructions" type="textarea" val={vals.special_instructions} filled={filled.special_instructions} state={fs.special_instructions} onChange={(v) => setVal('special_instructions', v)} onValidate={validate('special_instructions')} /></div>
+          <div className={grid}><Field k="special_instructions" label="Special Instructions" type="textarea" val={vals.special_instructions} filled={filled.special_instructions} state={fs.special_instructions} onChange={(v) => setVal('special_instructions', v)} onValidate={validate('special_instructions')} locked={!canValidate('product')} /></div>
           <div className="rounded-lg bg-slate-50 p-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Artwork</div>
           <div className={grid}>{renderFields(ART_FIELDS)}</div>
           <p className="text-[10px] text-slate-400">Artwork files chat se aati hain (Files tab me dikhti hain). "Received" auto; Quality/Approve agent set kare.</p>
@@ -800,7 +808,7 @@ export default function LeadPanel({ conv, onClose }) {
         {tab === 'quote' && (<div className="space-y-3">
           <div id="fld-line_items" className="scroll-mt-4"><QuoteItems items={vals.line_items} filled={filled.line_items} state={fs.line_items}
             onChange={(v) => setVal('line_items', v)} onValidate={validate('line_items')} /></div>
-          <div className={grid}><Field k="quote_notes" label="Notes (to customer)" type="textarea" val={vals.quote_notes} filled={filled.quote_notes} state={fs.quote_notes} onChange={(v) => setVal('quote_notes', v)} onValidate={validate('quote_notes')} /></div>
+          <div className={grid}><Field k="quote_notes" label="Notes (to customer)" type="textarea" val={vals.quote_notes} filled={filled.quote_notes} state={fs.quote_notes} onChange={(v) => setVal('quote_notes', v)} onValidate={validate('quote_notes')} locked={!canValidate('quote')} /></div>
           <div className={grid}>{renderFields(QUOTE_FIELDS)}</div>
         </div>)}
 
@@ -808,7 +816,7 @@ export default function LeadPanel({ conv, onClose }) {
           <div id="fld-invoice_lines" className="scroll-mt-4"><InvoiceLines items={vals.invoice_lines} filled={filled.invoice_lines} state={fs.invoice_lines}
             onChange={(v) => setVal('invoice_lines', v)} onValidate={validate('invoice_lines')} /></div>
           <div className={grid}>{renderFields(INVOICE_FIELDS)}</div>
-          <div className={grid}><Field k="invoice_notes" label="Invoice Notes" type="textarea" val={vals.invoice_notes} filled={filled.invoice_notes} state={fs.invoice_notes} onChange={(v) => setVal('invoice_notes', v)} onValidate={validate('invoice_notes')} /></div>
+          <div className={grid}><Field k="invoice_notes" label="Invoice Notes" type="textarea" val={vals.invoice_notes} filled={filled.invoice_notes} state={fs.invoice_notes} onChange={(v) => setVal('invoice_notes', v)} onValidate={validate('invoice_notes')} locked={!canValidate('invoice')} /></div>
           <p className="text-[10px] text-slate-400">Sales Order banne se pehle billing capture. Har field Validate karte hi lead ke saath save ho jaati hai.</p>
         </div>)}
 

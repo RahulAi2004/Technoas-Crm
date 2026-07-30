@@ -12,7 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
-import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead } from './lead-panel.js'
+import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
 
@@ -92,7 +92,7 @@ app.post('/api/auth/login', (req, res) => {
   if (!user) return res.status(401).json({ error: 'Invalid email or password' })
   if (!bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({ error: 'Invalid email or password' })
   const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
-  res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
+  res.json({ token, user: authPayload(user) })
 })
 
 app.post('/api/auth/sso', async (req, res) => {
@@ -119,7 +119,7 @@ app.post('/api/auth/sso', async (req, res) => {
     await flush()
   }
   const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
-  res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
+  res.json({ token, user: authPayload(user) })
 })
 
 // Public sign-up — create a new AGENT account (role is forced to 'agent' for safety;
@@ -136,26 +136,25 @@ app.post('/api/auth/register', async (req, res) => {
   await flush()
   // auto-login so the new agent can start immediately
   const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
-  res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } })
+  res.status(201).json({ token, user: authPayload(user) })
 })
 
 app.get('/api/auth/me', authRequired, (req, res) => {
   const user = getAll('users').find(u => u.id === req.user.id)
   if (!user) return res.status(404).json({ error: 'User not found' })
-  res.json({ id: user.id, email: user.email, name: user.name, role: user.role })
+  res.json(authPayload(user))
 })
 
-// Update own profile (name and/or role)
+// Update own profile (name only — role change sirf admin User-management se)
 app.patch('/api/auth/me', authRequired, async (req, res) => {
-  const { name, role } = req.body || {}
+  const { name } = req.body || {}
   const patch = {}
   if (name && name.trim()) patch.name = name.trim()
-  if (role && ['admin', 'manager', 'agent'].includes(role)) patch.role = role
   if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nothing to update' })
   const updated = update('users', req.user.id, patch)
   if (!updated) return res.status(404).json({ error: 'User not found' })
   await flush()
-  res.json({ id: updated.id, email: updated.email, name: updated.name, role: updated.role })
+  res.json(authPayload(updated))
 })
 
 // Change own password
@@ -180,8 +179,9 @@ app.get('/api/users', authRequired, (req, res) => {
   res.json(getAll('users').map(publicUser))
 })
 
-app.post('/api/users', authRequired, async (req, res) => {
-  const { name, email, password, role = 'agent' } = req.body || {}
+app.post('/api/users', authRequired, requirePerm('cap:manage_users'), async (req, res) => {
+  const { name, email, password } = req.body || {}
+  const role = roleById(req.body?.role) ? req.body.role : 'agent'
   if (!name?.trim() || !email?.trim() || !password) return res.status(400).json({ error: 'name, email and password are required' })
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
   const em = email.trim().toLowerCase()
@@ -192,11 +192,11 @@ app.post('/api/users', authRequired, async (req, res) => {
   res.status(201).json(publicUser(user))
 })
 
-app.patch('/api/users/:id', authRequired, async (req, res) => {
+app.patch('/api/users/:id', authRequired, requirePerm('cap:manage_users'), async (req, res) => {
   const { name, role, password } = req.body || {}
   const patch = {}
   if (name?.trim()) patch.name = name.trim()
-  if (role && ['admin', 'manager', 'agent'].includes(role)) patch.role = role
+  if (role && roleById(role)) patch.role = role
   if (password) { if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' }); patch.password_hash = bcrypt.hashSync(password, 10) }
   if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nothing to update' })
   const u = update('users', req.params.id, patch)
@@ -205,11 +205,90 @@ app.patch('/api/users/:id', authRequired, async (req, res) => {
   res.json(publicUser(u))
 })
 
-app.delete('/api/users/:id', authRequired, async (req, res) => {
+app.delete('/api/users/:id', authRequired, requirePerm('cap:manage_users'), async (req, res) => {
   if (String(req.params.id) === String(req.user.id)) return res.status(400).json({ error: "You can't remove your own account" })
   const ok = remove('users', req.params.id)
   if (!ok) return res.status(404).json({ error: 'User not found' })
   await flush()
+  res.json({ ok: true })
+})
+
+// ============================================================
+// ROLES & PERMISSIONS  (app-level only — authentik SSO ko haath nahi lagaya)
+// Roles settings (meta_kv) me store — koi nayi table nahi (restricted DB role safe).
+// Permission strings:  page:<key> · cap:<key> · validate:<section>   ('*' = sab, Admin)
+// ============================================================
+const PERM_PAGES = ['leads','inbox','orders','receipts','reports','campaigns','follow-ups','artwork-vault','ai-assistant','after-session','team','settings','connect-meta','integrations','roles']
+const PERM_CAPS = ['manage_users','manage_roles','delete_leads','send_messages']
+const VALIDATE_SECTIONS = ['lead','customer','product','shipping','quote','invoice','order']
+
+const DEFAULT_ROLES = [
+  { id: 'admin', name: 'Admin', builtin: true, permissions: ['*'] },
+  { id: 'manager', name: 'Manager', builtin: true, permissions: [
+      ...PERM_PAGES.filter((p) => p !== 'roles').map((p) => 'page:' + p),
+      'cap:manage_users', 'cap:delete_leads', 'cap:send_messages',
+      ...VALIDATE_SECTIONS.map((s) => 'validate:' + s),
+    ] },
+  { id: 'agent', name: 'Agent', builtin: true, permissions: [
+      'page:leads', 'page:inbox', 'page:orders', 'page:receipts',
+      'cap:send_messages',
+      'validate:lead', 'validate:customer', 'validate:product', 'validate:shipping',
+    ] },
+]
+
+function getRoles() {
+  let roles = getSetting('roles')
+  if (!Array.isArray(roles) || !roles.length) { roles = DEFAULT_ROLES; setSetting('roles', roles) }
+  const admin = roles.find((r) => r.id === 'admin')
+  if (admin) { admin.builtin = true; admin.permissions = ['*'] }   // Admin hamesha full access (lock-out se safe)
+  return roles
+}
+const roleById = (id) => getRoles().find((r) => r.id === String(id))
+const permsForUser = (userId) => {
+  const u = getAll('users').find((x) => String(x.id) === String(userId))
+  return (roleById(u?.role) || roleById('agent') || { permissions: [] }).permissions || []
+}
+const permsHas = (perms, key) => perms.includes('*') || perms.includes(key)
+function reqCan(req, key) { return permsHas(permsForUser(req.user?.id), key) }
+function requirePerm(key) { return (req, res, next) => reqCan(req, key) ? next() : res.status(403).json({ error: `Not allowed — missing permission: ${key}` }) }
+// login/me responses me role + permissions bhejo (frontend UI gating ke liye)
+function authPayload(user) {
+  const role = roleById(user.role) || roleById('agent')
+  return { id: user.id, email: user.email, name: user.name, role: user.role, roleName: role?.name || user.role, permissions: role?.permissions || [] }
+}
+const slugRole = (s) => String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+
+app.get('/api/roles', authRequired, (req, res) => res.json(getRoles()))
+app.get('/api/permissions/catalog', authRequired, (req, res) => res.json({ pages: PERM_PAGES, caps: PERM_CAPS, validate: VALIDATE_SECTIONS }))
+
+app.post('/api/roles', authRequired, requirePerm('cap:manage_roles'), (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  if (!name) return res.status(400).json({ error: 'Role name required' })
+  const roles = getRoles()
+  let id = slugRole(name) || ('role-' + (roles.length + 1))
+  if (roles.some((r) => r.id === id)) id = `${id}-${Math.random().toString(36).slice(2, 6)}`
+  const role = { id, name, permissions: Array.isArray(req.body?.permissions) ? req.body.permissions : [] }
+  setSetting('roles', [...roles, role])
+  res.status(201).json(role)
+})
+
+app.patch('/api/roles/:id', authRequired, requirePerm('cap:manage_roles'), (req, res) => {
+  const roles = getRoles()
+  const i = roles.findIndex((r) => r.id === req.params.id)
+  if (i < 0) return res.status(404).json({ error: 'Role not found' })
+  if (req.body?.name != null) roles[i].name = String(req.body.name).trim() || roles[i].name
+  if (Array.isArray(req.body?.permissions) && roles[i].id !== 'admin') roles[i].permissions = req.body.permissions
+  setSetting('roles', roles)
+  res.json(roles[i])
+})
+
+app.delete('/api/roles/:id', authRequired, requirePerm('cap:manage_roles'), (req, res) => {
+  const roles = getRoles()
+  const role = roles.find((r) => r.id === req.params.id)
+  if (!role) return res.status(404).json({ error: 'Role not found' })
+  if (role.builtin) return res.status(400).json({ error: "Built-in role can't be deleted" })
+  if (getAll('users').some((u) => String(u.role) === String(role.id))) return res.status(400).json({ error: 'Role is assigned to users — reassign them first' })
+  setSetting('roles', roles.filter((r) => r.id !== role.id))
   res.json({ ok: true })
 })
 
@@ -1545,6 +1624,11 @@ app.post('/api/leads/backfill-orders', authRequired, async (req, res) => {
 // Agent ne ek field pe Validate dabaya -> wahi ek field DB me save.
 app.post('/api/leads/field/:id', authRequired, async (req, res) => {
   try {
+    // Section-wise validate permission — role ko is section ki fields validate/fill karne ki ijazat hai?
+    const section = FIELD_SECTION[req.body?.field]
+    if (section && !reqCan(req, 'validate:' + section)) {
+      return res.status(403).json({ error: `Aapke role ko "${section}" section ke fields validate/fill karne ki permission nahi hai.` })
+    }
     const saved = await saveLeadField({
       conversationId: req.params.id, field: req.body?.field, value: req.body?.value,
       convName: findById('conversations', req.params.id)?.name,

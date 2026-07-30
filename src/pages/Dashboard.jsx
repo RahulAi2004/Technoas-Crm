@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { signOut, currentUser } from '../lib/auth.js'
+import { signOut, currentUser, can } from '../lib/auth.js'
 import TopBarUser from '../components/TopBarUser.jsx'
 import MobileNav, { closeNav } from '../components/MobileNav.jsx'
 import { useToast } from '../components/ToastContext.jsx'
@@ -603,14 +603,14 @@ export default function Dashboard() {
               </span>
               {bookmarkCount > 0 && <span className="sb-badge rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold text-white">{bookmarkCount}</span>}
             </button></li>
-            <li><Link to="/ai-assistant" className="sb-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-violet-300 hover:bg-white/5" data-tip="AI Prompting">
+            {can('page:ai-assistant') && <li><Link to="/ai-assistant" className="sb-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-violet-300 hover:bg-white/5" data-tip="AI Prompting">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
               <span className="sb-label">AI Prompting</span>
-            </Link></li>
-            <li><Link to="/after-session" className="sb-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-violet-300 hover:bg-white/5" data-tip="After Session">
+            </Link></li>}
+            {can('page:after-session') && <li><Link to="/after-session" className="sb-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-violet-300 hover:bg-white/5" data-tip="After Session">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
               <span className="sb-label">After Session</span>
-            </Link></li>
+            </Link></li>}
           </ul>
 
           {/* CRM 360 section — hidden from the Dashboard sidebar for now. To show again, change false → true */}
@@ -656,22 +656,26 @@ export default function Dashboard() {
 
           <p className="sb-section mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Settings</p>
           <ul className="space-y-1">
-            <li><Link to="/team" className="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Team">
+            {can('page:team') && <li><Link to="/team" className="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Users">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-              <span className="sb-label">Team</span>
-            </Link></li>
-            <li><Link to="/connect-meta" className="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Connect Meta">
+              <span className="sb-label">Users</span>
+            </Link></li>}
+            {can('cap:manage_roles') && <li><Link to="/roles" className="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Roles & Access">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 4 5v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V5z"/><path d="m9 12 2 2 4-4"/></svg>
+              <span className="sb-label">Roles &amp; Access</span>
+            </Link></li>}
+            {can('page:connect-meta') && <li><Link to="/connect-meta" className="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Connect Meta">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.99 22 12z"/></svg>
               <span className="sb-label">Connect Meta</span>
-            </Link></li>
-            <li><Link to="/integrations" className="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Integrations">
+            </Link></li>}
+            {can('page:integrations') && <li><Link to="/integrations" className="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Integrations">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
               <span className="sb-label">Integrations</span>
-            </Link></li>
-            <li><Link to="/settings" className="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Settings">
+            </Link></li>}
+            {can('page:settings') && <li><Link to="/settings" className="sb-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Settings">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/></svg>
               <span className="sb-label">Settings</span>
-            </Link></li>
+            </Link></li>}
           </ul>
         </nav>
 
