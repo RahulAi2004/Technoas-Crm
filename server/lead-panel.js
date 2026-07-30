@@ -110,6 +110,34 @@ export const FIELD_MAP = {
   balance_due:      { t: 'leads', j: 'balance_due', num: true },
   invoice_notes:    { t: 'leads', j: 'invoice_notes' },
   invoice_lines:    { t: 'leads', j: 'invoice_lines' },   // array of {description, qty, unit_price}
+  // ---- Decoinks parity: naye capture fields ----
+  // Lead-level (leads.extra)
+  lead_source:        { t: 'leads', j: 'lead_source' },
+  source_campaign:    { t: 'leads', j: 'source_campaign' },
+  next_followup_date: { t: 'leads', j: 'next_followup_date', date: true },
+  pending_questions:  { t: 'leads', j: 'pending_questions' },
+  // Customer-level (customers.extra — customer ke saath rehte hain)
+  website:          { t: 'customers', j: 'website' },
+  facebook_id:      { t: 'customers', j: 'facebook_id' },
+  instagram_id:     { t: 'customers', j: 'instagram_id' },
+  wechat:           { t: 'customers', j: 'wechat' },
+  customer_source:  { t: 'customers', j: 'customer_source' },
+  tax_number:       { t: 'customers', j: 'tax_number' },
+  // Product (leads.extra — un tables me guaranteed extra column nahi)
+  artwork_count:    { t: 'leads', j: 'artwork_count', num: true },
+  sheet_size:       { t: 'leads', j: 'sheet_size' },
+  // Delivery (leads.extra)
+  production_time:  { t: 'leads', j: 'production_time' },
+  estimated_delivery: { t: 'leads', j: 'estimated_delivery', date: true },
+  carrier:          { t: 'leads', j: 'carrier' },
+  tracking_number:  { t: 'leads', j: 'tracking_number' },
+  package_weight_lbs: { t: 'leads', j: 'package_weight_lbs', num: true },
+  // Quote (leads.extra)
+  quote_date:       { t: 'leads', j: 'quote_date', date: true },
+  quote_tax_pct:    { t: 'leads', j: 'quote_tax_pct', num: true },
+  quote_tax:        { t: 'leads', j: 'quote_tax', num: true },
+  quote_rush_services: { t: 'leads', j: 'quote_rush_services', num: true },
+  customer_requirement_summary: { t: 'leads', j: 'customer_requirement_summary' },
 }
 
 // Allowed values for select fields — validate par galat value reject hoti hai.
@@ -138,6 +166,10 @@ const FIELD_OPTS = {
   payment_terms: ['Due on Receipt', 'Net 15', 'Net 30', 'Net 60', 'Paid'],
   payment_method: ['Cashapp', 'Zelle', 'PayPal', 'Bank Transfer', 'Cash', 'Other'],
   invoice_currency: ['USD', 'PKR', 'EUR', 'GBP', 'CAD'],
+  // Decoinks parity selects (combo fields — carrier/sheet_size — jaanbujh ke yahan NAHI, taaki free text allow ho)
+  lead_source: ['Facebook Messenger', 'WhatsApp', 'Instagram', 'Email', 'Walk-in', 'Phone', 'Referral', 'Other'],
+  customer_source: ['Facebook Messenger', 'WhatsApp', 'Instagram', 'Email', 'Walk-in', 'Phone', 'Referral', 'Other'],
+  production_time: ['1 - 2 Business Days', '2 - 3 Business Days', '3 - 5 Business Days', '1 Week', '2 Weeks'],
 }
 
 // conversation (in-memory id / DB uuid / legacy_id) -> DB conversation row
@@ -395,6 +427,10 @@ export async function getLeadBundle(conversationId) {
         customer_notes: c.extra?.customer_notes || '',
         shipping_address: c.extra?.shipping_address || {},
         billing_address: c.extra?.billing_address || {},
+        // Decoinks parity (customers.extra)
+        website: c.extra?.website || '', facebook_id: c.extra?.facebook_id || '',
+        instagram_id: c.extra?.instagram_id || '', wechat: c.extra?.wechat || '',
+        customer_source: c.extra?.customer_source || '', tax_number: c.extra?.tax_number || '',
       }
     }
   }
@@ -469,6 +505,27 @@ export async function getLeadBundle(conversationId) {
         order_lines: lr.rows.map((x) => ({ sku: x.sku || '', product: x.product || '', qty: x.qty ?? '', unit_price: x.unit_price ?? '', total: x.total ?? '' })),
       }
     }
+  }
+  // Decoinks-parity capture fields (leads.extra) — inko unke logical section me daal do.
+  if (lead) {
+    const lx = lead.extra || {}
+    Object.assign(out.lead, {
+      lead_source: lx.lead_source || '', source_campaign: lx.source_campaign || '',
+      next_followup_date: lx.next_followup_date || '', pending_questions: lx.pending_questions || '',
+    })
+    Object.assign(out.product, {
+      artwork_count: lx.artwork_count ?? '', sheet_size: lx.sheet_size || '',
+    })
+    Object.assign(out.shipping, {
+      production_time: lx.production_time || '', estimated_delivery: lx.estimated_delivery || '',
+      carrier: lx.carrier || '', tracking_number: lx.tracking_number || '',
+      package_weight_lbs: lx.package_weight_lbs ?? '',
+    })
+    Object.assign(out.quote, {
+      quote_date: lx.quote_date || '', quote_tax_pct: lx.quote_tax_pct ?? '',
+      quote_tax: lx.quote_tax ?? '', quote_rush_services: lx.quote_rush_services ?? '',
+      customer_requirement_summary: lx.customer_requirement_summary || '',
+    })
   }
   return out
 }

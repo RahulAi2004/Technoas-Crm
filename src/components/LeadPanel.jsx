@@ -35,6 +35,12 @@ const OPT = {
   payment_terms: ['Due on Receipt', 'Net 15', 'Net 30', 'Net 60', 'Paid'],
   payment_method: ['Cashapp', 'Zelle', 'PayPal', 'Bank Transfer', 'Cash', 'Other'],
   invoice_currency: ['USD', 'PKR', 'EUR', 'GBP', 'CAD'],
+  // Decoinks parity — added fields
+  lead_source: ['Facebook Messenger', 'WhatsApp', 'Instagram', 'Email', 'Walk-in', 'Phone', 'Referral', 'Other'],
+  customer_source: ['Facebook Messenger', 'WhatsApp', 'Instagram', 'Email', 'Walk-in', 'Phone', 'Referral', 'Other'],
+  production_time: ['1 - 2 Business Days', '2 - 3 Business Days', '3 - 5 Business Days', '1 Week', '2 Weeks'],
+  sheet_size: ['22" x 60"', '22" x 120"', '24" x 60"', '30" x 60"'],   // combo
+  carrier: ['UPS', 'FedEx', 'USPS', 'DHL'],                            // combo
   // combo (dropdown + custom typeable) — variable values, isliye strict select nahi.
   garment_color: ['Black', 'White', 'Navy', 'Royal Blue', 'Red', 'Sport Grey', 'Charcoal', 'Maroon', 'Forest Green', 'Purple', 'Pink', 'Gold', 'Orange', 'Heather Grey'],
   brand_style: ['Gildan 5000', 'Gildan 18500', 'Gildan 64000', 'Bella+Canvas 3001', 'Next Level 3600', 'Hanes 5250', 'Comfort Colors 1717', 'Champion S700', 'Independent Trading', 'Port & Company'],
@@ -46,8 +52,10 @@ const PRINT_LOCATIONS = ['Front', 'Back', 'Left Chest', 'Right Chest', 'Sleeves'
 // section -> [ [key, label, type] ]  (type: text|number|select|textarea|date|toggle)
 const LEAD_FIELDS = [
   ['stage', 'Stage', 'select'], ['lead_status', 'Lead Status', 'select'],
+  ['lead_source', 'Lead Source', 'select'], ['source_campaign', 'Source Campaign', 'text'],
   ['purchase_intent', 'Purchase Intent', 'select'], ['qualification', 'Qualification', 'select'],
-  ['priority', 'Priority', 'select'],
+  ['priority', 'Priority', 'select'], ['next_followup_date', 'Next Follow-up', 'date'],
+  ['pending_questions', 'Pending Questions', 'textarea'],
   ['lead_summary', 'Lead Summary', 'textarea'], ['internal_notes', 'Internal Notes (agent)', 'textarea'],
 ]
 const CUST_FIELDS = [
@@ -57,7 +65,10 @@ const CUST_FIELDS = [
   ['whatsapp', 'WhatsApp Number', 'text'],
   ['preferred_language', 'Preferred Language', 'select'], ['preferred_channel', 'Preferred Channel', 'select'],
   ['segment', 'Customer Segment', 'select'], ['loyalty_tier', 'Loyalty Tier', 'select'],
-  ['cust_status', 'Status', 'select'], ['tax_exempt', 'Tax Exempt', 'toggle'],
+  ['cust_status', 'Status', 'select'], ['customer_source', 'Source Channel', 'select'],
+  ['website', 'Website', 'text'], ['facebook_id', 'Facebook ID', 'text'],
+  ['instagram_id', 'Instagram ID', 'text'], ['wechat', 'WeChat ID', 'text'],
+  ['tax_exempt', 'Tax Exempt', 'toggle'], ['tax_number', 'Tax / VAT Number', 'text'],
   ['customer_notes', 'Customer Notes', 'textarea'],
 ]
 const PROD_FIELDS = [
@@ -65,6 +76,7 @@ const PROD_FIELDS = [
   ['brand_style', 'Brand / Style', 'combo'], ['garment_color', 'Color', 'combo'],
   ['total_quantity', 'Total Quantity', 'number'], ['print_method', 'Print Method', 'select'],
   ['front_print_size', 'Front Print Size', 'combo'], ['back_print_size', 'Back Print Size', 'combo'],
+  ['artwork_count', 'No. of Artworks/Designs', 'number'], ['sheet_size', 'Gangsheet / Transfer Size', 'combo'],
 ]
 const ART_FIELDS = [
   ['artwork_required', 'Artwork Required', 'toggle'], ['artwork_status', 'Artwork Status', 'select'],
@@ -73,14 +85,22 @@ const ART_FIELDS = [
 // Address (street/city/state/zip) upar AddressBlock me — yahan sirf delivery/logistics fields.
 const SHIP_FIELDS = [
   ['shipping_method', 'Shipping Method', 'select'], ['is_rush_order', 'Rush Order', 'toggle'],
+  ['production_time', 'Production Lead Time', 'select'],
   ['required_delivery_date', 'Required Delivery Date', 'date'], ['event_date', 'Event Date', 'date'],
-  ['estimated_shipping_cost', 'Est. Shipping Cost', 'number'], ['delivery_instructions', 'Delivery Instructions', 'textarea'],
+  ['estimated_delivery', 'Estimated Delivery Date', 'date'],
+  ['carrier', 'Carrier', 'combo'], ['tracking_number', 'Tracking Number', 'text'],
+  ['estimated_shipping_cost', 'Est. Shipping Cost', 'number'], ['package_weight_lbs', 'Package Weight (lbs)', 'number'],
+  ['delivery_instructions', 'Delivery Instructions', 'textarea'],
 ]
 const QUOTE_FIELDS = [
-  ['quote_status', 'Quote Status', 'select'], ['valid_until', 'Valid Until', 'date'],
-  ['currency', 'Currency', 'select'], ['estimated_value', 'Estimated Value', 'number'],
-  ['discount', 'Discount', 'number'], ['subtotal', 'Subtotal', 'number'],
-  ['shipping_charges', 'Shipping Charges', 'number'], ['grand_total', 'Grand Total', 'number'],
+  ['quote_status', 'Quote Status', 'select'], ['quote_date', 'Quote Date', 'date'],
+  ['valid_until', 'Valid Until', 'date'], ['currency', 'Currency', 'select'],
+  ['estimated_value', 'Estimated Value', 'number'], ['discount', 'Discount', 'number'],
+  ['subtotal', 'Subtotal', 'number'], ['quote_rush_services', 'Rush Services', 'number'],
+  ['shipping_charges', 'Shipping Charges', 'number'],
+  ['quote_tax_pct', 'Tax %', 'number'], ['quote_tax', 'Tax Amount', 'number'],
+  ['grand_total', 'Grand Total', 'number'],
+  ['customer_requirement_summary', 'Customer Requirement Summary', 'textarea'],
 ]
 // INVOICE (Sales Order se pehle) — Decoinks New Invoice ke most-needed fields.
 const INVOICE_FIELDS = [
@@ -113,6 +133,15 @@ const TAB_KEYS = {
 }
 
 const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}), ...(b?.invoice || {}), ...(b?.order || {}) })
+
+// Saare field keys (Pending list ke liye — har tab ke).
+const ALL_FIELD_KEYS = [...new Set(Object.values(TAB_KEYS).flat())]
+// Pending row me value ka chhota preview.
+const previewVal = (v) => {
+  if (Array.isArray(v)) return v.length ? `${v.length} item${v.length > 1 ? 's' : ''}` : '—'
+  if (v && typeof v === 'object') return Object.values(v).filter(Boolean).slice(0, 2).join(', ') || '—'
+  const s = String(v ?? ''); return s.length > 42 ? s.slice(0, 42) + '…' : s
+}
 
 // field key -> human label + kis tab me hai (Submit error me batane ke liye).
 const FIELD_LABELS = Object.fromEntries([...LEAD_FIELDS, ...CUST_FIELDS, ...PROD_FIELDS, ...ART_FIELDS, ...SHIP_FIELDS, ...QUOTE_FIELDS, ...INVOICE_FIELDS, ...ORDER_FIELDS].map((f) => [f[0], f[1]]))
@@ -151,7 +180,7 @@ const dotOf = (state, val) => state === 'ok' ? 'bg-emerald-500' : hasVal(val) ? 
 
 function Field({ k, label, type, val, filled, state, onChange, onValidate }) {
   return (
-    <div className={`min-w-0 ${type === 'textarea' ? 'col-span-full' : ''}`}>
+    <div id={`fld-${k}`} className={`min-w-0 scroll-mt-4 ${type === 'textarea' ? 'col-span-full' : ''}`}>
       <div className="mb-1 flex items-center gap-1.5">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotOf(state, val)}`} />
         <label className="truncate text-[11px] font-semibold text-slate-700">{label}</label>
@@ -456,7 +485,7 @@ function computeMissing(vals, hasQuote) {
 }
 
 export default function LeadPanel({ conv, onClose }) {
-  const [tab, setTab] = useState('lead')
+  const [tab, setTab] = useState('pending')
   const [vals, setVals] = useState({})
   const [filled, setFilled] = useState({})   // AI-filled, unvalidated
   const [fs, setFs] = useState({})            // per-field: idle|saving|ok|err
@@ -481,11 +510,23 @@ export default function LeadPanel({ conv, onClose }) {
         if (r?.fields) {
           const ai = flatten(r.fields)
           setVals((cur) => {
-            const next = { ...cur }; const f = {}
+            const next = { ...cur }; const f = {}; const changed = {}
             for (const [k, v] of Object.entries(ai)) {
-              if (!hasVal(cur[k]) && hasVal(v)) { next[k] = v; f[k] = true }
+              if (!hasVal(cur[k]) && hasVal(v)) {
+                // khaali field ko AI ne bhara -> pending (validate karo)
+                next[k] = v; f[k] = true
+              } else if (
+                hasVal(cur[k]) && hasVal(v) &&
+                typeof v !== 'object' && typeof cur[k] !== 'object' &&
+                String(cur[k]).trim() !== String(v).trim()
+              ) {
+                // AI ek alag value suggest kar raha hai (jaise stage badal gaya) -> pending review
+                next[k] = v; f[k] = true; changed[k] = 'idle'
+              }
             }
             setFilled((p) => ({ ...p, ...f }))
+            // pehle se "Saved" fields jinki value AI ne badli -> unhe wapas pending (idle) karo
+            if (Object.keys(changed).length) setFs((s) => ({ ...s, ...changed }))
             return next
           })
         }
@@ -505,7 +546,7 @@ export default function LeadPanel({ conv, onClose }) {
   useEffect(() => {
     if (!cid) return
     let cancelled = false
-    setVals({}); setFilled({}); setFs({}); setErr(''); setCompleted(false); setScore(null); setSameBilling(false); setTab('lead'); setAi(null)
+    setVals({}); setFilled({}); setFs({}); setErr(''); setCompleted(false); setScore(null); setSameBilling(false); setTab('pending'); setAi(null)
     api.get(`/api/leads/panel/${encodeURIComponent(cid)}`)
       .then((b) => {
         if (cancelled) return
@@ -586,6 +627,24 @@ export default function LeadPanel({ conv, onClose }) {
 
   const missing = useMemo(() => computeMissing(vals, hasVal(vals.grand_total) || (Array.isArray(vals.line_items) && vals.line_items.length > 0)), [vals])
 
+  // PENDING — saare tabs ke woh fields jinme value hai par abhi tak "Saved" nahi (validate baaki).
+  // AI-extracted (filled) + agent-typed + AI-suggested-change — sab yahan aate hain.
+  const pendings = ALL_FIELD_KEYS.filter((k) => hasVal(vals[k]) && fs[k] !== 'ok')
+
+  // Pending row pe click -> us field ke tab pe jao, field tak scroll + focus + highlight.
+  const goTo = (k) => {
+    const t = tabOfKey(k)
+    if (t) setTab(t)
+    setTimeout(() => {
+      const el = document.getElementById(`fld-${k}`)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.querySelector('input, select, textarea, button')?.focus()
+      el.classList.add('ring-2', 'ring-brand-400', 'ring-offset-1', 'rounded-lg')
+      setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400', 'ring-offset-1'), 1900)
+    }, 180)
+  }
+
   // Is tab me kitne fields bhare hain par save nahi hue + ek click me sab confirm.
   const unsavedKeys = (TAB_KEYS[tab] || []).filter((k) => hasVal(vals[k]) && fs[k] !== 'ok')
   const confirmTab = async () => {
@@ -595,7 +654,7 @@ export default function LeadPanel({ conv, onClose }) {
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
   }
 
-  const TABS = [['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Delivery'], ['quote', 'Quote'], ['invoice', 'Invoice'], ['order', 'Sales Order']]
+  const TABS = [['pending', 'Pending'], ['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Delivery'], ['quote', 'Quote'], ['invoice', 'Invoice'], ['order', 'Sales Order']]
   // Readable columns: panel ki chaudai ke hisaab se (chhote panel me 1-2, wide me 3). Cramped nahi.
   const grid = wide
     ? 'grid gap-3 grid-cols-2 lg:grid-cols-3'
@@ -641,7 +700,10 @@ export default function LeadPanel({ conv, onClose }) {
       {/* Tabs */}
       <nav className="nice-scroll flex items-center gap-4 overflow-x-auto border-b border-slate-200 px-4 text-[13px]">
         {TABS.map(([id, lbl]) => (
-          <button key={id} onClick={() => setTab(id)} className={`shrink-0 whitespace-nowrap border-b-2 py-2.5 ${tab === id ? 'border-brand-500 font-semibold text-brand-600' : 'border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
+          <button key={id} onClick={() => setTab(id)} className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 py-2.5 ${tab === id ? 'border-brand-500 font-semibold text-brand-600' : 'border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>
+            {lbl}
+            {id === 'pending' && pendings.length > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">{pendings.length}</span>}
+          </button>
         ))}
       </nav>
 
@@ -660,6 +722,51 @@ export default function LeadPanel({ conv, onClose }) {
 
       {/* Body */}
       <div className="nice-scroll flex-1 overflow-y-auto px-4 py-3">
+        {tab === 'pending' && (<div className="space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">Pending Validation</h3>
+              <p className="text-[11px] leading-snug text-slate-500">AI/agent ne jo fields update kiye — validate karke DB me confirm karein. Kisi bhi row pe click karke seedha us field pe jaayein.</p>
+            </div>
+            {pendings.length > 0 && (
+              <button onClick={saveAll} disabled={savingAll} className="shrink-0 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
+                {savingAll ? 'Saving…' : `✓ Validate all (${pendings.length})`}
+              </button>
+            )}
+          </div>
+          {pendings.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50/50 py-8 text-center text-[12px] font-semibold text-emerald-700">✓ All caught up — koi pending field nahi</div>
+          ) : (
+            TABS.filter(([id]) => id !== 'pending').map(([id, lbl]) => {
+              const rows = (TAB_KEYS[id] || []).filter((k) => pendings.includes(k))
+              if (!rows.length) return null
+              return (
+                <div key={id} className="overflow-hidden rounded-lg border border-slate-200">
+                  <div className="border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">{lbl} <span className="text-slate-400">({rows.length})</span></div>
+                  <ul className="divide-y divide-slate-100">
+                    {rows.map((k) => (
+                      <li key={k}>
+                        <button onClick={() => goTo(k)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-amber-50/60">
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${fs[k] === 'err' ? 'bg-rose-500' : 'bg-amber-400'}`} />
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate text-[12px] font-semibold text-slate-700">{labelOf(k)}</span>
+                              {filled[k] && <span className="rounded bg-violet-100 px-1 text-[8px] font-bold text-violet-700">AI</span>}
+                              {fs[k] === 'err' && <span className="rounded bg-rose-100 px-1 text-[8px] font-bold text-rose-700">error</span>}
+                            </span>
+                            <span className="block truncate text-[11px] text-slate-400">{previewVal(vals[k])}</span>
+                          </span>
+                          <span className="shrink-0 text-[11px] font-semibold text-brand-600">Validate →</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })
+          )}
+        </div>)}
+
         {tab === 'lead' && (<div className="space-y-3">
           <QualCard q={score} temp={autoTemp} />
           <div className={grid}>{renderFields(LEAD_FIELDS)}</div>
@@ -669,20 +776,20 @@ export default function LeadPanel({ conv, onClose }) {
 
         {tab === 'customer' && (<div className="space-y-3">
           <div className={grid}>{renderFields(CUST_FIELDS)}</div>
-          <AddressBlock title="Shipping Address" addr={vals.shipping_address} filled={filled.shipping_address} state={fs.shipping_address}
-            onChange={(v) => setVal('shipping_address', v)} onValidate={validate('shipping_address')} />
-          <AddressBlock title="Billing Address" addr={sameBilling ? vals.shipping_address : vals.billing_address} filled={filled.billing_address} state={fs.billing_address}
+          <div id="fld-shipping_address" className="scroll-mt-4"><AddressBlock title="Shipping Address" addr={vals.shipping_address} filled={filled.shipping_address} state={fs.shipping_address}
+            onChange={(v) => setVal('shipping_address', v)} onValidate={validate('shipping_address')} /></div>
+          <div id="fld-billing_address" className="scroll-mt-4"><AddressBlock title="Billing Address" addr={sameBilling ? vals.shipping_address : vals.billing_address} filled={filled.billing_address} state={fs.billing_address}
             sameAs={sameBilling} onSame={setSameBilling}
             onChange={(v) => setVal('billing_address', v)}
-            onValidate={() => saveOne('billing_address', sameBilling ? vals.shipping_address : vals.billing_address)} />
+            onValidate={() => saveOne('billing_address', sameBilling ? vals.shipping_address : vals.billing_address)} /></div>
         </div>)}
 
         {tab === 'product' && (<div className="space-y-3">
           <div className={grid}>{renderFields(PROD_FIELDS)}</div>
-          <SizeBreakdown rows={vals.size_breakdown} total={vals.total_quantity} filled={filled.size_breakdown} state={fs.size_breakdown}
-            onChange={(v) => setVal('size_breakdown', v)} onValidate={validate('size_breakdown')} />
-          <PrintLocations value={vals.print_locations} filled={filled.print_locations} state={fs.print_locations}
-            onChange={(v) => setVal('print_locations', v)} onValidate={validate('print_locations')} />
+          <div id="fld-size_breakdown" className="scroll-mt-4"><SizeBreakdown rows={vals.size_breakdown} total={vals.total_quantity} filled={filled.size_breakdown} state={fs.size_breakdown}
+            onChange={(v) => setVal('size_breakdown', v)} onValidate={validate('size_breakdown')} /></div>
+          <div id="fld-print_locations" className="scroll-mt-4"><PrintLocations value={vals.print_locations} filled={filled.print_locations} state={fs.print_locations}
+            onChange={(v) => setVal('print_locations', v)} onValidate={validate('print_locations')} /></div>
           <div className={grid}><Field k="special_instructions" label="Special Instructions" type="textarea" val={vals.special_instructions} filled={filled.special_instructions} state={fs.special_instructions} onChange={(v) => setVal('special_instructions', v)} onValidate={validate('special_instructions')} /></div>
           <div className="rounded-lg bg-slate-50 p-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Artwork</div>
           <div className={grid}>{renderFields(ART_FIELDS)}</div>
@@ -695,15 +802,15 @@ export default function LeadPanel({ conv, onClose }) {
         </div>)}
 
         {tab === 'quote' && (<div className="space-y-3">
-          <QuoteItems items={vals.line_items} filled={filled.line_items} state={fs.line_items}
-            onChange={(v) => setVal('line_items', v)} onValidate={validate('line_items')} />
+          <div id="fld-line_items" className="scroll-mt-4"><QuoteItems items={vals.line_items} filled={filled.line_items} state={fs.line_items}
+            onChange={(v) => setVal('line_items', v)} onValidate={validate('line_items')} /></div>
           <div className={grid}><Field k="quote_notes" label="Notes (to customer)" type="textarea" val={vals.quote_notes} filled={filled.quote_notes} state={fs.quote_notes} onChange={(v) => setVal('quote_notes', v)} onValidate={validate('quote_notes')} /></div>
           <div className={grid}>{renderFields(QUOTE_FIELDS)}</div>
         </div>)}
 
         {tab === 'invoice' && (<div className="space-y-3">
-          <InvoiceLines items={vals.invoice_lines} filled={filled.invoice_lines} state={fs.invoice_lines}
-            onChange={(v) => setVal('invoice_lines', v)} onValidate={validate('invoice_lines')} />
+          <div id="fld-invoice_lines" className="scroll-mt-4"><InvoiceLines items={vals.invoice_lines} filled={filled.invoice_lines} state={fs.invoice_lines}
+            onChange={(v) => setVal('invoice_lines', v)} onValidate={validate('invoice_lines')} /></div>
           <div className={grid}>{renderFields(INVOICE_FIELDS)}</div>
           <div className={grid}><Field k="invoice_notes" label="Invoice Notes" type="textarea" val={vals.invoice_notes} filled={filled.invoice_notes} state={fs.invoice_notes} onChange={(v) => setVal('invoice_notes', v)} onValidate={validate('invoice_notes')} /></div>
           <p className="text-[10px] text-slate-400">Sales Order banne se pehle billing capture. Har field Validate karte hi lead ke saath save ho jaati hai.</p>
@@ -711,8 +818,8 @@ export default function LeadPanel({ conv, onClose }) {
 
         {tab === 'order' && (<div className="space-y-3">
           {vals.order_number && <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"><span className="text-slate-500">Order No:</span> <span className="font-bold text-slate-800">{vals.order_number}</span></div>}
-          <OrderLines items={vals.order_lines} filled={filled.order_lines} state={fs.order_lines}
-            onChange={(v) => setVal('order_lines', v)} onValidate={validate('order_lines')} />
+          <div id="fld-order_lines" className="scroll-mt-4"><OrderLines items={vals.order_lines} filled={filled.order_lines} state={fs.order_lines}
+            onChange={(v) => setVal('order_lines', v)} onValidate={validate('order_lines')} /></div>
           <div className={grid}>{renderFields(ORDER_FIELDS)}</div>
           <p className="text-[10px] text-slate-400">Validate karte hi <b>app.orders / app.order_lines</b> me save — POS Decoinks yahi se auto-populate karega.</p>
         </div>)}
