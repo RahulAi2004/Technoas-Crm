@@ -47,5 +47,9 @@ export async function refreshMe() {
     const store = sessionStorage.getItem('tcUser') != null ? sessionStorage : localStorage
     store.setItem('tcUser', JSON.stringify(me))
     return me
-  } catch { return null }
+  } catch (e) {
+    // User delete ho chuka ya token invalid -> "zombie" session clear karo (login pe redirect ho jayega)
+    if (e?.status === 401 || e?.status === 404) signOut()
+    return null
+  }
 }
