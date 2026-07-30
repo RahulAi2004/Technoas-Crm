@@ -88,13 +88,13 @@ input:focus, select:focus, textarea:focus { outline: none; }
    NOTE: plain px only — clamp()/vw in the track list freezes the grid transition
    in Chrome, leaving a blank column when the AI panel is closed. */
 #panels {
-  --col-filters: 300px;
-  --col-ai: 380px;
+  --col-filters: 280px;
+  --col-ai: 340px;
   grid-template-columns: var(--col-filters) 8px minmax(0,1fr) 8px var(--col-ai);
 }
-@media (max-width: 1500px) { #panels { --col-ai: 350px; } }
-@media (max-width: 1400px) { #panels { --col-filters: 270px; --col-ai: 330px; } }
-@media (max-width: 1300px) { #panels { --col-filters: 250px; --col-ai: 305px; } }
+@media (max-width: 1500px) { #panels { --col-filters: 268px; --col-ai: 320px; } }
+@media (max-width: 1400px) { #panels { --col-filters: 250px; --col-ai: 300px; } }
+@media (max-width: 1300px) { #panels { --col-filters: 236px; --col-ai: 284px; } }
 #panels[data-filters="collapsed"] { --col-filters: 52px !important; }
 #panels[data-ai="closed"]         { --col-ai: 0px !important; }
 #panels.is-resizing { transition: none !important; }

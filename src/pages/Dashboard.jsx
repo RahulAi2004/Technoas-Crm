@@ -975,7 +975,7 @@ export default function Dashboard() {
 
             {midTab === 'conversation' && (
               <div className="flex min-h-0 flex-1 flex-col">
-                <div ref={chatRef} className="nice-scroll flex-1 overflow-y-auto bg-slate-50/40 px-6 py-5">
+                <div ref={chatRef} className="nice-scroll flex-1 overflow-y-auto bg-slate-50/40 px-4 py-4">
                   {[...conv.messages, ...pending.filter((pm) => !conv.messages.some((m) => String(m.id) === String(pm.id)))]
                     // ASLI message-time (ts) se sort — created_at re-ingest par badal jata hai, ts sthir rehta hai
                     .map((m, idx) => ({ m, idx, k: Number(m.ts) || Date.parse(m.created_at) || 0 }))
@@ -994,12 +994,12 @@ export default function Dashboard() {
                     if (m.dir === 'in') return (
                       <div key={m.id || i} className="mt-4 flex items-start gap-2">
                         <span className={`mt-1 grid h-8 w-8 place-items-center rounded-full ${conv.avatarBg} text-xs font-bold`}>{conv.initials}</span>
-                        <div className="max-w-[min(85%,38rem)] rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 text-[10px] text-slate-400">{fmtClock(m.ts, m.time)}</div></div>
+                        <div className="max-w-[min(90%,42rem)] rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 text-[10px] text-slate-400">{fmtClock(m.ts, m.time)}</div></div>
                       </div>
                     )
                     if (m.dir === 'note') return (
                       <div key={m.id || i} className="mt-4 flex items-start justify-end gap-2">
-                        <div className="max-w-[min(85%,38rem)] rounded-2xl rounded-tr-md bg-amber-50 px-4 py-2.5 text-sm text-amber-900 shadow-sm ring-1 ring-amber-200">
+                        <div className="max-w-[min(90%,42rem)] rounded-2xl rounded-tr-md bg-amber-50 px-4 py-2.5 text-sm text-amber-900 shadow-sm ring-1 ring-amber-200">
                           <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">📝 Internal note{m.agent ? ` · ${m.agent}` : ''}</div>
                           <div>{m.text}</div>
                           <div className="mt-1 text-right text-[10px] text-amber-700/70">{fmtClock(m.ts, m.time)}</div>
@@ -1012,7 +1012,7 @@ export default function Dashboard() {
                       <div key={m.id || i} className="mt-4 flex flex-col items-end">
                         {m.agent && <div className="mb-0.5 mr-10 text-[10px] font-semibold text-slate-500">{m.agent}</div>}
                         <div className="flex items-start justify-end gap-2">
-                          <div className={`max-w-[min(85%,38rem)] rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ${failed ? 'bg-rose-50 text-rose-900 ring-1 ring-rose-200' : 'bg-brand-600 text-white'}`}>
+                          <div className={`max-w-[min(90%,42rem)] rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ${failed ? 'bg-rose-50 text-rose-900 ring-1 ring-rose-200' : 'bg-brand-600 text-white'}`}>
                             <MsgAttachments items={m.attachments} />{m.text}
                             <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${failed ? 'text-rose-500' : 'text-white/70'}`}>
                               {fmtClock(m.ts, m.time)}
@@ -1040,7 +1040,7 @@ export default function Dashboard() {
                   })}
                 </div>
 
-                <div className="border-t border-slate-200 bg-white px-6 py-3">
+                <div className="border-t border-slate-200 bg-white px-4 py-3">
                   <div className="mb-2 flex items-center gap-4 text-sm">
                     <button onClick={() => setMode('reply')} className={`pb-1 ${mode === 'reply' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Reply</button>
                     <button onClick={() => setMode('note')} className={`pb-1 ${mode === 'note' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Note</button>
