@@ -969,7 +969,7 @@ export default function Dashboard() {
 
             <nav className="flex items-center gap-8 border-b border-slate-200 px-5">
               {[['conversation','Conversation'],['customer','Customer Info'],['history','History'],['notes','Notes'],['files','Files']].map(([id, lbl]) => (
-                <button key={id} onClick={() => setMidTab(id)} className={`whitespace-nowrap border-b-2 py-3 text-sm ${midTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
+                <button key={id} onClick={() => setMidTab(id)} className={`whitespace-nowrap border-b-2 py-2.5 text-sm ${midTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
               ))}
             </nav>
 
@@ -1040,11 +1040,7 @@ export default function Dashboard() {
                   })}
                 </div>
 
-                <div className="border-t border-slate-200 bg-white px-4 py-3">
-                  <div className="mb-2 flex items-center gap-4 text-sm">
-                    <button onClick={() => setMode('reply')} className={`pb-1 ${mode === 'reply' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Reply</button>
-                    <button onClick={() => setMode('note')} className={`pb-1 ${mode === 'note' ? 'border-b-2 border-brand-500 font-semibold text-brand-600' : 'border-b-2 border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>Note</button>
-                  </div>
+                <div className="border-t border-slate-200 bg-white px-4 py-2">
                   {attachQueue.length > 0 && (
                     <div className="mb-2 flex flex-wrap gap-2">
                       {attachQueue.map((it) => (
@@ -1060,10 +1056,14 @@ export default function Dashboard() {
                   )}
                   <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message… (image Ctrl+V se paste karo, Send pe jayegi)'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
                   <input ref={fileInputRef} type="file" onChange={onFileChosen} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.ai,.psd,.eps,.zip" />
-                  <div className="mt-2 flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-slate-500">
+                  <div className="mt-1.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-slate-500">
+                      <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-xs font-semibold">
+                        <button onClick={() => setMode('reply')} className={`rounded-md px-2.5 py-1 ${mode === 'reply' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Reply</button>
+                        <button onClick={() => setMode('note')} className={`rounded-md px-2.5 py-1 ${mode === 'note' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Note</button>
+                      </div>
                       {mode === 'reply' && (
-                        <button onClick={onPickFile} disabled={attachBusy} title="Attach a file / image" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50">
+                        <button onClick={onPickFile} disabled={attachBusy} title="Attach a file / image" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50">
                           {attachBusy
                             ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                             : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>}
@@ -1071,7 +1071,7 @@ export default function Dashboard() {
                         </button>
                       )}
                     </div>
-                    <button onClick={doSend} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+                    <button onClick={doSend} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
                       Send{attachQueue.length > 0 ? ` (${attachQueue.length})` : ''}
                     </button>
