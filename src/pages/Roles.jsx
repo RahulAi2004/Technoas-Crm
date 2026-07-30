@@ -161,8 +161,6 @@ export default function Roles() {
                       </div>
                     </div>
 
-                    {isAdmin && <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Admin ke paas hamesha full access hai (lock-out se safe) — permissions edit nahi hoti.</div>}
-
                     <div className="space-y-5">
                       <Group title="Page Access" items={catalog.pages} prefix="page:" labels={PAGE_LABEL} />
                       <Group title="Capabilities" items={catalog.caps} prefix="cap:" labels={CAP_LABEL} />
