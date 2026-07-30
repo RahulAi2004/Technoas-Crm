@@ -31,6 +31,10 @@ const OPT = {
   order_currency: ['USD', 'PKR', 'EUR', 'GBP'],
   order_status: ['pending', 'in_production', 'shipped', 'delivered', 'cancelled'],
   payment_status: ['pending', 'partial', 'paid'],
+  invoice_status: ['Draft', 'Sent', 'Paid', 'Partially Paid', 'Overdue', 'Cancelled'],
+  payment_terms: ['Due on Receipt', 'Net 15', 'Net 30', 'Net 60', 'Paid'],
+  payment_method: ['Cashapp', 'Zelle', 'PayPal', 'Bank Transfer', 'Cash', 'Other'],
+  invoice_currency: ['USD', 'PKR', 'EUR', 'GBP', 'CAD'],
   // combo (dropdown + custom typeable) — variable values, isliye strict select nahi.
   garment_color: ['Black', 'White', 'Navy', 'Royal Blue', 'Red', 'Sport Grey', 'Charcoal', 'Maroon', 'Forest Green', 'Purple', 'Pink', 'Gold', 'Orange', 'Heather Grey'],
   brand_style: ['Gildan 5000', 'Gildan 18500', 'Gildan 64000', 'Bella+Canvas 3001', 'Next Level 3600', 'Hanes 5250', 'Comfort Colors 1717', 'Champion S700', 'Independent Trading', 'Port & Company'],
@@ -78,6 +82,17 @@ const QUOTE_FIELDS = [
   ['discount', 'Discount', 'number'], ['subtotal', 'Subtotal', 'number'],
   ['shipping_charges', 'Shipping Charges', 'number'], ['grand_total', 'Grand Total', 'number'],
 ]
+// INVOICE (Sales Order se pehle) — Decoinks New Invoice ke most-needed fields.
+const INVOICE_FIELDS = [
+  ['invoice_number', 'Invoice #', 'text'], ['invoice_status', 'Invoice Status', 'select'],
+  ['invoice_date', 'Invoice Date', 'date'], ['invoice_due_date', 'Due Date', 'date'],
+  ['payment_terms', 'Payment Terms', 'select'], ['payment_method', 'Payment Method', 'select'],
+  ['invoice_currency', 'Currency', 'select'],
+  ['invoice_subtotal', 'Subtotal', 'number'], ['invoice_discount', 'Discount', 'number'],
+  ['invoice_tax', 'Tax', 'number'], ['invoice_shipping', 'Shipping', 'number'],
+  ['invoice_total', 'Grand Total', 'number'],
+  ['amount_paid', 'Amount Paid', 'number'], ['balance_due', 'Balance Due', 'number'],
+]
 const ORDER_FIELDS = [
   ['order_status', 'Order Status', 'select'], ['payment_status', 'Payment Status', 'select'],
   ['order_currency', 'Currency', 'select'], ['order_items_count', 'Items Count', 'number'],
@@ -93,14 +108,15 @@ const TAB_KEYS = {
   product: [...PROD_FIELDS.map((f) => f[0]), 'size_breakdown', 'print_locations', 'special_instructions', ...ART_FIELDS.map((f) => f[0])],
   shipping: [...SHIP_FIELDS.map((f) => f[0])],
   quote: [...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes'],
+  invoice: [...INVOICE_FIELDS.map((f) => f[0]), 'invoice_lines', 'invoice_notes'],
   order: [...ORDER_FIELDS.map((f) => f[0]), 'order_lines'],
 }
 
-const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}), ...(b?.order || {}) })
+const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}), ...(b?.invoice || {}), ...(b?.order || {}) })
 
 // field key -> human label + kis tab me hai (Submit error me batane ke liye).
-const FIELD_LABELS = Object.fromEntries([...LEAD_FIELDS, ...CUST_FIELDS, ...PROD_FIELDS, ...ART_FIELDS, ...SHIP_FIELDS, ...QUOTE_FIELDS, ...ORDER_FIELDS].map((f) => [f[0], f[1]]))
-Object.assign(FIELD_LABELS, { lost_reason: 'Lost Reason', shipping_address: 'Shipping Address', billing_address: 'Billing Address', size_breakdown: 'Size Breakdown', print_locations: 'Print Locations', special_instructions: 'Special Instructions', line_items: 'Quote Items', quote_notes: 'Quote Notes', order_lines: 'Order Line Items' })
+const FIELD_LABELS = Object.fromEntries([...LEAD_FIELDS, ...CUST_FIELDS, ...PROD_FIELDS, ...ART_FIELDS, ...SHIP_FIELDS, ...QUOTE_FIELDS, ...INVOICE_FIELDS, ...ORDER_FIELDS].map((f) => [f[0], f[1]]))
+Object.assign(FIELD_LABELS, { lost_reason: 'Lost Reason', shipping_address: 'Shipping Address', billing_address: 'Billing Address', size_breakdown: 'Size Breakdown', print_locations: 'Print Locations', special_instructions: 'Special Instructions', line_items: 'Quote Items', quote_notes: 'Quote Notes', invoice_lines: 'Invoice Items', invoice_notes: 'Invoice Notes', order_lines: 'Order Line Items' })
 const labelOf = (k) => FIELD_LABELS[k] || k
 const tabOfKey = (k) => Object.keys(TAB_KEYS).find((t) => TAB_KEYS[t].includes(k)) || null
 const hasVal = (v) =>
@@ -311,6 +327,44 @@ function OrderLines({ items, filled, state, onChange, onValidate }) {
         {!list.length && <div className="rounded-md border border-dashed border-slate-200 py-2 text-center text-[11px] text-slate-400">No line items yet</div>}
       </div>
       <button onClick={add} className="mt-1.5 w-full rounded-md border border-dashed border-slate-300 py-1 text-[11px] font-semibold text-brand-600 hover:bg-slate-50">+ Add Line</button>
+    </div>
+  )
+}
+
+// Invoice items -> lead.extra.invoice_lines ({description, qty, unit_price}). Grand-total math live.
+function InvoiceLines({ items, filled, state, onChange, onValidate }) {
+  const list = Array.isArray(items) ? items : []
+  const set = (i, kk, v) => onChange(list.map((r, j) => (j === i ? { ...r, [kk]: v } : r)))
+  const add = () => onChange([...list, { description: '', qty: 1, unit_price: 0 }])
+  const del = (i) => onChange(list.filter((_, j) => j !== i))
+  const amt = (r) => (Number(r.qty) || 0) * (Number(r.unit_price) || 0)
+  const total = list.reduce((n, r) => n + amt(r), 0)
+  return (
+    <div className="rounded-lg border border-slate-200 p-2.5">
+      <div className="mb-1.5 flex items-center justify-between">
+        <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Invoice Items{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
+        <Validate state={state} val={list} filled={filled} onClick={onValidate} />
+      </div>
+      <div className="space-y-1.5">
+        {list.map((r, i) => (
+          <div key={i} className="rounded-md border border-slate-200 p-1.5">
+            <div className="flex items-center gap-1.5">
+              <input placeholder="Description" value={r.description || ''} onChange={(e) => set(i, 'description', e.target.value)} className={`${INPUT} flex-1`} />
+              <button onClick={() => del(i)} className="text-rose-400 hover:text-rose-600">✕</button>
+            </div>
+            <div className="mt-1 grid grid-cols-3 gap-1">
+              <input type="number" placeholder="Qty" value={r.qty ?? ''} onChange={(e) => set(i, 'qty', e.target.value)} className={INPUT} />
+              <input type="number" placeholder="Unit $" value={r.unit_price ?? ''} onChange={(e) => set(i, 'unit_price', e.target.value)} className={INPUT} />
+              <div className="grid place-items-center rounded-lg bg-slate-50 text-[11px] font-semibold text-slate-600">${amt(r).toFixed(2)}</div>
+            </div>
+          </div>
+        ))}
+        {!list.length && <div className="rounded-md border border-dashed border-slate-200 py-2 text-center text-[11px] text-slate-400">No invoice items yet</div>}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between">
+        <button onClick={add} className="rounded-md border border-dashed border-slate-300 px-2 py-1 text-[11px] font-semibold text-brand-600 hover:bg-slate-50">+ Add Item</button>
+        {list.length > 0 && <span className="text-[11px] font-bold text-slate-700">Items Total: ${total.toFixed(2)}</span>}
+      </div>
     </div>
   )
 }
@@ -541,7 +595,7 @@ export default function LeadPanel({ conv, onClose }) {
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
   }
 
-  const TABS = [['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Delivery'], ['quote', 'Quote'], ['order', 'Sales Order']]
+  const TABS = [['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Delivery'], ['quote', 'Quote'], ['invoice', 'Invoice'], ['order', 'Sales Order']]
   // Readable columns: panel ki chaudai ke hisaab se (chhote panel me 1-2, wide me 3). Cramped nahi.
   const grid = wide
     ? 'grid gap-3 grid-cols-2 lg:grid-cols-3'
@@ -647,6 +701,14 @@ export default function LeadPanel({ conv, onClose }) {
           <div className={grid}>{renderFields(QUOTE_FIELDS)}</div>
         </div>)}
 
+        {tab === 'invoice' && (<div className="space-y-3">
+          <InvoiceLines items={vals.invoice_lines} filled={filled.invoice_lines} state={fs.invoice_lines}
+            onChange={(v) => setVal('invoice_lines', v)} onValidate={validate('invoice_lines')} />
+          <div className={grid}>{renderFields(INVOICE_FIELDS)}</div>
+          <div className={grid}><Field k="invoice_notes" label="Invoice Notes" type="textarea" val={vals.invoice_notes} filled={filled.invoice_notes} state={fs.invoice_notes} onChange={(v) => setVal('invoice_notes', v)} onValidate={validate('invoice_notes')} /></div>
+          <p className="text-[10px] text-slate-400">Sales Order banne se pehle billing capture. Har field Validate karte hi lead ke saath save ho jaati hai.</p>
+        </div>)}
+
         {tab === 'order' && (<div className="space-y-3">
           {vals.order_number && <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"><span className="text-slate-500">Order No:</span> <span className="font-bold text-slate-800">{vals.order_number}</span></div>}
           <OrderLines items={vals.order_lines} filled={filled.order_lines} state={fs.order_lines}
@@ -689,5 +751,6 @@ const FIELD_KEYS = new Set([
   ...ART_FIELDS.map((f) => f[0]),
   ...SHIP_FIELDS.map((f) => f[0]),
   ...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes',
+  ...INVOICE_FIELDS.map((f) => f[0]), 'invoice_lines', 'invoice_notes',
   ...ORDER_FIELDS.map((f) => f[0]), 'order_lines',
 ])

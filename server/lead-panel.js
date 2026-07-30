@@ -91,6 +91,25 @@ export const FIELD_MAP = {
   order_summary:       { t: 'orders', c: 'order_summary' },
   order_instructions:  { t: 'orders', c: 'special_instructions' },
   order_lines:         { t: 'orders', childTable: 'order_lines' },   // app.order_lines rows
+  // INVOICE -> app.leads.extra (invoice_* JSON keys). DB role app schema me nayi table
+  // CREATE nahi kar sakta, isliye invoice billing lead ke extra JSON me store hoti hai.
+  // Sales Order se PEHLE ka billing capture (Decoinks New Invoice ke most-needed fields).
+  invoice_number:   { t: 'leads', j: 'invoice_number' },
+  invoice_status:   { t: 'leads', j: 'invoice_status' },
+  invoice_date:     { t: 'leads', j: 'invoice_date', date: true },
+  invoice_due_date: { t: 'leads', j: 'invoice_due_date', date: true },
+  payment_terms:    { t: 'leads', j: 'payment_terms' },
+  payment_method:   { t: 'leads', j: 'payment_method' },
+  invoice_currency: { t: 'leads', j: 'invoice_currency' },
+  invoice_subtotal: { t: 'leads', j: 'invoice_subtotal', num: true },
+  invoice_discount: { t: 'leads', j: 'invoice_discount', num: true },
+  invoice_tax:      { t: 'leads', j: 'invoice_tax', num: true },
+  invoice_shipping: { t: 'leads', j: 'invoice_shipping', num: true },
+  invoice_total:    { t: 'leads', j: 'invoice_total', num: true },
+  amount_paid:      { t: 'leads', j: 'amount_paid', num: true },
+  balance_due:      { t: 'leads', j: 'balance_due', num: true },
+  invoice_notes:    { t: 'leads', j: 'invoice_notes' },
+  invoice_lines:    { t: 'leads', j: 'invoice_lines' },   // array of {description, qty, unit_price}
 }
 
 // Allowed values for select fields — validate par galat value reject hoti hai.
@@ -115,6 +134,10 @@ const FIELD_OPTS = {
   order_currency: ['USD', 'PKR', 'EUR', 'GBP'],
   order_status: ['pending', 'in_production', 'shipped', 'delivered', 'cancelled'],
   payment_status: ['pending', 'partial', 'paid'],
+  invoice_status: ['Draft', 'Sent', 'Paid', 'Partially Paid', 'Overdue', 'Cancelled'],
+  payment_terms: ['Due on Receipt', 'Net 15', 'Net 30', 'Net 60', 'Paid'],
+  payment_method: ['Cashapp', 'Zelle', 'PayPal', 'Bank Transfer', 'Cash', 'Other'],
+  invoice_currency: ['USD', 'PKR', 'EUR', 'GBP', 'CAD'],
 }
 
 // conversation (in-memory id / DB uuid / legacy_id) -> DB conversation row
@@ -287,8 +310,8 @@ const dstr = (d) => { try { return d ? new Date(d).toISOString().slice(0, 10) : 
 // Panel kholte hi: DB me jo pehle se saved hai wo values (agent ko dikhane ko).
 export async function getLeadBundle(conversationId) {
   const out = {
-    lead: {}, customer: {}, product: {}, shipping: {}, quote: {}, order: {},
-    has: { lead: false, customer: false, product: false, shipping: false, quote: false, order: false },
+    lead: {}, customer: {}, product: {}, shipping: {}, quote: {}, invoice: {}, order: {},
+    has: { lead: false, customer: false, product: false, shipping: false, quote: false, invoice: false, order: false },
     customerName: '',
   }
   const co = await resolveIds(conversationId)
@@ -325,6 +348,28 @@ export async function getLeadBundle(conversationId) {
       industry: lead.industry || '',
       lead_summary: lead.lead_summary || '',
       ai_observations: lead.ai_observations || '',
+    }
+    // INVOICE — lead.extra me namespaced invoice_* keys (billing before Sales Order).
+    const ix = lead.extra || {}
+    const invoiceKeys = ['invoice_number', 'invoice_status', 'invoice_date', 'invoice_due_date', 'payment_terms', 'payment_method', 'invoice_currency', 'invoice_subtotal', 'invoice_discount', 'invoice_tax', 'invoice_shipping', 'invoice_total', 'amount_paid', 'balance_due', 'invoice_notes', 'invoice_lines']
+    out.has.invoice = invoiceKeys.some((k) => ix[k] != null && ix[k] !== '')
+    out.invoice = {
+      invoice_number: ix.invoice_number || '',
+      invoice_status: ix.invoice_status || '',
+      invoice_date: ix.invoice_date || '',
+      invoice_due_date: ix.invoice_due_date || '',
+      payment_terms: ix.payment_terms || '',
+      payment_method: ix.payment_method || '',
+      invoice_currency: ix.invoice_currency || 'USD',
+      invoice_subtotal: ix.invoice_subtotal ?? '',
+      invoice_discount: ix.invoice_discount ?? '',
+      invoice_tax: ix.invoice_tax ?? '',
+      invoice_shipping: ix.invoice_shipping ?? '',
+      invoice_total: ix.invoice_total ?? '',
+      amount_paid: ix.amount_paid ?? '',
+      balance_due: ix.balance_due ?? '',
+      invoice_notes: ix.invoice_notes || '',
+      invoice_lines: Array.isArray(ix.invoice_lines) ? ix.invoice_lines : [],
     }
   }
   if (co.customer_id) {
