@@ -895,14 +895,14 @@ export default function Dashboard() {
               </div>
             )}
             {conv && (<>
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-3 py-4 sm:px-5">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-3 py-2.5 sm:px-5">
               <div className="flex min-w-0 items-start gap-3">
                 {/* back to the conversation list — phones only */}
                 <button type="button" onClick={() => setCurrentId(null)} aria-label="Back to conversations"
                   className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </button>
-                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${conv.avatarBg} text-sm font-bold`}>{conv.initials}</span>
+                <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${conv.avatarBg} text-sm font-bold`}>{conv.initials}</span>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="truncate text-base font-bold">{conv.name}</h2>
@@ -920,12 +920,10 @@ export default function Dashboard() {
                       )}
                     </div>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                     <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><span className={`grid h-4 w-4 place-items-center rounded-full ${conv.channelBg} text-white`}>{channelIcon(conv.channel)}</span> {conv.channel}</span>
                     <span className="whitespace-nowrap">{conv.phone}</span>
                     <span className="inline-flex items-center gap-1 whitespace-nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> {conv.company}</span>
-                  </div>
-                  <div className="mt-1.5">
                     <FlagBadges allFlags={flags} value={Array.isArray(conv.tags) ? conv.tags : []} onChange={(next) => setConvTags(conv.id, next)} />
                   </div>
                 </div>
@@ -976,6 +974,7 @@ export default function Dashboard() {
             {midTab === 'conversation' && (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div ref={chatRef} className="nice-scroll flex-1 overflow-y-auto bg-slate-50/40 px-4 py-4">
+                  <div className="flex min-h-full flex-col justify-end">
                   {[...conv.messages, ...pending.filter((pm) => !conv.messages.some((m) => String(m.id) === String(pm.id)))]
                     // ASLI message-time (ts) se sort — created_at re-ingest par badal jata hai, ts sthir rehta hai
                     .map((m, idx) => ({ m, idx, k: Number(m.ts) || Date.parse(m.created_at) || 0 }))
@@ -1038,6 +1037,7 @@ export default function Dashboard() {
                     })()
                     return _divider ? <Fragment key={`g${m.id || i}`}>{_divider}{_bubble}</Fragment> : _bubble
                   })}
+                  </div>
                 </div>
 
                 <div className="border-t border-slate-200 bg-white px-4 py-2">
