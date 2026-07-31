@@ -9,13 +9,16 @@ import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath, ncEnsureCust
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3, connectionTimeoutMillis: 20000, query_timeout: 60000 })
 const SRC_SUBFOLDER = 'references'   // customer ke bheje files (source/reference material)
 const OUT_SUBFOLDER = 'sent'         // HUM ne bheje files (mockups, proofs, gang sheets)
+const COMBO_SUBFOLDER = 'Combos'     // combined/final combo artwork
 
 // Dono taraf ki files ek hi table mein hain; kis taraf ki hai ye message_ref ke prefix se
-// pata chalta hai ('out:' = hamari bheji). Isse alag column ki zaroorat nahi padti aur
-// upload/share worker dono sahi subfolder bana lete hain.
+// pata chalta hai ('out:' = hamari bheji, 'combo:' = combo). Isse alag column ki zaroorat nahi.
 const OUT_REF = 'out:'
+const COMBO_REF = 'combo:'
 const isOut = (ref) => String(ref || '').startsWith(OUT_REF)
-export const subfolderForRef = (ref) => isOut(ref) ? OUT_SUBFOLDER : SRC_SUBFOLDER
+const isCombo = (ref) => String(ref || '').startsWith(COMBO_REF)
+export const subfolderForRef = (ref) => isCombo(ref) ? COMBO_SUBFOLDER : isOut(ref) ? OUT_SUBFOLDER : SRC_SUBFOLDER
+const kindForRef = (ref) => isCombo(ref) ? 'CMB' : isOut(ref) ? 'OUT' : 'SRC'
 
 async function fetchBytes(url, timeoutMs = 8000) {
   try {
@@ -127,11 +130,12 @@ async function resolveContext(convRef) {
 // Trigger sirf tab lagta hai jab artwork_no NULL ho, isliye bhar kar bhejna hi kaafi hai.
 //   customer ki file -> AW-<CLIENT>-NNNN-SRC   (series: AW-<CLIENT>)
 //   hamari bheji     -> AW-<CLIENT>-NNNN-OUT   (series: AWOUT-<CLIENT>, alag counter)
-async function nextArtworkNo(clientCode, out) {
+//   combo/final      -> AW-<CLIENT>-NNNN-CMB   (series: AWCMB-<CLIENT>, alag counter)
+async function nextArtworkNo(clientCode, kind = 'SRC') {
   const code = clientCode || 'UNK00'
-  const key = `${out ? 'AWOUT' : 'AW'}-${code}`
-  const r = await pool.query(`SELECT app.next_series($1) AS n`, [key])
-  return `AW-${code}-${String(r.rows[0].n).padStart(4, '0')}-${out ? 'OUT' : 'SRC'}`
+  const prefix = kind === 'OUT' ? 'AWOUT' : kind === 'CMB' ? 'AWCMB' : 'AW'
+  const r = await pool.query(`SELECT app.next_series($1) AS n`, [`${prefix}-${code}`])
+  return `AW-${code}-${String(r.rows[0].n).padStart(4, '0')}-${kind}`
 }
 
 // Ek artwork store karo (dedupe by message_ref). Returns artwork_no ya null.
@@ -143,7 +147,7 @@ export async function storeArtwork({ ref, convRef, url, name }) {
   const folder = await folderForCustomer(ctx?.customer_id, ctx?.full_name)   // YYMMDD_First_Last
   const buf = await fetchBytes(url)                       // null bhi chalega — record phir bhi banta hai
   const ext = extOf(url, name)
-  const artworkNo = await nextArtworkNo(ctx?.client_code, isOut(ref))
+  const artworkNo = await nextArtworkNo(ctx?.client_code, kindForRef(ref))
   const ins = await pool.query(
     `INSERT INTO app.customer_artwork
        (lead_id, customer_id, conversation_id, message_ref, folder, file_name, file_type, file_size_bytes, source_url, image_data, artwork_no)
@@ -172,7 +176,7 @@ export async function storeArtworkBytes({ ref, convRef, buffer, fileName, fileTy
   const ctx = await resolveContext(convRef)
   const folder = await folderForCustomer(ctx?.customer_id, ctx?.full_name)
   const ext = (fileType || '').split('/')[1]?.replace('jpeg', 'jpg') || extOf('', fileName)
-  const artworkNo = await nextArtworkNo(ctx?.client_code, isOut(ref))
+  const artworkNo = await nextArtworkNo(ctx?.client_code, kindForRef(ref))
   const ins = await pool.query(
     `INSERT INTO app.customer_artwork
        (lead_id, customer_id, conversation_id, message_ref, folder, file_name, file_type, file_size_bytes, image_data, artwork_no, upload_status)

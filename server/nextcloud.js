@@ -28,7 +28,7 @@ export async function ncEnsureFolder(pathParts) {
 
 // Har customer folder mein yahi dhaancha hota hai. `references` customer ki bheji
 // files ke liye hai (auto-fill); baaki team khud istemal karti hai.
-export const CUSTOMER_SUBFOLDERS = ['references', 'Artworks', 'Mockups', 'Gangsheets', 'Documents']
+export const CUSTOMER_SUBFOLDERS = ['references', 'Artworks', 'Mockups', 'Gangsheets', 'Documents', 'Combos']
 
 export async function ncEnsureCustomerFolders(folder) {
   if (!ncConfigured() || !folder) return false
