@@ -8,6 +8,17 @@ import { api } from '../lib/api.js'
 // --- helpers ---
 const fmt$ = (n) => (n == null || n === '' || Number(n) === 0) ? '—' : `$${Number(n).toLocaleString()}`
 const fmtDateTime = (ts) => ts ? new Date(Number(ts)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
+// "kitni der pehle" — pending/elapsed duration since a timestamp (ms)
+const agoStr = (ts) => {
+  if (!ts) return '—'
+  let s = Math.max(0, Math.floor((Date.now() - Number(ts)) / 1000))
+  const d = Math.floor(s / 86400); s -= d * 86400
+  const h = Math.floor(s / 3600); s -= h * 3600
+  const m = Math.floor(s / 60)
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
 const leadNo = (id) => { const d = String(id || '').replace(/\D/g, ''); return 'LD-' + (d.slice(-6) || '000000') }
 const QUOTE_STAGES = ['Quotation', 'Quoted', 'Quote Sent', 'Proposal', 'Artwork Approval', 'Payment Pending']
 const ORDER_STAGES = ['Order Confirmed', 'Ready to Order', 'Completed', 'In Production']
@@ -38,6 +49,12 @@ const LEAD_COLUMNS = [
   { key: 'source', header: 'Source', has: (l) => !!l._source },
   { key: 'stage', header: 'Stage', has: (l) => !!l._stage },
   { key: 'status', header: 'Lead Status', has: (l) => !!l._status },
+  // Chat / last-message columns (real data from app.messages)
+  { key: 'lastBy', header: 'Last Msg By', has: (l) => !!l._lastBy },
+  { key: 'lastName', header: 'Sender', has: (l) => !!l._lastBy },
+  { key: 'waiting', header: 'Reply Status', has: (l) => !!l._lastBy },
+  { key: 'lastTime', header: 'Last Msg Time', has: (l) => !!l._lastAt },
+  { key: 'pending', header: 'Pending Since', has: (l) => !!l._lastAt },
   { key: 'actions', header: 'Actions', always: true, right: true },
 ]
 
@@ -86,6 +103,9 @@ export default function Leads() {
           _value: Number(l.estimated_value) || 0,
           _product: l.primary_product || '',
           _potential: l.business_potential || '',
+          _lastBy: l.last_by || '',            // 'in' = customer, 'out' = agent
+          _lastAgent: l.last_agent || '',
+          _lastAt: Number(l.last_at) || 0,
         }))
         setData(merged)
       })
@@ -159,6 +179,21 @@ export default function Leads() {
         </div>)
       case 'product': return <span className="text-slate-600">{l._product || '—'}</span>
       case 'value': return <span className="whitespace-nowrap font-semibold text-slate-700">{fmt$(l._value)}</span>
+      case 'lastBy': return l._lastBy === 'out'
+        ? <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">Agent</span>
+        : l._lastBy === 'in'
+        ? <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Customer</span>
+        : <span className="text-slate-300">—</span>
+      case 'lastName': return <span className="whitespace-nowrap text-slate-700">{l._lastBy === 'in' ? (l.name || 'Customer') : l._lastBy === 'out' ? (l._lastAgent || 'Agent') : '—'}</span>
+      case 'waiting': return l._lastBy === 'in'
+        ? <span className="inline-flex whitespace-nowrap items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Customer waiting</span>
+        : l._lastBy === 'out'
+        ? <span className="inline-flex whitespace-nowrap items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">We are waiting</span>
+        : <span className="text-slate-300">—</span>
+      case 'lastTime': return <span className="whitespace-nowrap text-slate-600">{fmtDateTime(l._lastAt)}</span>
+      case 'pending': return l._lastAt
+        ? <span className={`whitespace-nowrap font-semibold ${l._lastBy === 'in' ? 'text-rose-600' : 'text-slate-500'}`}>{agoStr(l._lastAt)}</span>
+        : <span className="text-slate-300">—</span>
       case 'actions': return (
         <RowMenu open={menuId === rowKey} onToggle={() => setMenuId(menuId === rowKey ? null : rowKey)}
           onChat={() => { setMenuId(null); openChat(l._cid) }}
