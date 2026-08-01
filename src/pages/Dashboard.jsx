@@ -181,10 +181,10 @@ export default function Dashboard() {
 
   const convTs = (c) => c.last_ts || (c.created_at ? Date.parse(c.created_at) : 0) || 0
   // "YYYY-MM-DD" -> local din ki shuruaat / aakhri millisecond (browser ke timezone mein)
-  // From/To ab date YA date+time dono le sakte hain ("YYYY-MM-DD" ya "YYYY-MM-DDTHH:MM").
-  // Time diya ho to us exact minute se; sirf date ho to poore din (start=00:00, end=23:59).
-  const dayStartLocal = (s) => { const [dp, tp] = String(s).split('T'); const [y, m, d] = dp.split('-').map(Number); const [hh, mm] = (tp || '00:00').split(':').map(Number); return new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0).getTime() }
-  const dayEndLocal = (s) => { const [dp, tp] = String(s).split('T'); const [y, m, d] = dp.split('-').map(Number); if (tp) { const [hh, mm] = tp.split(':').map(Number); return new Date(y, m - 1, d, hh || 0, mm || 0, 59, 999).getTime() } return new Date(y, m - 1, d, 23, 59, 59, 999).getTime() }
+  // From/To = date ("YYYY-MM-DD") + optional time ("HH:MM"). Time na ho to poora din
+  // (start=00:00, end=23:59); time ho to us exact minute se.
+  const dayStartLocal = (s, t) => { const [y, m, d] = String(s).split('-').map(Number); const [hh, mm] = String(t || '').split(':').map(Number); return new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0).getTime() }
+  const dayEndLocal = (s, t) => { const [y, m, d] = String(s).split('-').map(Number); if (t) { const [hh, mm] = t.split(':').map(Number); return new Date(y, m - 1, d, hh || 0, mm || 0, 59, 999).getTime() } return new Date(y, m - 1, d, 23, 59, 59, 999).getTime() }
   const conversations = useMemo(
     () => conversationsRaw.map(normalizeConv).sort((a, b) => convTs(b) - convTs(a)),
     [conversationsRaw])
@@ -247,7 +247,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState('')
   const [view, setView] = useState(() => searchParams.get('view') || 'all')   // ?view= se deep-link (dusre pages ke sidebar se)
   const [sortDir, setSortDir] = useState('latest') // 'latest' | 'oldest'
-  const emptyFilters = { channel: '', agent: '', status: '', tag: '', from: '', to: '', dateBasis: 'activity' }
+  const emptyFilters = { channel: '', agent: '', status: '', tag: '', from: '', to: '', fromTime: '', toTime: '', dateBasis: 'activity' }
   const [filters, setFilters] = useState(emptyFilters)
   const setFilter = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
   const clearFilters = () => setFilters(emptyFilters)
@@ -293,24 +293,26 @@ export default function Dashboard() {
     // 'in'  = CUSTOMER aakhri bola (humein reply karna hai) — needs reply.
     // 'activity' = koi bhi message (last activity).
     const outTs = Number(c.lastOutTs) || 0, inTs = Number(c.lastInTs) || 0
+    const fromB = filters.from ? dayStartLocal(filters.from, filters.fromTime) : null   // date + optional time
+    const toB = filters.to ? dayEndLocal(filters.to, filters.toTime) : null
     if (filters.dateBasis === 'out') {
       if (!outTs || outTs < inTs) return false                                  // hum aakhri nahi bole -> skip
-      if (filters.from && outTs < dayStartLocal(filters.from)) return false
-      if (filters.to && outTs > dayEndLocal(filters.to)) return false
+      if (fromB && outTs < fromB) return false
+      if (toB && outTs > toB) return false
     } else if (filters.dateBasis === 'in') {
       if (!inTs || inTs <= outTs) return false                                  // customer aakhri nahi bola -> skip
-      if (filters.from && inTs < dayStartLocal(filters.from)) return false
-      if (filters.to && inTs > dayEndLocal(filters.to)) return false
+      if (fromB && inTs < fromB) return false
+      if (toB && inTs > toB) return false
     } else if (filters.dateBasis === 'created') {
       // 'created' = chat kab shuru hui / customer pehli baar kab aaya (pehla message ka time).
       const fTs = Number(c.firstTs) || (c.created_at ? Date.parse(c.created_at) : 0) || 0
       if (!fTs) return false
-      if (filters.from && fTs < dayStartLocal(filters.from)) return false
-      if (filters.to && fTs > dayEndLocal(filters.to)) return false
+      if (fromB && fTs < fromB) return false
+      if (toB && fTs > toB) return false
     } else {
       const bTs = convTs(c)
-      if (filters.from && bTs < dayStartLocal(filters.from)) return false
-      if (filters.to && bTs > dayEndLocal(filters.to)) return false
+      if (fromB && bTs < fromB) return false
+      if (toB && bTs > toB) return false
     }
     if (search) {
       const q = search.toLowerCase()
@@ -795,8 +797,16 @@ export default function Dashboard() {
                       <option value="in">Customer replied last — needs our reply</option>
                     </select>
                   </div>
-                  <div><label className="mb-1 block font-semibold text-slate-600">From (date &amp; time)</label><input type="datetime-local" value={filters.from} onChange={(e) => setFilter('from', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
-                  <div><label className="mb-1 block font-semibold text-slate-600">To (date &amp; time)</label><input type="datetime-local" value={filters.to} onChange={(e) => setFilter('to', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">From <span className="font-normal text-slate-400">(time optional)</span></label>
+                    <div className="flex gap-1.5">
+                      <input type="date" value={filters.from} onChange={(e) => setFilter('from', e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2" />
+                      <input type="time" value={filters.fromTime} onChange={(e) => setFilter('fromTime', e.target.value)} className="w-[92px] rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-2" />
+                    </div></div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">To <span className="font-normal text-slate-400">(time optional)</span></label>
+                    <div className="flex gap-1.5">
+                      <input type="date" value={filters.to} onChange={(e) => setFilter('to', e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2" />
+                      <input type="time" value={filters.toTime} onChange={(e) => setFilter('toTime', e.target.value)} className="w-[92px] rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-2" />
+                    </div></div>
                   <div><label className="mb-1 block font-semibold text-slate-600">Channel</label>
                     <select value={filters.channel} onChange={(e) => setFilter('channel', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
                       <option value="">All Channels</option>
