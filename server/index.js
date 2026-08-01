@@ -1555,17 +1555,23 @@ app.get('/api/ai/analyze/:id', authRequired, async (req, res) => {
 // sirf static extra doc deta tha (score:50), isliye qualification/temperature static dikhte the.
 app.get('/api/leads-list', authRequired, async (req, res) => {
   try {
+    // Naam/id do tarah se resolve karo: legacy_id se (c) AUR UUID FK se (cv/cu).
+    // Kuch leads (Decoinks-sync/field-validate se bane) ka legacy_id NULL hota hai par
+    // conversation_id/customer_id set hote hain — warna woh "Unknown / LD-000000" dikhte the.
     const r = await dbQuery(`
-      SELECT l.legacy_id AS id,
-             COALESCE(NULLIF(l.extra->>'name',''), c.extra->>'name', 'Unknown') AS name,
-             COALESCE(NULLIF(l.source,''), c.extra->>'channel', 'Facebook') AS source,
+      SELECT COALESCE(l.legacy_id, cv.legacy_id) AS id,
+             COALESCE(NULLIF(l.extra->>'name',''), c.extra->>'name', cv.extra->>'name', NULLIF(cu.full_name,''), 'Unknown') AS name,
+             COALESCE(NULLIF(l.source,''), c.extra->>'channel', cv.extra->>'channel', 'Facebook') AS source,
              l.stage, l.status, l.lead_stage, l.lead_status,
              l.intent_score, l.purchase_probability, l.temperature,
              l.business_potential, l.customer_type, l.primary_product, l.estimated_value,
-             (c.extra->>'first_ts') AS first_ts, (c.extra->>'last_out_ts') AS last_out_ts,
+             COALESCE(c.extra->>'first_ts', cv.extra->>'first_ts') AS first_ts,
+             COALESCE(c.extra->>'last_out_ts', cv.extra->>'last_out_ts') AS last_out_ts,
              l.created_at
         FROM app.leads l
-        LEFT JOIN app.conversations c ON c.legacy_id = l.legacy_id`)
+        LEFT JOIN app.conversations c  ON c.legacy_id = l.legacy_id
+        LEFT JOIN app.conversations cv ON cv.conversation_id = l.conversation_id
+        LEFT JOIN app.customers     cu ON cu.customer_id = l.customer_id`)
     res.json(r.rows)
   } catch (e) { console.warn('[leads/list]', e.message); res.status(500).json({ error: 'leads list failed' }) }
 })
