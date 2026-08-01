@@ -47,6 +47,7 @@ const LEAD_COLUMNS = [
   { key: 'leadNo', header: 'Lead No', always: true },
   { key: 'date', header: 'Lead Date & Time', always: true },
   { key: 'name', header: 'Customer Name', always: true },
+  { key: 'tags', header: 'Tags', always: true },
   { key: 'source', header: 'Source', has: (l) => !!l._source },
   { key: 'stage', header: 'Stage', has: (l) => !!l._stage },
   { key: 'status', header: 'Lead Status', has: (l) => !!l._status },
@@ -56,7 +57,6 @@ const LEAD_COLUMNS = [
   { key: 'messages', header: 'Message', has: (l) => !!l._lastBy },
   { key: 'lastTime', header: 'Last Msg Time', has: (l) => !!l._lastAt },
   { key: 'pending', header: 'Pending Since', has: (l) => !!l._lastAt },
-  { key: 'tags', header: 'Tags', always: true },
   { key: 'actions', header: 'Actions', always: true, right: true },
 ]
 
@@ -218,10 +218,9 @@ export default function Leads() {
         : <span className="text-slate-300">—</span>
       case 'lastName': return <span className="whitespace-nowrap text-slate-700">{l._lastBy === 'in' ? (l.name || 'Customer') : l._lastBy === 'out' ? (l._lastAgent || 'Agent') : '—'}</span>
       case 'messages': return l._lastBy ? (
-        <button onClick={() => setMsgPopup({ cid: l._cid, name: l.name })}
-          className="flex max-w-[240px] items-center gap-1.5 text-left text-slate-600 hover:text-brand-600" title="Click to view messages">
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${l._lastBy === 'in' ? 'bg-amber-500' : 'bg-sky-500'}`} />
-          <span className="truncate">{l._lastText || '(no text)'}</span>
+        <button onClick={() => setMsgPopup({ cid: l._cid, name: l.name })} title="View messages"
+          className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-600">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
         </button>
       ) : <span className="text-slate-300">—</span>
       case 'lastTime': return <span className="whitespace-nowrap text-slate-600">{fmtDateTime(l._lastAt)}</span>
