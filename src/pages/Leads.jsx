@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import SidebarCrm from '../components/SidebarCrm.jsx'
 import TopBarUser from '../components/TopBarUser.jsx'
 import { useToast } from '../components/ToastContext.jsx'
-import { FlagBadges, ManageFlagsModal } from '../components/CustomerFlags.jsx'
+import { FlagChip, FLAG_COLORS, ManageFlagsModal } from '../components/CustomerFlags.jsx'
 import { api } from '../lib/api.js'
 
 // --- helpers ---
@@ -53,7 +53,7 @@ const LEAD_COLUMNS = [
   // Chat / last-message columns (real data from app.messages)
   { key: 'lastBy', header: 'Last Msg By', has: (l) => !!l._lastBy },
   { key: 'lastName', header: 'Sender', has: (l) => !!l._lastBy },
-  { key: 'waiting', header: 'Reply Status', has: (l) => !!l._lastBy },
+  { key: 'messages', header: 'Message', has: (l) => !!l._lastBy },
   { key: 'lastTime', header: 'Last Msg Time', has: (l) => !!l._lastAt },
   { key: 'pending', header: 'Pending Since', has: (l) => !!l._lastAt },
   { key: 'tags', header: 'Tags', always: true },
@@ -100,6 +100,8 @@ export default function Leads() {
     setData((prev) => (prev || []).map((x) => x._cid === l._cid ? { ...x, _tags: next } : x))   // optimistic
     if (l._cid) api.patch(`/api/conversations/${encodeURIComponent(l._cid)}`, { tags: next }).catch(() => {})
   }
+  const [msgPopup, setMsgPopup] = useState(null)   // { cid, name } — messages popup
+  const [tagPopup, setTagPopup] = useState(null)   // lead — tag picker popup
 
   // Real enriched leads seedhe DB se (/api/leads/list): intent_score, temperature,
   // purchase_probability, estimated_value, primary_product — sab dynamic. Har 20s refetch.
@@ -125,6 +127,7 @@ export default function Leads() {
           _lastBy: l.last_by || '',            // 'in' = customer, 'out' = agent
           _lastAgent: l.last_agent || '',
           _lastAt: Number(l.last_at) || 0,
+          _lastText: l.last_text || '',
           _tags: Array.isArray(l.tags) ? l.tags : [],
         }))
         setData(merged)
@@ -214,18 +217,28 @@ export default function Leads() {
         ? <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Customer</span>
         : <span className="text-slate-300">—</span>
       case 'lastName': return <span className="whitespace-nowrap text-slate-700">{l._lastBy === 'in' ? (l.name || 'Customer') : l._lastBy === 'out' ? (l._lastAgent || 'Agent') : '—'}</span>
-      case 'waiting': return l._lastBy === 'in'
-        ? <span className="inline-flex whitespace-nowrap items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Customer waiting</span>
-        : l._lastBy === 'out'
-        ? <span className="inline-flex whitespace-nowrap items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">We are waiting</span>
-        : <span className="text-slate-300">—</span>
+      case 'messages': return l._lastBy ? (
+        <button onClick={() => setMsgPopup({ cid: l._cid, name: l.name })}
+          className="flex max-w-[240px] items-center gap-1.5 text-left text-slate-600 hover:text-brand-600" title="Click to view messages">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${l._lastBy === 'in' ? 'bg-amber-500' : 'bg-sky-500'}`} />
+          <span className="truncate">{l._lastText || '(no text)'}</span>
+        </button>
+      ) : <span className="text-slate-300">—</span>
       case 'lastTime': return <span className="whitespace-nowrap text-slate-600">{fmtDateTime(l._lastAt)}</span>
       case 'pending': return l._lastAt
         ? <span className={`whitespace-nowrap font-semibold ${l._lastBy === 'in' ? 'text-rose-600' : 'text-slate-500'}`}>{agoStr(l._lastAt)}</span>
         : <span className="text-slate-300">—</span>
-      case 'tags': return l._cid
-        ? <FlagBadges allFlags={flags} value={Array.isArray(l._tags) ? l._tags : []} onChange={(next) => setLeadTags(l, next)} />
-        : <span className="text-slate-300">—</span>
+      case 'tags': {
+        if (!l._cid) return <span className="text-slate-300">—</span>
+        const chips = (Array.isArray(l._tags) ? l._tags : []).map((id) => flags.find((f) => f.id === id)).filter(Boolean)
+        return (
+          <div className="flex flex-wrap items-center gap-1">
+            {chips.map((f) => <FlagChip key={f.id} flag={f} />)}
+            <button onClick={() => setTagPopup(l)} title="Edit tags"
+              className="grid h-5 w-5 place-items-center rounded-md border border-dashed border-slate-300 text-slate-400 hover:border-brand-400 hover:text-brand-600">+</button>
+          </div>
+        )
+      }
       case 'actions': return (
         <RowMenu open={menuId === rowKey} onToggle={() => setMenuId(menuId === rowKey ? null : rowKey)}
           onChat={() => { setMenuId(null); openChat(l._cid) }}
@@ -266,12 +279,6 @@ export default function Leads() {
               <span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name, email, phone, company or lead number…" className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" />
             </div>
-            <button onClick={() => toast('Import Leads — coming soon', 'info')} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold hover:bg-slate-50">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>Import Leads
-            </button>
-            <button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold hover:bg-slate-50">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>Export
-            </button>
             {/* Columns show/hide manager */}
             <div className="relative" ref={colMenuRef}>
               <button onClick={() => setColMenuOpen((o) => !o)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold hover:bg-slate-50">
@@ -404,6 +411,79 @@ export default function Leads() {
         </main>
       </div>
       {manageFlagsOpen && <ManageFlagsModal flags={flags} onClose={() => setManageFlagsOpen(false)} onChanged={loadFlags} />}
+      {msgPopup && <MsgPopup cid={msgPopup.cid} name={msgPopup.name} onClose={() => setMsgPopup(null)} />}
+      {tagPopup && <TagPopup lead={tagPopup} flags={flags} onClose={() => setTagPopup(null)}
+        onSave={(next) => setLeadTags(tagPopup, next)} onManage={() => { setTagPopup(null); setManageFlagsOpen(true) }} />}
+    </div>
+  )
+}
+
+// Messages popup — customer/agent ke messages (kaunsa customer ka, kaunsa hamra)
+function MsgPopup({ cid, name, onClose }) {
+  const [msgs, setMsgs] = useState(null)
+  useEffect(() => {
+    let cancel = false
+    api.get(`/api/conversations/${encodeURIComponent(cid)}/messages`)
+      .then((r) => { if (!cancel) setMsgs(Array.isArray(r) ? r : []) })
+      .catch(() => { if (!cancel) setMsgs([]) })
+    return () => { cancel = true }
+  }, [cid])
+  const list = (msgs || []).filter((m) => (m.dir || m.direction) !== 'note')
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={onClose}>
+      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <h3 className="text-sm font-bold">Messages — {name || 'Customer'}</h3>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100">×</button>
+        </div>
+        <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50/60 p-4">
+          {msgs === null && <div className="py-6 text-center text-sm text-slate-400">Loading…</div>}
+          {msgs !== null && list.length === 0 && <div className="py-6 text-center text-sm text-slate-400">Koi message nahi.</div>}
+          {list.map((m, i) => {
+            const out = (m.dir || m.direction) === 'out'
+            return (
+              <div key={i} className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${out ? 'bg-brand-600 text-white' : 'bg-white text-slate-800 ring-1 ring-slate-200'}`}>
+                  <div className={`mb-0.5 text-[10px] font-bold ${out ? 'text-white/70' : 'text-slate-400'}`}>{out ? (m.agent || 'Agent') : (name || 'Customer')}</div>
+                  <div className="whitespace-pre-wrap break-words">{m.text || (Array.isArray(m.attachments) && m.attachments.length ? '📎 Attachment' : '')}</div>
+                  <div className={`mt-0.5 text-[10px] ${out ? 'text-white/60' : 'text-slate-400'}`}>{m.time || ''}</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Tag picker popup — table ke overflow me dropdown clip ho jaata tha, isliye modal.
+function TagPopup({ lead, flags, onClose, onSave, onManage }) {
+  const [sel, setSel] = useState(Array.isArray(lead._tags) ? lead._tags : [])
+  const set = new Set(sel)
+  const toggle = (id) => { const next = set.has(id) ? sel.filter((x) => x !== id) : [...sel, id]; setSel(next); onSave(next) }
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-bold">Tags — {lead.name}</h3>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100">×</button>
+        </div>
+        <div className="max-h-72 space-y-0.5 overflow-y-auto">
+          {flags.length === 0 && <div className="py-3 text-center text-sm text-slate-400">Koi tag nahi. Neeche "Manage Tags" se banayein.</div>}
+          {flags.map((f) => {
+            const on = set.has(f.id); const c = FLAG_COLORS[f.color] || FLAG_COLORS.slate
+            return (
+              <button key={f.id} onClick={() => toggle(f.id)} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-slate-50">
+                <span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} />
+                <span className="flex-1 text-left">{f.name}</span>
+                {on && <span className="font-bold text-brand-600">✓</span>}
+              </button>
+            )
+          })}
+        </div>
+        <button onClick={onManage} className="mt-2 w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Manage Tags</button>
+      </div>
     </div>
   )
 }

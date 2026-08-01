@@ -1588,6 +1588,7 @@ app.get('/api/leads-list', authRequired, async (req, res) => {
         row.last_by = lm.dir === 'out' ? 'out' : 'in'   // out = agent, in = customer
         row.last_agent = lm.agent || ''
         row.last_at = Number(lm.ts) || (lm.created_at ? Date.parse(lm.created_at) : null)
+        row.last_text = lm.text || (Array.isArray(lm.attachments) && lm.attachments.length ? '📎 Attachment' : '')
       }
       return row
     })
