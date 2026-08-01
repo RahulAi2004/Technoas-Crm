@@ -153,7 +153,7 @@ export default function Leads() {
         setData(merged)
       })
     load()
-    const t = setInterval(load, 20000)
+    const t = setInterval(load, 7000)   // live-ish: last message / pending / who-replied auto-refresh
     return () => { cancelled = true; clearInterval(t) }
   }, [])
 
@@ -473,14 +473,18 @@ export default function Leads() {
 function MsgPopup({ cid, name, onClose }) {
   const [msgs, setMsgs] = useState(null)
   const bottomRef = useRef(null)
+  const lenRef = useRef(0)
   useEffect(() => {
     let cancel = false
-    api.get(`/api/conversations/${encodeURIComponent(cid)}/messages`)
+    const load = () => api.get(`/api/conversations/${encodeURIComponent(cid)}/messages`)
       .then((r) => { if (!cancel) setMsgs(Array.isArray(r) ? r : []) })
-      .catch(() => { if (!cancel) setMsgs([]) })
-    return () => { cancel = true }
+      .catch(() => {})
+    load()
+    const t = setInterval(load, 5000)   // popup khula ho to naye messages live aayein
+    return () => { cancel = true; clearInterval(t) }
   }, [cid])
-  useEffect(() => { if (msgs) bottomRef.current?.scrollIntoView({ block: 'end' }) }, [msgs])
+  // naye message aane par hi neeche scroll (warna user upar padh raha ho to yank na ho)
+  useEffect(() => { if (msgs && msgs.length !== lenRef.current) { lenRef.current = msgs.length; bottomRef.current?.scrollIntoView({ block: 'end' }) } }, [msgs])
   // Inbox jaise `ts` se sort (stable) — recent hamesha neeche. created_at re-ingest par badalta hai.
   const list = (msgs || []).filter((m) => (m.dir || m.direction) !== 'note')
     .map((m, idx) => ({ m, idx, k: Number(m.ts) || Date.parse(m.created_at) || 0 }))
