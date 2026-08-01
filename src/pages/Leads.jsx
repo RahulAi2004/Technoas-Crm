@@ -384,7 +384,7 @@ export default function Leads() {
                   return (
                   <tr key={rowKey} onClick={() => openChat(l._cid)} className="cursor-pointer transition hover:bg-brand-50/40">
                     {activeCols.map((c) => (
-                      <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={(c.key === 'actions' || c.key === 'tags') ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l, rowKey)}</td>
+                      <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={(c.key === 'actions' || c.key === 'tags' || c.key === 'messages') ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l, rowKey)}</td>
                     ))}
                   </tr>
                 )})}
@@ -420,6 +420,7 @@ export default function Leads() {
 // Messages popup — customer/agent ke messages (kaunsa customer ka, kaunsa hamra)
 function MsgPopup({ cid, name, onClose }) {
   const [msgs, setMsgs] = useState(null)
+  const bottomRef = useRef(null)
   useEffect(() => {
     let cancel = false
     api.get(`/api/conversations/${encodeURIComponent(cid)}/messages`)
@@ -427,6 +428,7 @@ function MsgPopup({ cid, name, onClose }) {
       .catch(() => { if (!cancel) setMsgs([]) })
     return () => { cancel = true }
   }, [cid])
+  useEffect(() => { if (msgs) bottomRef.current?.scrollIntoView({ block: 'end' }) }, [msgs])
   const list = (msgs || []).filter((m) => (m.dir || m.direction) !== 'note')
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={onClose}>
@@ -450,6 +452,7 @@ function MsgPopup({ cid, name, onClose }) {
               </div>
             )
           })}
+          <div ref={bottomRef} />
         </div>
       </div>
     </div>
