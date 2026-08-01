@@ -104,23 +104,24 @@ export default function Leads() {
   const [tagPopup, setTagPopup] = useState(null)   // lead — tag picker popup
   // Bulk select + bulk tag
   const [selected, setSelected] = useState(() => new Set())
-  const [bulkTagOpen, setBulkTagOpen] = useState(false)
+  const [bulkTagOpen, setBulkTagOpen] = useState(null)   // 'add' | 'remove' | null
   const bulkRef = useRef(null)
-  useEffect(() => { const h = (e) => { if (bulkRef.current && !bulkRef.current.contains(e.target)) setBulkTagOpen(false) }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [])
+  useEffect(() => { const h = (e) => { if (bulkRef.current && !bulkRef.current.contains(e.target)) setBulkTagOpen(null) }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [])
   const toggleRow = (cid) => setSelected((s) => { const n = new Set(s); n.has(cid) ? n.delete(cid) : n.add(cid); return n })
   const clearSel = () => setSelected(new Set())
-  const applyBulkTag = (flagId) => {
-    const cids = new Set(selected)
+  const applyBulkTag = (flagId, add) => {
+    const cids = [...selected]
     setData((prev) => (prev || []).map((l) => {
-      if (!cids.has(l._cid)) return l
+      if (!cids.includes(l._cid)) return l
       const cur = Array.isArray(l._tags) ? l._tags : []
-      if (cur.includes(flagId)) return l
-      const next = [...cur, flagId]
+      const has = cur.includes(flagId)
+      if (add ? has : !has) return l                                  // already in desired state
+      const next = add ? [...cur, flagId] : cur.filter((x) => x !== flagId)
       api.patch(`/api/conversations/${encodeURIComponent(l._cid)}`, { tags: next }).catch(() => {})
       return { ...l, _tags: next }
     }))
-    toast(`Tagged ${cids.size} lead(s)`, 'success')
-    setBulkTagOpen(false)
+    toast(`${add ? 'Tag added to' : 'Tag removed from'} ${cids.length} lead(s)`, 'success')
+    setBulkTagOpen(null)
   }
 
   // Real enriched leads seedhe DB se (/api/leads/list): intent_score, temperature,
@@ -382,20 +383,29 @@ export default function Leads() {
             <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5">
               <span className="text-sm font-semibold text-brand-800">{selected.size} selected</span>
               <div className="relative" ref={bulkRef}>
-                <button onClick={() => setBulkTagOpen((o) => !o)} className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-100">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1"/></svg>
-                  Add tag to selected
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setBulkTagOpen((o) => o === 'add' ? null : 'add')} className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-100">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1"/></svg>
+                    Add tag
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <button onClick={() => setBulkTagOpen((o) => o === 'remove' ? null : 'remove')} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-sm font-semibold text-rose-600 hover:bg-rose-50">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6"/></svg>
+                    Remove tag
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                </div>
                 {bulkTagOpen && (
-                  <div className="absolute left-0 top-full z-30 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                  <div className="absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                    <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{bulkTagOpen === 'add' ? 'Add tag to selected' : 'Remove tag from selected'}</div>
                     {flags.length === 0 && <div className="px-2 py-1.5 text-xs text-slate-400">Koi tag nahi. "Manage Tags" se banayein.</div>}
                     {flags.map((f) => { const c = FLAG_COLORS[f.color] || FLAG_COLORS.slate; return (
-                      <button key={f.id} onClick={() => applyBulkTag(f.id)} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
+                      <button key={f.id} onClick={() => applyBulkTag(f.id, bulkTagOpen === 'add')} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
                         <span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} /><span className="flex-1 text-left">{f.name}</span>
+                        {bulkTagOpen === 'remove' && <span className="text-rose-500">✕</span>}
                       </button>
                     )})}
-                    <button onClick={() => { setBulkTagOpen(false); setManageFlagsOpen(true) }} className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Manage Tags</button>
+                    <button onClick={() => { setBulkTagOpen(null); setManageFlagsOpen(true) }} className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Manage Tags</button>
                   </div>
                 )}
               </div>
