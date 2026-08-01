@@ -134,7 +134,7 @@ export default function Leads() {
   // Sirf wahi columns dikhao jinme kam-se-kam ek lead ka data ho (dynamic).
   const activeCols = useMemo(() => LEAD_COLUMNS.filter((c) => c.always || filtered.some((l) => c.has(l))), [filtered])
 
-  const cellFor = (key, l) => {
+  const cellFor = (key, l, rowKey) => {
     switch (key) {
       case 'leadNo': return <span className="font-semibold text-brand-700">{leadNo(l._cid)}</span>
       case 'date': return <span className="whitespace-nowrap text-slate-600">{fmtDateTime(l._firstTs)}</span>
@@ -160,7 +160,7 @@ export default function Leads() {
       case 'product': return <span className="text-slate-600">{l._product || '—'}</span>
       case 'value': return <span className="whitespace-nowrap font-semibold text-slate-700">{fmt$(l._value)}</span>
       case 'actions': return (
-        <RowMenu open={menuId === l._cid} onToggle={() => setMenuId(menuId === l._cid ? null : l._cid)}
+        <RowMenu open={menuId === rowKey} onToggle={() => setMenuId(menuId === rowKey ? null : rowKey)}
           onChat={() => { setMenuId(null); openChat(l._cid) }}
           onDetails={() => { setMenuId(null); navigate(`/leads/${encodeURIComponent(l._cid)}`) }} />)
       default: return null
@@ -257,13 +257,15 @@ export default function Leads() {
                   <tr><td colSpan={activeCols.length} className="px-3 py-10 text-center text-sm text-slate-400">Loading leads…</td></tr>
                 ) : pageRows.length === 0 ? (
                   <tr><td colSpan={activeCols.length} className="px-3 py-10 text-center text-sm text-slate-400">Koi lead nahi mila. {anyFilter && <button onClick={clearAll} className="font-semibold text-brand-600 underline">Clear filters</button>}</td></tr>
-                ) : pageRows.map((l) => (
-                  <tr key={l._cid} onClick={() => openChat(l._cid)} className="cursor-pointer transition hover:bg-brand-50/40">
+                ) : pageRows.map((l, i) => {
+                  const rowKey = `${l._cid || 'nocid'}#${i}`   // per-row unique — Unknown leads share a blank _cid
+                  return (
+                  <tr key={rowKey} onClick={() => openChat(l._cid)} className="cursor-pointer transition hover:bg-brand-50/40">
                     {activeCols.map((c) => (
-                      <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={c.key === 'actions' ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l)}</td>
+                      <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={c.key === 'actions' ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l, rowKey)}</td>
                     ))}
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
