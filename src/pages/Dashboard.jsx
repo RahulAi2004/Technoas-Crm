@@ -181,8 +181,10 @@ export default function Dashboard() {
 
   const convTs = (c) => c.last_ts || (c.created_at ? Date.parse(c.created_at) : 0) || 0
   // "YYYY-MM-DD" -> local din ki shuruaat / aakhri millisecond (browser ke timezone mein)
-  const dayStartLocal = (s) => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d, 0, 0, 0, 0).getTime() }
-  const dayEndLocal = (s) => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59, 999).getTime() }
+  // From/To ab date YA date+time dono le sakte hain ("YYYY-MM-DD" ya "YYYY-MM-DDTHH:MM").
+  // Time diya ho to us exact minute se; sirf date ho to poore din (start=00:00, end=23:59).
+  const dayStartLocal = (s) => { const [dp, tp] = String(s).split('T'); const [y, m, d] = dp.split('-').map(Number); const [hh, mm] = (tp || '00:00').split(':').map(Number); return new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0).getTime() }
+  const dayEndLocal = (s) => { const [dp, tp] = String(s).split('T'); const [y, m, d] = dp.split('-').map(Number); if (tp) { const [hh, mm] = tp.split(':').map(Number); return new Date(y, m - 1, d, hh || 0, mm || 0, 59, 999).getTime() } return new Date(y, m - 1, d, 23, 59, 59, 999).getTime() }
   const conversations = useMemo(
     () => conversationsRaw.map(normalizeConv).sort((a, b) => convTs(b) - convTs(a)),
     [conversationsRaw])
@@ -793,8 +795,8 @@ export default function Dashboard() {
                       <option value="in">Customer replied last — needs our reply</option>
                     </select>
                   </div>
-                  <div><label className="mb-1 block font-semibold text-slate-600">From</label><input type="date" value={filters.from} onChange={(e) => setFilter('from', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
-                  <div><label className="mb-1 block font-semibold text-slate-600">To</label><input type="date" value={filters.to} onChange={(e) => setFilter('to', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">From (date &amp; time)</label><input type="datetime-local" value={filters.from} onChange={(e) => setFilter('from', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
+                  <div><label className="mb-1 block font-semibold text-slate-600">To (date &amp; time)</label><input type="datetime-local" value={filters.to} onChange={(e) => setFilter('to', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" /></div>
                   <div><label className="mb-1 block font-semibold text-slate-600">Channel</label>
                     <select value={filters.channel} onChange={(e) => setFilter('channel', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
                       <option value="">All Channels</option>
