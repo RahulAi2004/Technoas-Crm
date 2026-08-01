@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import SidebarCrm from '../components/SidebarCrm.jsx'
 import TopBarUser from '../components/TopBarUser.jsx'
 import { useToast } from '../components/ToastContext.jsx'
+import { FlagBadges, ManageFlagsModal } from '../components/CustomerFlags.jsx'
 import { api } from '../lib/api.js'
 
 // --- helpers ---
@@ -55,6 +56,7 @@ const LEAD_COLUMNS = [
   { key: 'waiting', header: 'Reply Status', has: (l) => !!l._lastBy },
   { key: 'lastTime', header: 'Last Msg Time', has: (l) => !!l._lastAt },
   { key: 'pending', header: 'Pending Since', has: (l) => !!l._lastAt },
+  { key: 'tags', header: 'Tags', always: true },
   { key: 'actions', header: 'Actions', always: true, right: true },
 ]
 
@@ -81,6 +83,23 @@ export default function Leads() {
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [page, setPage] = useState(1); const [perPage, setPerPage] = useState(10)
   const [menuId, setMenuId] = useState(null)
+  const [pendingFrom, setPendingFrom] = useState('')          // '' | 'agent' | 'customer' — reply kiski taraf se pending
+  // Column show/hide — user preference (localStorage). 'show'/'hide' set kare to auto-hide ko override karta hai.
+  const [colPref, setColPref] = useState(() => { try { return JSON.parse(localStorage.getItem('leadsColPref') || '{}') } catch { return {} } })
+  useEffect(() => { localStorage.setItem('leadsColPref', JSON.stringify(colPref)) }, [colPref])
+  const [colMenuOpen, setColMenuOpen] = useState(false)
+  const colMenuRef = useRef(null)
+  useEffect(() => { const h = (e) => { if (colMenuRef.current && !colMenuRef.current.contains(e.target)) setColMenuOpen(false) }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [])
+  const setCol = (key, show) => setColPref((p) => ({ ...p, [key]: show ? 'show' : 'hide' }))
+  // Tags (inbox jaise flags) — leads page se bhi lagao/hatao
+  const [flags, setFlags] = useState([])
+  const [manageFlagsOpen, setManageFlagsOpen] = useState(false)
+  const loadFlags = () => api.get('/api/flags').then(setFlags).catch(() => setFlags([]))
+  useEffect(() => { loadFlags() }, [])
+  const setLeadTags = (l, next) => {
+    setData((prev) => (prev || []).map((x) => x._cid === l._cid ? { ...x, _tags: next } : x))   // optimistic
+    if (l._cid) api.patch(`/api/conversations/${encodeURIComponent(l._cid)}`, { tags: next }).catch(() => {})
+  }
 
   // Real enriched leads seedhe DB se (/api/leads/list): intent_score, temperature,
   // purchase_probability, estimated_value, primary_product — sab dynamic. Har 20s refetch.
@@ -106,6 +125,7 @@ export default function Leads() {
           _lastBy: l.last_by || '',            // 'in' = customer, 'out' = agent
           _lastAgent: l.last_agent || '',
           _lastAt: Number(l.last_at) || 0,
+          _tags: Array.isArray(l.tags) ? l.tags : [],
         }))
         setData(merged)
       })
@@ -128,10 +148,12 @@ export default function Leads() {
       if (stage && l._stage !== stage) return false
       if (status && l._status !== status) return false
       if (source && l._source !== source) return false
+      if (pendingFrom === 'agent' && l._lastBy !== 'in') return false        // agent ko reply karna hai (customer ne last bheja)
+      if (pendingFrom === 'customer' && l._lastBy !== 'out') return false     // customer ko reply karna hai (agent ne last bheja)
       if (q) { const hay = `${l.name || ''} ${l.company || ''} ${l._source} ${leadNo(l._cid)}`.toLowerCase(); if (!hay.includes(q)) return false }
       return true
     }).sort((a, b) => b._firstTs - a._firstTs)
-  }, [inPeriod, stage, status, source, query])
+  }, [inPeriod, stage, status, source, query, pendingFrom])
 
   // stat cards (over the selected period)
   const s = useMemo(() => ({
@@ -143,16 +165,23 @@ export default function Leads() {
     orders: inPeriod.filter((l) => ORDER_STAGES.includes(l._stage)).length,
   }), [inPeriod])
 
-  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage])
+  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage, pendingFrom])
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage))
   const pageRows = filtered.slice((page - 1) * perPage, page * perPage)
-  const anyFilter = stage || status || source || from || to || query
-  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setFrom(''); setTo(''); setQuery(''); setPeriod('all') }
+  const anyFilter = stage || status || source || from || to || query || pendingFrom
+  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setFrom(''); setTo(''); setQuery(''); setPeriod('all'); setPendingFrom('') }
 
   const openChat = (cid) => navigate(`/dashboard?conv=${encodeURIComponent(cid)}`)
 
   // Sirf wahi columns dikhao jinme kam-se-kam ek lead ka data ho (dynamic).
-  const activeCols = useMemo(() => LEAD_COLUMNS.filter((c) => c.always || filtered.some((l) => c.has(l))), [filtered])
+  // Column visible? user preference (show/hide) auto-hide ko override karti hai; warna always ya jab data ho.
+  const colVisible = (c) => {
+    if (colPref[c.key] === 'show') return true
+    if (colPref[c.key] === 'hide') return false
+    return c.always || filtered.some((l) => c.has && c.has(l))
+  }
+  const activeCols = useMemo(() => LEAD_COLUMNS.filter(colVisible), [filtered, colPref])
+  const hiddenCols = LEAD_COLUMNS.filter((c) => !colVisible(c))
 
   const cellFor = (key, l, rowKey) => {
     switch (key) {
@@ -193,6 +222,9 @@ export default function Leads() {
       case 'lastTime': return <span className="whitespace-nowrap text-slate-600">{fmtDateTime(l._lastAt)}</span>
       case 'pending': return l._lastAt
         ? <span className={`whitespace-nowrap font-semibold ${l._lastBy === 'in' ? 'text-rose-600' : 'text-slate-500'}`}>{agoStr(l._lastAt)}</span>
+        : <span className="text-slate-300">—</span>
+      case 'tags': return l._cid
+        ? <FlagBadges allFlags={flags} value={Array.isArray(l._tags) ? l._tags : []} onChange={(next) => setLeadTags(l, next)} />
         : <span className="text-slate-300">—</span>
       case 'actions': return (
         <RowMenu open={menuId === rowKey} onToggle={() => setMenuId(menuId === rowKey ? null : rowKey)}
@@ -240,6 +272,37 @@ export default function Leads() {
             <button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold hover:bg-slate-50">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>Export
             </button>
+            {/* Columns show/hide manager */}
+            <div className="relative" ref={colMenuRef}>
+              <button onClick={() => setColMenuOpen((o) => !o)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold hover:bg-slate-50">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>
+                Columns{hiddenCols.length ? ` · ${hiddenCols.length} hidden` : ''}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              {colMenuOpen && (
+                <div className="absolute right-0 z-30 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                  <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Show / hide columns</div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {LEAD_COLUMNS.map((c) => {
+                      const vis = colVisible(c)
+                      return (
+                        <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
+                          <input type="checkbox" checked={vis} onChange={() => setCol(c.key, !vis)} />
+                          <span className="flex-1 text-slate-700">{c.header}</span>
+                          <span className={`text-[10px] font-semibold ${vis ? 'text-emerald-600' : 'text-slate-400'}`}>{vis ? 'shown' : 'hidden'}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <button onClick={() => setColPref({})} className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Reset to default</button>
+                </div>
+              )}
+            </div>
+            {/* Manage Tags — same tag set as the Inbox */}
+            <button onClick={() => setManageFlagsOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold hover:bg-slate-50">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1"/></svg>
+              Manage Tags
+            </button>
             <button onClick={() => toast('Add Lead — coming soon', 'info')} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3.5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>Add Lead
             </button>
@@ -269,6 +332,12 @@ export default function Leads() {
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{statuses.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Source</label>
                 <select value={source} onChange={(e) => setSource(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{sources.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Reply Pending From</label>
+                <select value={pendingFrom} onChange={(e) => setPendingFrom(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
+                  <option value="">All</option>
+                  <option value="agent">Agent ko reply karna hai (Customer waiting)</option>
+                  <option value="customer">Customer ko reply karna hai (We are waiting)</option>
+                </select></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date from</label>
                 <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPeriod('custom') }} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm" /></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date to</label>
@@ -284,7 +353,19 @@ export default function Leads() {
             <table className="w-full text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <tr>
-                  {activeCols.map((c) => <th key={c.key} className={`px-3 py-3 font-semibold ${c.right ? 'text-right' : 'text-left'}`}>{c.header}</th>)}
+                  {activeCols.map((c) => (
+                    <th key={c.key} className={`px-3 py-3 font-semibold ${c.right ? 'text-right' : 'text-left'}`}>
+                      <span className={`group/th inline-flex items-center gap-1 ${c.right ? 'flex-row-reverse' : ''}`}>
+                        {c.header}
+                        {c.key !== 'actions' && (
+                          <button onClick={() => setCol(c.key, false)} title="Hide this column" aria-label="Hide column"
+                            className="text-slate-300 opacity-0 transition hover:text-rose-500 group-hover/th:opacity-100">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+                          </button>
+                        )}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -297,7 +378,7 @@ export default function Leads() {
                   return (
                   <tr key={rowKey} onClick={() => openChat(l._cid)} className="cursor-pointer transition hover:bg-brand-50/40">
                     {activeCols.map((c) => (
-                      <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={c.key === 'actions' ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l, rowKey)}</td>
+                      <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={(c.key === 'actions' || c.key === 'tags') ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l, rowKey)}</td>
                     ))}
                   </tr>
                 )})}
@@ -322,6 +403,7 @@ export default function Leads() {
           </div>
         </main>
       </div>
+      {manageFlagsOpen && <ManageFlagsModal flags={flags} onClose={() => setManageFlagsOpen(false)} onChanged={loadFlags} />}
     </div>
   )
 }

@@ -1567,6 +1567,7 @@ app.get('/api/leads-list', authRequired, async (req, res) => {
              l.business_potential, l.customer_type, l.primary_product, l.estimated_value,
              COALESCE(c.extra->>'first_ts', cv.extra->>'first_ts') AS first_ts,
              COALESCE(c.extra->>'last_out_ts', cv.extra->>'last_out_ts') AS last_out_ts,
+             COALESCE(c.extra->'tags', cv.extra->'tags') AS tags,
              l.created_at
         FROM app.leads l
         LEFT JOIN app.conversations c  ON c.legacy_id = l.legacy_id
