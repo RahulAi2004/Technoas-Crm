@@ -221,7 +221,7 @@ export default function Dashboard() {
   // Fetch messages whenever current conversation changes; also poll for new incoming
   useEffect(() => {
     if (!currentId) { setMessages([]); setPending([]); return }
-    setPending([]); setAttachQueue([])      // nayi chat par purane optimistic + attach-queue saaf
+    setMessages([]); setPending([]); setAttachQueue([])   // chat switch par purani chat ke messages + optimistic + attach-queue turant saaf (warna purani chat "stuck" dikhti thi)
     let cancelled = false
     const load = () => api.get(`/api/conversations/${encodeURIComponent(currentId)}/messages`)
       .then((rows) => {
