@@ -1567,25 +1567,30 @@ app.get('/api/leads-list', authRequired, async (req, res) => {
              l.business_potential, l.customer_type, l.primary_product, l.estimated_value,
              COALESCE(c.extra->>'first_ts', cv.extra->>'first_ts') AS first_ts,
              COALESCE(c.extra->>'last_out_ts', cv.extra->>'last_out_ts') AS last_out_ts,
-             lm.direction AS last_by,          -- 'in' = customer, 'out' = agent
-             lm.agent_name AS last_agent,      -- outgoing message ka agent naam
-             lm.at AS last_at,                 -- aakhri message ka time (epoch ms)
              l.created_at
         FROM app.leads l
         LEFT JOIN app.conversations c  ON c.legacy_id = l.legacy_id
         LEFT JOIN app.conversations cv ON cv.conversation_id = l.conversation_id
-        LEFT JOIN app.customers     cu ON cu.customer_id = l.customer_id
-        LEFT JOIN LATERAL (
-          SELECT m.direction,
-                 m.extra->>'agent' AS agent_name,
-                 EXTRACT(EPOCH FROM COALESCE(m.sent_at, m.created_at)) * 1000 AS at
-          FROM app.messages m
-          WHERE m.conversation_id = COALESCE(l.conversation_id, c.conversation_id, cv.conversation_id)
-            AND m.direction IN ('in','out')          -- notes skip
-          ORDER BY COALESCE(m.sent_at, m.created_at) DESC NULLS LAST
-          LIMIT 1
-        ) lm ON true`)
-    res.json(r.rows)
+        LEFT JOIN app.customers     cu ON cu.customer_id = l.customer_id`)
+
+    // Last message per conversation — Inbox jaisa hi in-memory order use karo (SQL created_at
+    // reliable NAHI: kuch messages baad me re-save hue to created_at aage aa gaya). getAll ka
+    // array order = Inbox ka order; conversation ka aakhri in/out message wahi jo Inbox dikhata hai.
+    const lastByConv = {}
+    for (const m of getAll('messages')) {
+      if (m.dir === 'note') continue
+      lastByConv[m.conversation_id] = m        // array order = inbox order → last overwrite = last msg
+    }
+    const rows = r.rows.map((row) => {
+      const lm = lastByConv[row.id]
+      if (lm) {
+        row.last_by = lm.dir === 'out' ? 'out' : 'in'   // out = agent, in = customer
+        row.last_agent = lm.agent || ''
+        row.last_at = Number(lm.ts) || (lm.created_at ? Date.parse(lm.created_at) : null)
+      }
+      return row
+    })
+    res.json(rows)
   } catch (e) { console.warn('[leads/list]', e.message); res.status(500).json({ error: 'leads list failed' }) }
 })
 
