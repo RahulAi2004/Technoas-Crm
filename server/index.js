@@ -1577,13 +1577,20 @@ app.get('/api/leads-list', authRequired, async (req, res) => {
     // Last message per conversation — Inbox jaisa hi in-memory order use karo (SQL created_at
     // reliable NAHI: kuch messages baad me re-save hue to created_at aage aa gaya). getAll ka
     // array order = Inbox ka order; conversation ka aakhri in/out message wahi jo Inbox dikhata hai.
+    // Inbox messages ko `ts` (asli Meta time) se sort karke dikhata hai — created_at re-ingest par
+    // badal jata hai, ts sthir rehta hai. Isliye last message = us conversation ka MAX ts wala
+    // (equal ts par baad wala array index). Ye Inbox se exactly match karta hai.
     const lastByConv = {}
+    let _i = 0
     for (const m of getAll('messages')) {
+      const i = _i++
       if (m.dir === 'note') continue
-      lastByConv[m.conversation_id] = m        // array order = inbox order → last overwrite = last msg
+      const k = Number(m.ts) || (m.created_at ? Date.parse(m.created_at) : 0) || 0
+      const prev = lastByConv[m.conversation_id]
+      if (!prev || k >= prev.k) lastByConv[m.conversation_id] = { m, k, i }
     }
     const rows = r.rows.map((row) => {
-      const lm = lastByConv[row.id]
+      const lm = lastByConv[row.id]?.m
       if (lm) {
         row.last_by = lm.dir === 'out' ? 'out' : 'in'   // out = agent, in = customer
         row.last_agent = lm.agent || ''

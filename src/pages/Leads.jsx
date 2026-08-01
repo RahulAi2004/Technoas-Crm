@@ -83,7 +83,6 @@ export default function Leads() {
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [page, setPage] = useState(1); const [perPage, setPerPage] = useState(10)
   const [menuId, setMenuId] = useState(null)
-  const [pendingFrom, setPendingFrom] = useState('')          // '' | 'agent' | 'customer' — reply kiski taraf se pending
   // Column show/hide — user preference (localStorage). 'show'/'hide' set kare to auto-hide ko override karta hai.
   const [colPref, setColPref] = useState(() => { try { return JSON.parse(localStorage.getItem('leadsColPref') || '{}') } catch { return {} } })
   useEffect(() => { localStorage.setItem('leadsColPref', JSON.stringify(colPref)) }, [colPref])
@@ -172,12 +171,10 @@ export default function Leads() {
       if (stage && l._stage !== stage) return false
       if (status && l._status !== status) return false
       if (source && l._source !== source) return false
-      if (pendingFrom === 'agent' && l._lastBy !== 'in') return false        // agent ko reply karna hai (customer ne last bheja)
-      if (pendingFrom === 'customer' && l._lastBy !== 'out') return false     // customer ko reply karna hai (agent ne last bheja)
       if (q) { const hay = `${l.name || ''} ${l.company || ''} ${l._source} ${leadNo(l._cid)}`.toLowerCase(); if (!hay.includes(q)) return false }
       return true
     }).sort((a, b) => b._firstTs - a._firstTs)
-  }, [inPeriod, stage, status, source, query, pendingFrom])
+  }, [inPeriod, stage, status, source, query])
 
   // stat cards (over the selected period)
   const s = useMemo(() => ({
@@ -189,14 +186,14 @@ export default function Leads() {
     orders: inPeriod.filter((l) => ORDER_STAGES.includes(l._stage)).length,
   }), [inPeriod])
 
-  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage, pendingFrom])
+  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage])
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage))
   const pageRows = filtered.slice((page - 1) * perPage, page * perPage)
   const pageCids = pageRows.filter((l) => l._cid).map((l) => l._cid)
   const allPageSelected = pageCids.length > 0 && pageCids.every((c) => selected.has(c))
   const toggleAllPage = () => setSelected((s) => { const n = new Set(s); if (pageCids.every((c) => n.has(c))) pageCids.forEach((c) => n.delete(c)); else pageCids.forEach((c) => n.add(c)); return n })
-  const anyFilter = stage || status || source || from || to || query || pendingFrom
-  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setFrom(''); setTo(''); setQuery(''); setPeriod('all'); setPendingFrom('') }
+  const anyFilter = stage || status || source || from || to || query
+  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setFrom(''); setTo(''); setQuery(''); setPeriod('all') }
 
   const openChat = (cid) => navigate(`/dashboard?conv=${encodeURIComponent(cid)}`)
 
@@ -362,12 +359,6 @@ export default function Leads() {
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{statuses.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Source</label>
                 <select value={source} onChange={(e) => setSource(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{sources.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Reply Pending From</label>
-                <select value={pendingFrom} onChange={(e) => setPendingFrom(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
-                  <option value="">All</option>
-                  <option value="agent">Agent ko reply karna hai (Customer waiting)</option>
-                  <option value="customer">Customer ko reply karna hai (We are waiting)</option>
-                </select></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date from</label>
                 <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPeriod('custom') }} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm" /></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date to</label>
@@ -490,7 +481,11 @@ function MsgPopup({ cid, name, onClose }) {
     return () => { cancel = true }
   }, [cid])
   useEffect(() => { if (msgs) bottomRef.current?.scrollIntoView({ block: 'end' }) }, [msgs])
+  // Inbox jaise `ts` se sort (stable) — recent hamesha neeche. created_at re-ingest par badalta hai.
   const list = (msgs || []).filter((m) => (m.dir || m.direction) !== 'note')
+    .map((m, idx) => ({ m, idx, k: Number(m.ts) || Date.parse(m.created_at) || 0 }))
+    .sort((a, b) => (a.k - b.k) || (a.idx - b.idx))
+    .map(({ m }) => m)
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={onClose}>
       <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
