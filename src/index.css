@@ -83,6 +83,16 @@ input:focus, select:focus, textarea:focus { outline: none; }
 #app-shell[data-collapsed="true"] .sb-help { padding: .5rem; justify-content: center; }
 #app-shell[data-collapsed="true"] #sb-toggle-icon { transform: rotate(180deg); }
 
+/* Shared SidebarCrm (Leads, Customers, Orders, Lead Details… — pages using .crm-shell).
+   Collapse is desktop-only; on mobile the sidebar is a full drawer so labels stay visible. */
+@media (min-width: 1024px) {
+  .crm-shell:has(.crm-sidebar[data-collapsed="true"]) { grid-template-columns: 72px 1fr; }
+  .crm-sidebar[data-collapsed="true"] .sb-txt { display: none !important; }
+  .crm-sidebar[data-collapsed="true"] .sb-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+  .crm-sidebar[data-collapsed="true"] nav a { justify-content: center; padding-left: 0; padding-right: 0; }
+  .crm-sidebar[data-collapsed="true"] nav a > span { justify-content: center; gap: 0; }
+}
+
 /* Panels grid (filters/chat/ai) — defaults step down with the screen so the CHAT
    column always gets the most room (small laptops were squeezing it to ~400px).
    NOTE: plain px only — clamp()/vw in the track list freezes the grid transition
