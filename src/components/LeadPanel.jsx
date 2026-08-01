@@ -237,6 +237,7 @@ function AddressBlock({ title, addr, filled, state, sameAs, onSame, onChange, on
       )}
       {!sameAs && (
         <div className="grid grid-cols-2 gap-1.5">
+          <input key="contact" placeholder="Contact Person" value={a.contact || ''} onChange={(e) => set('contact', e.target.value)} className={`${INPUT} col-span-2`} />
           {[['line1', 'Address Line 1'], ['line2', 'Address Line 2'], ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['country', 'Country']].map(([kk, ph]) => (
             <input key={kk} placeholder={ph} value={a[kk] || ''} onChange={(e) => set(kk, e.target.value)} className={INPUT} />
           ))}
