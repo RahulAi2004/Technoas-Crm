@@ -4,7 +4,7 @@ import TopBarUser from '../components/TopBarUser.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { api, getToken } from '../lib/api.js'
 
-// Fields do groups (do tabs) mein — select wale ke options, warna free text.
+// Fields in two tabs — select fields have options, others are free text.
 const FIELD_GROUPS = {
   lead: { label: 'Lead Fields', fields: [
     ['stage', 'Stage', ['New Inquiry', 'Qualification', 'Quote Sent', 'Order Confirmed', 'Won', 'Lost']],
@@ -18,11 +18,9 @@ const FIELD_GROUPS = {
     ['next_action', 'Next Action', null],
   ] },
 }
-const ALL_FIELD_KEYS = [...FIELD_GROUPS.lead.fields, ...FIELD_GROUPS.order.fields].map((f) => f[0])
 const INPUT = 'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100'
 const initialsOf = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('') || '?'
 
-// Draggable width — list/panel resize; localStorage me persist.
 function useWidth(key, initial, min, max, grows) {
   const [w, setW] = useState(() => Number(localStorage.getItem(key)) || initial)
   const start = (e) => {
@@ -41,17 +39,18 @@ export default function AiTraining() {
   const [search, setSearch] = useState('')
   const [currentId, setCurrentId] = useState(null)
   const [msgs, setMsgs] = useState([])
-  const [tab, setTab] = useState('reply')
+  const [tab, setTab] = useState('lead')
   const [stats, setStats] = useState({ total: 0, byKind: {} })
   const chatBottom = useRef(null)
 
   const [listW, startList] = useWidth('aiTrainListW', 280, 200, 480, 'left')
-  const [panelW, startPanel] = useWidth('aiTrainPanelW', 420, 320, 760, 'right')
+  const [panelW, startPanel] = useWidth('aiTrainPanelW', 400, 300, 720, 'right')
 
-  // walkthrough (reply tab)
-  const [stepI, setStepI] = useState(0)
+  // reply walkthrough (inline in chat)
+  const [turn, setTurn] = useState(0)                 // which agent reply we're training
   const [reply, setReply] = useState(''); const [replyLogic, setReplyLogic] = useState('')
   const [replyAi, setReplyAi] = useState(null); const [genLoading, setGenLoading] = useState(false)
+  const genRef = useRef('')
 
   // fields (lead/order tabs)
   const [fields, setFields] = useState({}); const [why, setWhy] = useState({})
@@ -65,8 +64,8 @@ export default function AiTraining() {
     let cancel = false
     const load = () => api.get(`/api/conversations/${encodeURIComponent(currentId)}/messages`).then((r) => { if (!cancel) setMsgs(Array.isArray(r) ? r : []) }).catch(() => {})
     load()
-    const t = setInterval(load, 6000)
-    setStepI(0); setReply(''); setReplyLogic(''); setReplyAi(null); setFields({}); setWhy({}); setFieldsAi(null)
+    const t = setInterval(load, 8000)
+    setTurn(0); setReply(''); setReplyLogic(''); setReplyAi(null); setFields({}); setWhy({}); setFieldsAi(null); genRef.current = ''
     return () => { cancel = true; clearInterval(t) }
   }, [currentId])
 
@@ -76,36 +75,44 @@ export default function AiTraining() {
 
   const agentIdxs = useMemo(() => sortedMsgs.map((m, i) => ((m.dir || m.direction) === 'out' ? i : -1)).filter((i) => i >= 0), [sortedMsgs])
   const totalSteps = agentIdxs.length
-  const stepPos = stepI < totalSteps ? agentIdxs[stepI] : sortedMsgs.length      // current agent reply ka index
-  const revealCount = tab === 'reply' && totalSteps ? stepPos : sortedMsgs.length
+  const done = turn >= totalSteps
+  const pos = !done && totalSteps ? agentIdxs[turn] : -1                  // current agent reply being trained
+  const revealCount = totalSteps ? (done ? sortedMsgs.length : pos + 1) : sortedMsgs.length
   const shownMsgs = sortedMsgs.slice(0, revealCount)
-  const actualReply = stepI < totalSteps ? sortedMsgs[stepPos] : null
 
-  useEffect(() => { chatBottom.current?.scrollIntoView({ block: 'end' }) }, [revealCount, currentId])
+  const genReply = async (upto) => {
+    if (!currentId) return
+    setGenLoading(true)
+    try {
+      const r = await api.post(`/api/ai-training/reply/${encodeURIComponent(currentId)}`, { upto })
+      if (r.empty) { setReply(''); setReplyLogic(''); setReplyAi({ reply: '', logic: '' }); return }
+      setReply(r.reply || ''); setReplyLogic(r.logic || ''); setReplyAi({ reply: r.reply || '', logic: r.logic || '' })
+    } catch (e) { toast(e.message || 'Failed', 'error') } finally { setGenLoading(false) }
+  }
+  // auto-generate a suggestion when a new turn is revealed
+  useEffect(() => {
+    if (!currentId || totalSteps === 0 || done || pos < 0) return
+    const key = `${currentId}#${turn}`
+    if (genRef.current === key) return
+    genRef.current = key
+    genReply(pos)
+  }, [currentId, turn, totalSteps, done, pos])
+
+  useEffect(() => { chatBottom.current?.scrollIntoView({ block: 'end' }) }, [revealCount, currentId, genLoading])
+
+  const saveAndNext = async () => {
+    try {
+      await api.post('/api/ai-training/save', { conversationId: currentId, kind: 'reply', upto: pos, aiOutput: replyAi || {}, corrected: { reply, logic: replyLogic } })
+      toast('Saved — the AI will learn from this next time', 'success'); loadStats()
+    } catch (e) { toast(e.message || 'Save failed', 'error'); return }
+    setReply(''); setReplyLogic(''); setReplyAi(null)
+    setTurn((t) => Math.min(totalSteps, t + 1))
+  }
 
   const filteredConvs = useMemo(() => {
     const q = search.trim().toLowerCase()
     return q ? convs.filter((c) => `${c.name || ''} ${c.list_preview || ''}`.toLowerCase().includes(q)) : convs
   }, [convs, search])
-
-  const genReply = async () => {
-    if (!currentId) return
-    setGenLoading(true)
-    try {
-      const r = await api.post(`/api/ai-training/reply/${encodeURIComponent(currentId)}`, { upto: stepPos })
-      if (r.empty) { toast('No context up to this point', 'info'); return }
-      setReply(r.reply || ''); setReplyLogic(r.logic || ''); setReplyAi({ reply: r.reply || '', logic: r.logic || '' })
-      if (r.trainedFrom) toast(`Learned from ${r.trainedFrom} past corrections`, 'info')
-    } catch (e) { toast(e.message || 'Failed', 'error') } finally { setGenLoading(false) }
-  }
-  const saveAndNext = async () => {
-    try {
-      await api.post('/api/ai-training/save', { conversationId: currentId, kind: 'reply', upto: stepPos, aiOutput: replyAi || {}, corrected: { reply, logic: replyLogic } })
-      toast('Saved — the AI will learn from this next time', 'success'); loadStats()
-    } catch (e) { toast(e.message || 'Save failed', 'error'); return }
-    setReply(''); setReplyLogic(''); setReplyAi(null)
-    setStepI((s) => Math.min(totalSteps, s + 1))      // reveal next messages
-  }
 
   const doExtract = async () => {
     if (!currentId) return
@@ -125,6 +132,24 @@ export default function AiTraining() {
   const dl = (fmt) => window.open(`/api/ai-training/export?format=${fmt}&t=${encodeURIComponent(getToken() || '')}`, '_blank')
   const currentConv = convs.find((c) => c.id === currentId)
   const Handle = ({ onDown }) => <div onPointerDown={onDown} className="w-1.5 shrink-0 cursor-col-resize bg-slate-100 transition hover:bg-brand-300" />
+
+  // Inline suggestion card shown right after the current agent reply
+  const InlineCard = () => (
+    <div className="my-1 ml-auto max-w-[85%] rounded-xl border-2 border-violet-200 bg-violet-50 p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-violet-700">💡 AI recommends — edit to train</span>
+        <button onClick={() => genReply(pos)} disabled={genLoading} className="text-xs font-semibold text-violet-600 hover:underline disabled:opacity-50">↻ Regenerate</button>
+      </div>
+      {genLoading && !replyAi ? <div className="py-3 text-center text-sm text-slate-400">Generating…</div> : (
+        <>
+          <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={4} placeholder="Recommended reply — fix it if wrong" className={INPUT} />
+          <label className="mb-0.5 mt-2 block text-[11px] font-semibold text-slate-500">Logic — why this reply?</label>
+          <textarea value={replyLogic} onChange={(e) => setReplyLogic(e.target.value)} rows={2} className={`${INPUT} bg-white text-xs`} />
+          <button onClick={saveAndNext} className="mt-2 w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">✓ Save &amp; Next (reveal next messages)</button>
+        </>
+      )}
+    </div>
+  )
 
   return (
     <div className="crm-shell grid h-screen overflow-hidden">
@@ -168,7 +193,7 @@ export default function AiTraining() {
           </div>
           <Handle onDown={startList} />
 
-          {/* Chat messages (walkthrough par incrementally reveal) */}
+          {/* Chat + inline reply training (messages reveal progressively) */}
           <div className="flex min-h-0 flex-1 flex-col bg-slate-50/40">
             {!currentId ? (
               <div className="grid flex-1 place-items-center text-sm text-slate-400">Pick a chat on the left — messages will appear here</div>
@@ -178,102 +203,76 @@ export default function AiTraining() {
                   <span className={`grid h-9 w-9 place-items-center rounded-full ${currentConv?.avatar_bg || 'bg-slate-200'} text-xs font-bold`}>{initialsOf(currentConv?.name)}</span>
                   <div><div className="text-sm font-bold">{currentConv?.name || 'Unknown'}</div><div className="text-xs text-slate-500">{currentConv?.channel || ''}</div></div>
                 </div>
-                {tab === 'reply' && totalSteps > 0 && <span className="rounded-md bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">Walkthrough: step {Math.min(stepI + 1, totalSteps)} / {totalSteps}</span>}
+                {totalSteps > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-md bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">Training turn {Math.min(turn + 1, totalSteps)} / {totalSteps}</span>
+                    <button onClick={() => setTurn((t) => Math.max(0, t - 1))} disabled={turn === 0} className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 disabled:opacity-40 hover:bg-slate-50">‹ Prev</button>
+                  </div>
+                )}
               </div>
               <div className="nice-scroll min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-                {shownMsgs.length === 0 && <div className="py-8 text-center text-sm text-slate-400">{tab === 'reply' ? 'Conversation start — generate a reply in the panel' : 'No messages'}</div>}
+                {shownMsgs.length === 0 && <div className="py-8 text-center text-sm text-slate-400">No messages</div>}
                 {shownMsgs.map((m, i) => {
                   const out = (m.dir || m.direction) === 'out'
                   return (
-                    <div key={i} className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm ${out ? 'bg-brand-600 text-white' : 'bg-white text-slate-800 ring-1 ring-slate-200'}`}>
-                        <div className={`mb-0.5 text-[10px] font-bold ${out ? 'text-white/70' : 'text-slate-400'}`}>{out ? (m.agent || 'Agent') : (currentConv?.name || 'Customer')}</div>
-                        <div className="whitespace-pre-wrap break-words">{m.text || (Array.isArray(m.attachments) && m.attachments.length ? '📎 Attachment' : '')}</div>
-                        <div className={`mt-0.5 text-[10px] ${out ? 'text-white/60' : 'text-slate-400'}`}>{m.time || ''}</div>
+                    <div key={i}>
+                      <div className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm ${out ? 'bg-brand-600 text-white' : 'bg-white text-slate-800 ring-1 ring-slate-200'}`}>
+                          <div className={`mb-0.5 text-[10px] font-bold ${out ? 'text-white/70' : 'text-slate-400'}`}>{out ? (m.agent || 'Agent') : (currentConv?.name || 'Customer')}{out && i === pos ? ' · actual reply' : ''}</div>
+                          <div className="whitespace-pre-wrap break-words">{m.text || (Array.isArray(m.attachments) && m.attachments.length ? '📎 Attachment' : '')}</div>
+                          <div className={`mt-0.5 text-[10px] ${out ? 'text-white/60' : 'text-slate-400'}`}>{m.time || ''}</div>
+                        </div>
                       </div>
+                      {i === pos && <InlineCard />}
                     </div>
                   )
                 })}
-                {tab === 'reply' && actualReply && <div className="flex justify-end"><div className="max-w-[78%] rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50 px-3 py-2 text-xs text-violet-600">↖ AI is training the reply for this turn (in the panel)</div></div>}
+                {done && totalSteps > 0 && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center text-sm font-semibold text-emerald-700">✓ You've trained the whole chat!
+                    <button onClick={() => { setTurn(0); genRef.current = '' }} className="mt-2 block w-full rounded-md border border-emerald-300 bg-white px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50">↺ Restart from first reply</button>
+                  </div>
+                )}
                 <div ref={chatBottom} />
               </div>
             </>)}
           </div>
           <Handle onDown={startPanel} />
 
-          {/* AI Trainer panel */}
+          {/* Fields trainer panel */}
           <aside style={{ width: panelW }} className="flex min-h-0 shrink-0 flex-col border-l border-slate-200 bg-white">
             <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">🎓</span>
-              <h3 className="text-sm font-bold">AI Trainer</h3>
+              <h3 className="text-sm font-bold">Field Trainer</h3>
               <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">learns from your fixes</span>
             </div>
             <nav className="flex items-center gap-4 border-b border-slate-200 px-4 text-[13px]">
-              {[['reply', 'Reply + Logic'], ['lead', 'Lead Fields'], ['order', 'Order Fields']].map(([id, lbl]) => (
+              {[['lead', 'Lead Fields'], ['order', 'Order Fields']].map(([id, lbl]) => (
                 <button key={id} onClick={() => setTab(id)} className={`whitespace-nowrap border-b-2 py-2.5 ${tab === id ? 'border-brand-500 font-semibold text-brand-600' : 'border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
               ))}
             </nav>
-
             <div className="nice-scroll min-h-0 flex-1 overflow-y-auto p-4">
-              {!currentId ? <div className="py-8 text-center text-sm text-slate-400">Select a chat first</div>
-                : tab === 'reply' ? (
-                  <div className="space-y-3">
-                    {stepI >= totalSteps && totalSteps > 0 ? (
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center text-sm font-semibold text-emerald-700">✓ You've walked through the whole chat!
-                        <button onClick={() => setStepI(0)} className="mt-2 block w-full rounded-md border border-emerald-300 bg-white px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50">↺ Restart from first message</button>
+              {!currentId ? <div className="py-8 text-center text-sm text-slate-400">Select a chat first</div> : (
+                <div className="space-y-3">
+                  <button onClick={doExtract} disabled={extractLoading} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{extractLoading ? 'Extracting…' : fieldsAi ? '↻ Re-extract fields' : '✨ Extract fields'}</button>
+                  {fieldsAi && (<>
+                    {FIELD_GROUPS[tab].fields.map(([key, label, opts]) => (
+                      <div key={key} className="rounded-lg border border-slate-200 p-2.5">
+                        <label className="mb-1 block text-xs font-semibold text-slate-600">{label}</label>
+                        {opts ? (
+                          <select value={fields[key] || ''} onChange={(e) => setFields((f) => ({ ...f, [key]: e.target.value }))} className={INPUT}>
+                            <option value="">—</option>{opts.map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        ) : (
+                          <input value={fields[key] || ''} onChange={(e) => setFields((f) => ({ ...f, [key]: e.target.value }))} className={INPUT} />
+                        )}
+                        <label className="mb-0.5 mt-1.5 block text-[11px] font-semibold text-slate-500">Why this? (logic)</label>
+                        <textarea value={why[key] || ''} onChange={(e) => setWhy((w) => ({ ...w, [key]: e.target.value }))} rows={2} className={`${INPUT} bg-slate-50 text-xs`} />
                       </div>
-                    ) : totalSteps === 0 ? (
-                      <div className="text-center text-sm text-slate-400">This chat has no agent replies — the walkthrough needs agent replies.</div>
-                    ) : (<>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Turn {stepI + 1} / {totalSteps}</span>
-                        <div className="flex gap-1">
-                          <button onClick={() => setStepI((s) => Math.max(0, s - 1))} disabled={stepI === 0} className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 disabled:opacity-40 hover:bg-slate-50">‹ Prev</button>
-                        </div>
-                      </div>
-                      <button onClick={genReply} disabled={genLoading} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{genLoading ? 'Generating…' : replyAi ? '↻ Regenerate' : '✨ Generate recommended reply'}</button>
-                      {actualReply && (
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">What the agent actually sent</div>
-                          <div className="whitespace-pre-wrap text-sm text-slate-700">{actualReply.text || '—'}</div>
-                        </div>
-                      )}
-                      {replyAi && (<>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold text-slate-600">Recommended Reply <span className="font-normal text-slate-400">(fix it if wrong)</span></label>
-                          <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={5} className={INPUT} />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold text-slate-600">Logic — why this reply?</label>
-                          <textarea value={replyLogic} onChange={(e) => setReplyLogic(e.target.value)} rows={2} className={INPUT} />
-                        </div>
-                        <button onClick={saveAndNext} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">✓ Confirm &amp; Next (reveal next messages)</button>
-                        <p className="text-[11px] text-slate-400">On confirm, this correction is saved and the next few messages reveal in the chat.</p>
-                      </>)}
-                    </>)}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <button onClick={doExtract} disabled={extractLoading} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{extractLoading ? 'Extracting…' : fieldsAi ? '↻ Re-extract fields' : '✨ Extract fields'}</button>
-                    {fieldsAi && (<>
-                      {FIELD_GROUPS[tab].fields.map(([key, label, opts]) => (
-                        <div key={key} className="rounded-lg border border-slate-200 p-2.5">
-                          <label className="mb-1 block text-xs font-semibold text-slate-600">{label}</label>
-                          {opts ? (
-                            <select value={fields[key] || ''} onChange={(e) => setFields((f) => ({ ...f, [key]: e.target.value }))} className={INPUT}>
-                              <option value="">—</option>{opts.map((o) => <option key={o} value={o}>{o}</option>)}
-                            </select>
-                          ) : (
-                            <input value={fields[key] || ''} onChange={(e) => setFields((f) => ({ ...f, [key]: e.target.value }))} className={INPUT} />
-                          )}
-                          <label className="mb-0.5 mt-1.5 block text-[11px] font-semibold text-slate-500">Why this? (logic)</label>
-                          <textarea value={why[key] || ''} onChange={(e) => setWhy((w) => ({ ...w, [key]: e.target.value }))} rows={2} className={`${INPUT} bg-slate-50 text-xs`} />
-                        </div>
-                      ))}
-                      <button onClick={saveFields} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">💾 Save correction (train AI)</button>
-                    </>)}
-                  </div>
-                )}
+                    ))}
+                    <button onClick={saveFields} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">💾 Save correction (train AI)</button>
+                  </>)}
+                </div>
+              )}
             </div>
           </aside>
         </main>
