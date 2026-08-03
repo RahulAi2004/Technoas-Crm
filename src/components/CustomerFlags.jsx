@@ -46,7 +46,7 @@ export function FlagBadges({ allFlags, value = [], onChange }) {
       <button onClick={() => setOpen((o) => !o)} className="grid h-5 w-5 place-items-center rounded-md border border-dashed border-slate-300 text-slate-400 hover:border-brand-400 hover:text-brand-600" aria-label="Add flag">+</button>
       {open && (
         <div className="absolute left-0 top-6 z-20 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-          {allFlags.length === 0 && <div className="px-2 py-1.5 text-xs text-slate-400">Koi flag nahi — upar "Manage Flags" se banayein</div>}
+          {allFlags.length === 0 && <div className="px-2 py-1.5 text-xs text-slate-400">No tags — create one via "Manage Flags" above</div>}
           {allFlags.map((f) => {
             const on = set.has(f.id); const c = colorOf(f.color)
             return (
@@ -86,7 +86,7 @@ export function ManageFlagsModal({ flags, onClose, onChanged }) {
         </div>
 
         <div className="mb-4 rounded-lg border border-slate-200 p-3">
-          <label className="mb-1 block text-xs font-semibold text-slate-500">Naya flag ka naam</label>
+          <label className="mb-1 block text-xs font-semibold text-slate-500">New tag name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && create()}
             placeholder="e.g. VIP, Reseller, Follow-up" className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500" />
           <div className="mb-3 flex items-center gap-1.5">
@@ -100,8 +100,8 @@ export function ManageFlagsModal({ flags, onClose, onChanged }) {
         </div>
 
         <div className="max-h-56 overflow-y-auto">
-          <div className="mb-1 text-xs font-semibold text-slate-500">Mojooda flags ({flags.length})</div>
-          {flags.length === 0 && <div className="py-3 text-center text-sm text-slate-400">Abhi koi flag nahi</div>}
+          <div className="mb-1 text-xs font-semibold text-slate-500">Existing tags ({flags.length})</div>
+          {flags.length === 0 && <div className="py-3 text-center text-sm text-slate-400">No tags yet</div>}
           {flags.map((f) => (
             <div key={f.id} className="flex items-center justify-between rounded-lg px-1 py-1.5 hover:bg-slate-50">
               <FlagChip flag={f} />

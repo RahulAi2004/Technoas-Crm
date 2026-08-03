@@ -365,8 +365,8 @@ export default function Leads() {
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Reply Pending From</label>
                 <select value={pendingFrom} onChange={(e) => setPendingFrom(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
                   <option value="">All</option>
-                  <option value="agent">Agent ko reply karna hai (Customer waiting)</option>
-                  <option value="customer">Customer ko reply karna hai (We are waiting)</option>
+                  <option value="agent">Agent needs to reply (Customer waiting)</option>
+                  <option value="customer">Customer needs to reply (We are waiting)</option>
                 </select></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date from</label>
                 <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPeriod('custom') }} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm" /></div>
@@ -398,7 +398,7 @@ export default function Leads() {
                 {bulkTagOpen && (
                   <div className="absolute left-0 top-full z-30 mt-1 w-60 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
                     <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{bulkTagOpen === 'add' ? 'Add tag to selected' : 'Remove tag from selected'}</div>
-                    {flags.length === 0 && <div className="px-2 py-1.5 text-xs text-slate-400">Koi tag nahi. "Manage Tags" se banayein.</div>}
+                    {flags.length === 0 && <div className="px-2 py-1.5 text-xs text-slate-400">No tags. Create some with "Manage Tags".</div>}
                     {flags.map((f) => { const c = FLAG_COLORS[f.color] || FLAG_COLORS.slate; return (
                       <button key={f.id} onClick={() => applyBulkTag(f.id, bulkTagOpen === 'add')} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
                         <span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} /><span className="flex-1 text-left">{f.name}</span>
@@ -438,7 +438,7 @@ export default function Leads() {
                 {data === null ? (
                   <tr><td colSpan={activeCols.length + 1} className="px-3 py-10 text-center text-sm text-slate-400">Loading leads…</td></tr>
                 ) : pageRows.length === 0 ? (
-                  <tr><td colSpan={activeCols.length + 1} className="px-3 py-10 text-center text-sm text-slate-400">Koi lead nahi mila. {anyFilter && <button onClick={clearAll} className="font-semibold text-brand-600 underline">Clear filters</button>}</td></tr>
+                  <tr><td colSpan={activeCols.length + 1} className="px-3 py-10 text-center text-sm text-slate-400">No leads found. {anyFilter && <button onClick={clearAll} className="font-semibold text-brand-600 underline">Clear filters</button>}</td></tr>
                 ) : pageRows.map((l, i) => {
                   const rowKey = `${l._cid || 'nocid'}#${i}`   // per-row unique — Unknown leads share a blank _cid
                   return (
@@ -508,7 +508,7 @@ function MsgPopup({ cid, name, onClose }) {
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50/60 p-4">
           {msgs === null && <div className="py-6 text-center text-sm text-slate-400">Loading…</div>}
-          {msgs !== null && list.length === 0 && <div className="py-6 text-center text-sm text-slate-400">Koi message nahi.</div>}
+          {msgs !== null && list.length === 0 && <div className="py-6 text-center text-sm text-slate-400">No messages.</div>}
           {list.map((m, i) => {
             const out = (m.dir || m.direction) === 'out'
             return (
@@ -541,7 +541,7 @@ function TagPopup({ lead, flags, onClose, onSave, onManage }) {
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100">×</button>
         </div>
         <div className="max-h-72 space-y-0.5 overflow-y-auto">
-          {flags.length === 0 && <div className="py-3 text-center text-sm text-slate-400">Koi tag nahi. Neeche "Manage Tags" se banayein.</div>}
+          {flags.length === 0 && <div className="py-3 text-center text-sm text-slate-400">No tags. Create some below with "Manage Tags".</div>}
           {flags.map((f) => {
             const on = set.has(f.id); const c = FLAG_COLORS[f.color] || FLAG_COLORS.slate
             return (

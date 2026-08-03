@@ -93,15 +93,15 @@ export default function AiTraining() {
     setGenLoading(true)
     try {
       const r = await api.post(`/api/ai-training/reply/${encodeURIComponent(currentId)}`, { upto: stepPos })
-      if (r.empty) { toast('Yahan tak koi context nahi', 'info'); return }
+      if (r.empty) { toast('No context up to this point', 'info'); return }
       setReply(r.reply || ''); setReplyLogic(r.logic || ''); setReplyAi({ reply: r.reply || '', logic: r.logic || '' })
-      if (r.trainedFrom) toast(`${r.trainedFrom} past corrections se seekha`, 'info')
+      if (r.trainedFrom) toast(`Learned from ${r.trainedFrom} past corrections`, 'info')
     } catch (e) { toast(e.message || 'Failed', 'error') } finally { setGenLoading(false) }
   }
   const saveAndNext = async () => {
     try {
       await api.post('/api/ai-training/save', { conversationId: currentId, kind: 'reply', upto: stepPos, aiOutput: replyAi || {}, corrected: { reply, logic: replyLogic } })
-      toast('Saved — agli baar AI is se seekhega', 'success'); loadStats()
+      toast('Saved — the AI will learn from this next time', 'success'); loadStats()
     } catch (e) { toast(e.message || 'Save failed', 'error'); return }
     setReply(''); setReplyLogic(''); setReplyAi(null)
     setStepI((s) => Math.min(totalSteps, s + 1))      // reveal next messages
@@ -112,9 +112,9 @@ export default function AiTraining() {
     setExtractLoading(true)
     try {
       const r = await api.post(`/api/ai-training/extract/${encodeURIComponent(currentId)}`, {})
-      if (r.empty) { toast('Is chat me koi message nahi', 'info'); return }
+      if (r.empty) { toast('No messages in this chat', 'info'); return }
       setFields(r.fields || {}); setWhy(r.why || {}); setFieldsAi({ fields: r.fields || {}, why: r.why || {} })
-      if (r.trainedFrom) toast(`${r.trainedFrom} past corrections se seekha`, 'info')
+      if (r.trainedFrom) toast(`Learned from ${r.trainedFrom} past corrections`, 'info')
     } catch (e) { toast(e.message || 'Failed', 'error') } finally { setExtractLoading(false) }
   }
   const saveFields = async () => {
@@ -171,7 +171,7 @@ export default function AiTraining() {
           {/* Chat messages (walkthrough par incrementally reveal) */}
           <div className="flex min-h-0 flex-1 flex-col bg-slate-50/40">
             {!currentId ? (
-              <div className="grid flex-1 place-items-center text-sm text-slate-400">Left se koi chat chuno — messages yahan aayenge</div>
+              <div className="grid flex-1 place-items-center text-sm text-slate-400">Pick a chat on the left — messages will appear here</div>
             ) : (<>
               <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3">
                 <div className="flex items-center gap-2.5">
@@ -181,7 +181,7 @@ export default function AiTraining() {
                 {tab === 'reply' && totalSteps > 0 && <span className="rounded-md bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">Walkthrough: step {Math.min(stepI + 1, totalSteps)} / {totalSteps}</span>}
               </div>
               <div className="nice-scroll min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-                {shownMsgs.length === 0 && <div className="py-8 text-center text-sm text-slate-400">{tab === 'reply' ? 'Conversation shuru — panel me reply generate karo' : 'Koi message nahi'}</div>}
+                {shownMsgs.length === 0 && <div className="py-8 text-center text-sm text-slate-400">{tab === 'reply' ? 'Conversation start — generate a reply in the panel' : 'No messages'}</div>}
                 {shownMsgs.map((m, i) => {
                   const out = (m.dir || m.direction) === 'out'
                   return (
@@ -194,7 +194,7 @@ export default function AiTraining() {
                     </div>
                   )
                 })}
-                {tab === 'reply' && actualReply && <div className="flex justify-end"><div className="max-w-[78%] rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50 px-3 py-2 text-xs text-violet-600">↖ AI is training the reply for this turn (panel me)</div></div>}
+                {tab === 'reply' && actualReply && <div className="flex justify-end"><div className="max-w-[78%] rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50 px-3 py-2 text-xs text-violet-600">↖ AI is training the reply for this turn (in the panel)</div></div>}
                 <div ref={chatBottom} />
               </div>
             </>)}
@@ -215,15 +215,15 @@ export default function AiTraining() {
             </nav>
 
             <div className="nice-scroll min-h-0 flex-1 overflow-y-auto p-4">
-              {!currentId ? <div className="py-8 text-center text-sm text-slate-400">Pehle koi chat chuno</div>
+              {!currentId ? <div className="py-8 text-center text-sm text-slate-400">Select a chat first</div>
                 : tab === 'reply' ? (
                   <div className="space-y-3">
                     {stepI >= totalSteps && totalSteps > 0 ? (
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center text-sm font-semibold text-emerald-700">✓ Poori chat walk through ho gayi!
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center text-sm font-semibold text-emerald-700">✓ You've walked through the whole chat!
                         <button onClick={() => setStepI(0)} className="mt-2 block w-full rounded-md border border-emerald-300 bg-white px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50">↺ Restart from first message</button>
                       </div>
                     ) : totalSteps === 0 ? (
-                      <div className="text-center text-sm text-slate-400">Is chat me agent ki koi reply nahi — walkthrough ke liye agent replies chahiye.</div>
+                      <div className="text-center text-sm text-slate-400">This chat has no agent replies — the walkthrough needs agent replies.</div>
                     ) : (<>
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Turn {stepI + 1} / {totalSteps}</span>
@@ -234,13 +234,13 @@ export default function AiTraining() {
                       <button onClick={genReply} disabled={genLoading} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{genLoading ? 'Generating…' : replyAi ? '↻ Regenerate' : '✨ Generate recommended reply'}</button>
                       {actualReply && (
                         <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Agent ne actually ye bheja tha</div>
+                          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">What the agent actually sent</div>
                           <div className="whitespace-pre-wrap text-sm text-slate-700">{actualReply.text || '—'}</div>
                         </div>
                       )}
                       {replyAi && (<>
                         <div>
-                          <label className="mb-1 block text-xs font-semibold text-slate-600">Recommended Reply <span className="font-normal text-slate-400">(galat ho to sahi karo)</span></label>
+                          <label className="mb-1 block text-xs font-semibold text-slate-600">Recommended Reply <span className="font-normal text-slate-400">(fix it if wrong)</span></label>
                           <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={5} className={INPUT} />
                         </div>
                         <div>
@@ -248,7 +248,7 @@ export default function AiTraining() {
                           <textarea value={replyLogic} onChange={(e) => setReplyLogic(e.target.value)} rows={2} className={INPUT} />
                         </div>
                         <button onClick={saveAndNext} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">✓ Confirm &amp; Next (reveal next messages)</button>
-                        <p className="text-[11px] text-slate-400">Confirm karte hi ye correction save hogi + agli 2-3 messages chat me reveal ho jaayengi.</p>
+                        <p className="text-[11px] text-slate-400">On confirm, this correction is saved and the next few messages reveal in the chat.</p>
                       </>)}
                     </>)}
                   </div>

@@ -1078,7 +1078,7 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
-                  <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message… (image Ctrl+V se paste karo, Send pe jayegi)'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
+                  <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message… (paste an image with Ctrl+V, sent on Send)'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
                   <input ref={fileInputRef} type="file" onChange={onFileChosen} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.ai,.psd,.eps,.zip" />
                   <div className="mt-1.5 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-slate-500">
@@ -1466,7 +1466,7 @@ function TranslationTab({ onSendReply, incoming }) {
     </div>
   )
   if (!list.length) {
-    return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Is chat mein abhi koi customer message nahi aaya.</div>
+    return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">No customer messages in this chat yet.</div>
   }
   if (loading || !data) {
     return <>{countBar}<div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center text-sm text-violet-700">🌐 Translating…</div></>
@@ -1623,7 +1623,7 @@ function HistoryTab({ conv }) {
   const visibleRows = slaFilter === 'all' ? rows : rows.filter((r) => r.dir === 'out' && r.resp && slaCat(r.resp.minutes) === slaFilter)
 
   if (!rows.length) {
-    return <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5"><div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Is chat mein abhi koi message nahi.</div></div>
+    return <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5"><div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">No messages in this chat yet.</div></div>
   }
 
   return (
@@ -1860,7 +1860,7 @@ function FilesTab({ conv }) {
         ))}
       </div>
       {shown.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">Is chat mein abhi koi file / image share nahi hui.</div>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No files / images shared in this chat yet.</div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
@@ -1957,7 +1957,7 @@ function SummaryTab({ conv, msgCount }) {
     if (!cid) return
     setLoading(true)
     api.get(`/api/ai/summary/${encodeURIComponent(cid)}`)
-      .then((r) => { if (cancelled) return; if (r.empty) { setError('Is chat mein abhi koi message nahi.'); return } setInfo(r); setPrompt(r.prompt || ''); setDefaultPrompt(r.defaultPrompt || r.prompt || '') })
+      .then((r) => { if (cancelled) return; if (r.empty) { setError('No messages in this chat yet.'); return } setInfo(r); setPrompt(r.prompt || ''); setDefaultPrompt(r.defaultPrompt || r.prompt || '') })
       .catch((ex) => { if (!cancelled) setError(ex.message || 'Summary failed') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -2105,7 +2105,7 @@ function ResponsesTab({ onSendReply, onSendImage, conv, msgCount }) {
         ) : loading && !reply ? (
           <p className="mt-3 text-sm text-violet-700">✨ Generating reply for unanswered messages…</p>
         ) : info?.empty ? (
-          <p className="mt-3 text-sm text-slate-500">Is chat mein abhi koi message nahi.</p>
+          <p className="mt-3 text-sm text-slate-500">No messages in this chat yet.</p>
         ) : info && info.pending === false && !reply ? (
           <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-sm text-emerald-800">
             ✅ Aap latest customer message ka reply de chuke ho — koi pending message nahi.
@@ -2241,7 +2241,7 @@ function DesignerTab({ conv }) {
     setExtracting(true)
     try {
       const r = await api.post(`/api/ai/designer-jobs/${encodeURIComponent(cid)}`, {})
-      if (r.empty) { toast('Is chat mein abhi koi message nahi', 'info'); return }
+      if (r.empty) { toast('No messages in this chat yet', 'info'); return }
       const jobs = r.jobs || []
       nextRef.current = jobs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1
       setRows(jobs)   // server already saved them
