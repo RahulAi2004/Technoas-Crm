@@ -1830,9 +1830,10 @@ app.post('/api/ai-training/reply/:id', authRequired, async (req, res) => {
   const shots = (await trainFewShot('reply', 6)).filter((s) => s.corrected?.reply)
   const examples = shots.map((s, i) => `Example ${i + 1}:\nAI had suggested: ${s.ai_output?.reply || ''}\nAgent corrected it to: ${s.corrected.reply}`).join('\n\n')
   const sys = `You are a sales assistant for a custom apparel print shop (hoodies, t-shirts, jerseys, DTF transfers, embroidery). Write the agent's NEXT reply to the customer AND explain your reasoning.
-Detect the customer's language and reply in EXACTLY that language. Be professional, concise and helpful.
+Detect the customer's language and write the REPLY in EXACTLY that language. Be professional, concise and helpful.
+IMPORTANT: the "logic" field MUST always be written in ENGLISH, even when the reply is in another language.
 ${examples ? `\nThe agent has previously corrected AI replies like the examples below — MATCH their style, tone and logic:\n${examples}\n` : ''}
-Respond with ONLY a JSON object: { "reply": string, "logic": string }   // logic = 1-3 sentence reasoning for why this reply.`
+Respond with ONLY a JSON object: { "reply": string, "logic": string }   // reply = customer's language; logic = English, 1-3 sentence reasoning.`
   try {
     const out = await chatJSON(sys, msgs.map(fmtMsg).join('\n'))
     res.json({ ok: true, reply: out.reply || '', logic: out.logic || '', trainedFrom: shots.length })
@@ -1848,7 +1849,7 @@ app.post('/api/ai-training/extract/:id', authRequired, async (req, res) => {
   if (!msgs.length) return res.json({ empty: true })
   const shots = (await trainFewShot('fields', 6)).filter((s) => s.corrected?.fields)
   const examples = shots.map((s, i) => `Example ${i + 1}: Agent corrected the fields to: ${JSON.stringify(s.corrected.fields)}`).join('\n')
-  const sys = `You are an assistant for a custom apparel print shop. From the conversation, extract the lead/sales fields AND for EACH field explain WHY (short reason from the chat).
+  const sys = `You are an assistant for a custom apparel print shop. From the conversation, extract the lead/sales fields AND for EACH field explain WHY (short reason from the chat). All "why" reasons MUST be written in ENGLISH.
 ${examples ? `\nThe agent has corrected extractions like this before — learn from them:\n${examples}\n` : ''}
 Respond with ONLY a JSON object:
 {
