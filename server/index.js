@@ -1827,15 +1827,16 @@ app.post('/api/ai-training/reply/:id', authRequired, async (req, res) => {
   const upto = Number(req.body?.upto)                       // walkthrough: sirf pehle `upto` messages ko context lo
   if (Number.isFinite(upto) && upto > 0) msgs = msgs.slice(0, upto)
   if (!msgs.length) return res.json({ empty: true })
+  const actual = String(req.body?.actual || '').trim()       // agent ne actually kya bheja (review ke liye)
   const shots = (await trainFewShot('reply', 6)).filter((s) => s.corrected?.reply)
   const examples = shots.map((s, i) => `Example ${i + 1}:\nAI had suggested: ${s.ai_output?.reply || ''}\nAgent corrected it to: ${s.corrected.reply}`).join('\n\n')
-  const sys = `You are a sales assistant for a custom apparel print shop (hoodies, t-shirts, jerseys, DTF transfers, embroidery). Write the agent's NEXT reply to the customer AND explain your reasoning.
-ALWAYS write BOTH the "reply" and the "logic" in ENGLISH — even if the customer (or the examples below) wrote in Spanish or any other language. Never reply in another language. Be professional, concise and helpful.
-${examples ? `\nThe agent has previously corrected AI replies like the examples below — MATCH their style, tone and logic (but keep the language English):\n${examples}\n` : ''}
-Respond with ONLY a JSON object: { "reply": string, "logic": string }   // both in English; logic = 1-3 sentence reasoning.`
+  const sys = `You are an AI Supervisor for a custom apparel print shop's sales agents (hoodies, t-shirts, jerseys, DTF transfers, embroidery). You do TWO things: (1) write the ideal NEXT reply to the customer, and (2) review the agent's ACTUAL reply.
+ALWAYS write "reply", "logic" and "review" in ENGLISH — even if the customer (or examples) wrote in another language. Be professional, concise and helpful.
+${examples ? `\nThe agent has previously corrected AI replies like the examples below — MATCH their style, tone and logic (keep language English):\n${examples}\n` : ''}${actual ? `\nThe agent ACTUALLY replied: "${actual}"\nIn "review", say what is MISSING or weak in that actual reply and WHY your recommended reply is better (1-2 sentences). If the actual reply is already great, say so.` : '\nThere is no actual agent reply to review yet — leave "review" empty.'}
+Respond with ONLY a JSON object: { "reply": string, "logic": string, "review": string }   // all in English; logic = why this reply; review = what's missing / why better in the agent's actual reply.`
   try {
     const out = await chatJSON(sys, msgs.map(fmtMsg).join('\n'))
-    res.json({ ok: true, reply: out.reply || '', logic: out.logic || '', trainedFrom: shots.length })
+    res.json({ ok: true, reply: out.reply || '', logic: out.logic || '', review: out.review || '', trainedFrom: shots.length })
   } catch (e) { res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint }) }
 })
 

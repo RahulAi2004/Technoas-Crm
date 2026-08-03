@@ -49,6 +49,7 @@ export default function AiTraining() {
   // reply walkthrough (inline in chat)
   const [turn, setTurn] = useState(0)                 // which agent reply we're training
   const [reply, setReply] = useState(''); const [replyLogic, setReplyLogic] = useState('')
+  const [review, setReview] = useState('')            // supervisor review of the actual agent reply
   const [replyAi, setReplyAi] = useState(null); const [genLoading, setGenLoading] = useState(false)
   const genRef = useRef('')
 
@@ -65,7 +66,7 @@ export default function AiTraining() {
     const load = () => api.get(`/api/conversations/${encodeURIComponent(currentId)}/messages`).then((r) => { if (!cancel) setMsgs(Array.isArray(r) ? r : []) }).catch(() => {})
     load()
     const t = setInterval(load, 8000)
-    setTurn(0); setReply(''); setReplyLogic(''); setReplyAi(null); setFields({}); setWhy({}); setFieldsAi(null); genRef.current = ''
+    setTurn(0); setReply(''); setReplyLogic(''); setReview(''); setReplyAi(null); setFields({}); setWhy({}); setFieldsAi(null); genRef.current = ''
     return () => { cancel = true; clearInterval(t) }
   }, [currentId])
 
@@ -84,9 +85,10 @@ export default function AiTraining() {
     if (!currentId) return
     setGenLoading(true)
     try {
-      const r = await api.post(`/api/ai-training/reply/${encodeURIComponent(currentId)}`, { upto })
-      if (r.empty) { setReply(''); setReplyLogic(''); setReplyAi({ reply: '', logic: '' }); return }
-      setReply(r.reply || ''); setReplyLogic(r.logic || ''); setReplyAi({ reply: r.reply || '', logic: r.logic || '' })
+      const actual = sortedMsgs[upto]?.text || ''            // agent reply at this turn — review ke liye
+      const r = await api.post(`/api/ai-training/reply/${encodeURIComponent(currentId)}`, { upto, actual })
+      if (r.empty) { setReply(''); setReplyLogic(''); setReview(''); setReplyAi({ reply: '', logic: '' }); return }
+      setReply(r.reply || ''); setReplyLogic(r.logic || ''); setReview(r.review || ''); setReplyAi({ reply: r.reply || '', logic: r.logic || '', review: r.review || '' })
     } catch (e) { toast(e.message || 'Failed', 'error') } finally { setGenLoading(false) }
   }
   // auto-generate a suggestion when a new turn is revealed
@@ -105,7 +107,7 @@ export default function AiTraining() {
       await api.post('/api/ai-training/save', { conversationId: currentId, kind: 'reply', upto: pos, aiOutput: replyAi || {}, corrected: { reply, logic: replyLogic } })
       toast('Saved — the AI will learn from this next time', 'success'); loadStats()
     } catch (e) { toast(e.message || 'Save failed', 'error'); return }
-    setReply(''); setReplyLogic(''); setReplyAi(null)
+    setReply(''); setReplyLogic(''); setReview(''); setReplyAi(null)
     setTurn((t) => Math.min(totalSteps, t + 1))
   }
 
@@ -135,14 +137,21 @@ export default function AiTraining() {
 
   // Inline suggestion card shown right after the current agent reply
   const InlineCard = () => (
-    <div className="my-1 ml-auto max-w-[85%] rounded-xl border-2 border-violet-200 bg-violet-50 p-3">
+    <div className="my-1 ml-auto max-w-[88%] rounded-xl border-2 border-violet-200 bg-violet-50 p-3">
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-[11px] font-bold uppercase tracking-wide text-violet-700">💡 AI recommends — edit to train</span>
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-violet-700">🧑‍🏫 AI Supervisor</span>
         <button onClick={() => genReply(pos)} disabled={genLoading} className="text-xs font-semibold text-violet-600 hover:underline disabled:opacity-50">↻ Regenerate</button>
       </div>
-      {genLoading && !replyAi ? <div className="py-3 text-center text-sm text-slate-400">Generating…</div> : (
+      {genLoading && !replyAi ? <div className="py-3 text-center text-sm text-slate-400">Reviewing…</div> : (
         <>
-          <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={4} placeholder="Recommended reply — fix it if wrong" className={INPUT} />
+          {review && (
+            <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+              <div className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">Review of the agent's actual reply — what's missing / why better</div>
+              <div className="whitespace-pre-wrap text-xs text-amber-900">{review}</div>
+            </div>
+          )}
+          <label className="mb-0.5 block text-[11px] font-semibold text-slate-500">Recommended reply <span className="font-normal text-slate-400">(fix it if wrong)</span></label>
+          <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={4} placeholder="Recommended reply" className={INPUT} />
           <label className="mb-0.5 mt-2 block text-[11px] font-semibold text-slate-500">Logic — why this reply?</label>
           <textarea value={replyLogic} onChange={(e) => setReplyLogic(e.target.value)} rows={2} className={`${INPUT} bg-white text-xs`} />
           <button onClick={saveAndNext} className="mt-2 w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">✓ Save &amp; Next (reveal next messages)</button>
