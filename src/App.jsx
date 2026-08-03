@@ -13,6 +13,7 @@ import Customers from './pages/Customers.jsx'
 import Customer360 from './pages/Customer360.jsx'
 import Leads from './pages/Leads.jsx'
 import LeadDetails from './pages/LeadDetails.jsx'
+import AiTraining from './pages/AiTraining.jsx'
 import Receipts from './pages/Receipts.jsx'
 import ArtworkVault from './pages/ArtworkVault.jsx'
 import Integrations from './pages/Integrations.jsx'
@@ -48,6 +49,7 @@ export default function App() {
       <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       <Route path="/team" element={<RequireAuth><Team /></RequireAuth>} />
       <Route path="/ai-assistant" element={<RequireAuth><AiAssistant /></RequireAuth>} />
+      <Route path="/ai-training" element={<RequireAuth><AiTraining /></RequireAuth>} />
       <Route path="/after-session" element={<RequireAuth><AfterSession /></RequireAuth>} />
       <Route path="/artwork-vault" element={<RequireAuth><ArtworkVault /></RequireAuth>} />
       <Route path="/connect-meta" element={<RequireAuth><MetaConnect /></RequireAuth>} />

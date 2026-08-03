@@ -1803,6 +1803,116 @@ app.post('/api/ai/verify-translation', authRequired, async (req, res) => {
 const sortedConvMsgs = (cid) => getAll('messages').filter((m) => m.conversation_id === cid)
 const fmtMsg = (m) => `${m.dir === 'in' ? 'Customer' : m.dir === 'out' ? 'Agent' : 'System'}: ${m.text}`
 
+// ============================================================
+// AI TRAINING — chats go-through kar ke recommended reply + logic aur extracted
+// fields dekho/correct karo. Har correction app.ai_training me save hoti hai
+// (download JSONL/CSV) AUR few-shot ban ke agli baar ke suggestions behtar karti hai.
+// ============================================================
+const trainMsgs = (cid) => sortedConvMsgs(cid)
+  .filter((m) => m.dir !== 'note')
+  .map((m, idx) => ({ m, idx, k: Number(m.ts) || Date.parse(m.created_at) || 0 }))
+  .sort((a, b) => (a.k - b.k) || (a.idx - b.idx))
+  .map(({ m }) => m)
+async function trainFewShot(kind, limit = 6) {
+  try { const r = await dbQuery(`SELECT ai_output, corrected FROM app.ai_training WHERE kind=$1 ORDER BY created_at DESC LIMIT $2`, [kind, limit]); return r.rows }
+  catch { return [] }
+}
+
+// Recommended reply + LOGIC (reasoning). Agent ki past corrections few-shot me jaati hain.
+app.post('/api/ai-training/reply/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  const conv = findById('conversations', req.params.id)
+  if (!conv) return res.status(404).json({ error: 'conversation not found' })
+  const msgs = trainMsgs(req.params.id)
+  if (!msgs.length) return res.json({ empty: true })
+  const shots = (await trainFewShot('reply', 6)).filter((s) => s.corrected?.reply)
+  const examples = shots.map((s, i) => `Example ${i + 1}:\nAI had suggested: ${s.ai_output?.reply || ''}\nAgent corrected it to: ${s.corrected.reply}`).join('\n\n')
+  const sys = `You are a sales assistant for a custom apparel print shop (hoodies, t-shirts, jerseys, DTF transfers, embroidery). Write the agent's NEXT reply to the customer AND explain your reasoning.
+Detect the customer's language and reply in EXACTLY that language. Be professional, concise and helpful.
+${examples ? `\nThe agent has previously corrected AI replies like the examples below — MATCH their style, tone and logic:\n${examples}\n` : ''}
+Respond with ONLY a JSON object: { "reply": string, "logic": string }   // logic = 1-3 sentence reasoning for why this reply.`
+  try {
+    const out = await chatJSON(sys, msgs.map(fmtMsg).join('\n'))
+    res.json({ ok: true, reply: out.reply || '', logic: out.logic || '', trainedFrom: shots.length })
+  } catch (e) { res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint }) }
+})
+
+// Extracted fields + LOGIC
+app.post('/api/ai-training/extract/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  const conv = findById('conversations', req.params.id)
+  if (!conv) return res.status(404).json({ error: 'conversation not found' })
+  const msgs = trainMsgs(req.params.id)
+  if (!msgs.length) return res.json({ empty: true })
+  const shots = (await trainFewShot('fields', 6)).filter((s) => s.corrected?.fields)
+  const examples = shots.map((s, i) => `Example ${i + 1}: Agent corrected the fields to: ${JSON.stringify(s.corrected.fields)}`).join('\n')
+  const sys = `You are an assistant for a custom apparel print shop. From the conversation, extract the lead/sales fields AND explain your reasoning.
+${examples ? `\nThe agent has corrected extractions like this before — learn from them:\n${examples}\n` : ''}
+Respond with ONLY a JSON object:
+{
+ "fields": {
+   "stage": string,          // New Inquiry | Qualification | Quote Sent | Order Confirmed | Won | Lost
+   "qualification": string,  // Hot | Warm | Cold
+   "intent": string,         // High | Medium | Low
+   "product": string,        // kya chahiye
+   "quantity": string,
+   "budget": string,
+   "next_action": string
+ },
+ "logic": string
+}`
+  try {
+    const out = await chatJSON(sys, msgs.map(fmtMsg).join('\n'))
+    res.json({ ok: true, fields: out.fields || {}, logic: out.logic || '', trainedFrom: shots.length })
+  } catch (e) { res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint }) }
+})
+
+// Save a correction — training example. kind = 'reply' | 'fields'.
+app.post('/api/ai-training/save', authRequired, async (req, res) => {
+  const { conversationId, kind, aiOutput, corrected } = req.body || {}
+  if (!['reply', 'fields'].includes(kind)) return res.status(400).json({ error: 'kind must be reply|fields' })
+  const conv = conversationId ? findById('conversations', conversationId) : null
+  const context = conversationId ? { messages: trainMsgs(conversationId).map((m) => ({ dir: m.dir, text: m.text || '' })) } : {}
+  try {
+    await dbQuery(`INSERT INTO app.ai_training (id, conversation_id, conv_name, kind, ai_output, corrected, context, author)
+                   VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8)`,
+      [randomUUID(), conversationId || null, conv?.name || null, kind, JSON.stringify(aiOutput || {}), JSON.stringify(corrected || {}), JSON.stringify(context), agentName(req)])
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Kitni corrections save hui — stats.
+app.get('/api/ai-training/stats', authRequired, async (req, res) => {
+  try {
+    const r = await dbQuery(`SELECT kind, count(*)::int n FROM app.ai_training GROUP BY kind`)
+    res.json({ total: r.rows.reduce((s, x) => s + x.n, 0), byKind: Object.fromEntries(r.rows.map((x) => [x.kind, x.n])) })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Export dataset — ?format=jsonl (default) | csv. Browser download ke liye ?t= token.
+app.get('/api/ai-training/export', authImg, async (req, res) => {
+  const format = String(req.query.format || 'jsonl').toLowerCase()
+  try {
+    const r = await dbQuery(`SELECT conversation_id, conv_name, kind, ai_output, corrected, context, author, created_at FROM app.ai_training ORDER BY created_at`)
+    if (format === 'csv') {
+      const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+      const lines = ['created_at,kind,customer,conversation_id,ai_output,corrected,author']
+      for (const row of r.rows) lines.push([row.created_at, row.kind, row.conv_name, row.conversation_id, JSON.stringify(row.ai_output), JSON.stringify(row.corrected), row.author].map(esc).join(','))
+      res.setHeader('Content-Type', 'text/csv'); res.setHeader('Content-Disposition', 'attachment; filename="ai-training.csv"')
+      return res.send(lines.join('\n'))
+    }
+    const lines = r.rows.map((row) => {
+      if (row.kind === 'reply') {
+        const messages = (row.context?.messages || []).map((m) => ({ role: m.dir === 'in' ? 'user' : 'assistant', content: m.text || '' }))
+        return JSON.stringify({ type: 'reply', messages, ai_suggested: row.ai_output?.reply || '', corrected_reply: row.corrected?.reply || '', logic: row.corrected?.logic || row.ai_output?.logic || '' })
+      }
+      return JSON.stringify({ type: 'fields', messages: row.context?.messages || [], ai_fields: row.ai_output?.fields || {}, corrected_fields: row.corrected?.fields || {} })
+    })
+    res.setHeader('Content-Type', 'application/x-ndjson'); res.setHeader('Content-Disposition', 'attachment; filename="ai-training.jsonl"')
+    res.send(lines.join('\n'))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // The EDITABLE part of the summary prompt (agent can change it → "Save as default").
 // The fixed JSON schema is always appended by the server so the output stays parseable
 // no matter what the agent writes (UI depends on these 4 fields).
