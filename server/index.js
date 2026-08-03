@@ -1823,7 +1823,9 @@ app.post('/api/ai-training/reply/:id', authRequired, async (req, res) => {
   if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
   const conv = findById('conversations', req.params.id)
   if (!conv) return res.status(404).json({ error: 'conversation not found' })
-  const msgs = trainMsgs(req.params.id)
+  let msgs = trainMsgs(req.params.id)
+  const upto = Number(req.body?.upto)                       // walkthrough: sirf pehle `upto` messages ko context lo
+  if (Number.isFinite(upto) && upto > 0) msgs = msgs.slice(0, upto)
   if (!msgs.length) return res.json({ empty: true })
   const shots = (await trainFewShot('reply', 6)).filter((s) => s.corrected?.reply)
   const examples = shots.map((s, i) => `Example ${i + 1}:\nAI had suggested: ${s.ai_output?.reply || ''}\nAgent corrected it to: ${s.corrected.reply}`).join('\n\n')
@@ -1846,7 +1848,7 @@ app.post('/api/ai-training/extract/:id', authRequired, async (req, res) => {
   if (!msgs.length) return res.json({ empty: true })
   const shots = (await trainFewShot('fields', 6)).filter((s) => s.corrected?.fields)
   const examples = shots.map((s, i) => `Example ${i + 1}: Agent corrected the fields to: ${JSON.stringify(s.corrected.fields)}`).join('\n')
-  const sys = `You are an assistant for a custom apparel print shop. From the conversation, extract the lead/sales fields AND explain your reasoning.
+  const sys = `You are an assistant for a custom apparel print shop. From the conversation, extract the lead/sales fields AND for EACH field explain WHY (short reason from the chat).
 ${examples ? `\nThe agent has corrected extractions like this before — learn from them:\n${examples}\n` : ''}
 Respond with ONLY a JSON object:
 {
@@ -1859,20 +1861,25 @@ Respond with ONLY a JSON object:
    "budget": string,
    "next_action": string
  },
- "logic": string
+ "why": {
+   "stage": string, "qualification": string, "intent": string,
+   "product": string, "quantity": string, "budget": string, "next_action": string
+ }   // har field ka 1-line reason (why this value)
 }`
   try {
     const out = await chatJSON(sys, msgs.map(fmtMsg).join('\n'))
-    res.json({ ok: true, fields: out.fields || {}, logic: out.logic || '', trainedFrom: shots.length })
+    res.json({ ok: true, fields: out.fields || {}, why: out.why || {}, trainedFrom: shots.length })
   } catch (e) { res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint }) }
 })
 
 // Save a correction — training example. kind = 'reply' | 'fields'.
 app.post('/api/ai-training/save', authRequired, async (req, res) => {
-  const { conversationId, kind, aiOutput, corrected } = req.body || {}
+  const { conversationId, kind, aiOutput, corrected, upto } = req.body || {}
   if (!['reply', 'fields'].includes(kind)) return res.status(400).json({ error: 'kind must be reply|fields' })
   const conv = conversationId ? findById('conversations', conversationId) : null
-  const context = conversationId ? { messages: trainMsgs(conversationId).map((m) => ({ dir: m.dir, text: m.text || '' })) } : {}
+  let ctx = conversationId ? trainMsgs(conversationId).map((m) => ({ dir: m.dir, text: m.text || '' })) : []
+  if (Number.isFinite(Number(upto)) && Number(upto) > 0) ctx = ctx.slice(0, Number(upto))   // walkthrough: reply se pehle ka context
+  const context = { messages: ctx }
   try {
     await dbQuery(`INSERT INTO app.ai_training (id, conversation_id, conv_name, kind, ai_output, corrected, context, author)
                    VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8)`,

@@ -1,21 +1,39 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import SidebarCrm from '../components/SidebarCrm.jsx'
 import TopBarUser from '../components/TopBarUser.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { api, getToken } from '../lib/api.js'
 
-// Fields jo AI extract karta hai — select wale ke options, warna free text.
-const FIELD_DEFS = [
-  ['stage', 'Stage', ['New Inquiry', 'Qualification', 'Quote Sent', 'Order Confirmed', 'Won', 'Lost']],
-  ['qualification', 'Qualification', ['Hot', 'Warm', 'Cold']],
-  ['intent', 'Purchase Intent', ['High', 'Medium', 'Low']],
-  ['product', 'Product', null],
-  ['quantity', 'Quantity', null],
-  ['budget', 'Budget', null],
-  ['next_action', 'Next Action', null],
-]
+// Fields do groups (do tabs) mein — select wale ke options, warna free text.
+const FIELD_GROUPS = {
+  lead: { label: 'Lead Fields', fields: [
+    ['stage', 'Stage', ['New Inquiry', 'Qualification', 'Quote Sent', 'Order Confirmed', 'Won', 'Lost']],
+    ['qualification', 'Qualification', ['Hot', 'Warm', 'Cold']],
+    ['intent', 'Purchase Intent', ['High', 'Medium', 'Low']],
+  ] },
+  order: { label: 'Order Fields', fields: [
+    ['product', 'Product', null],
+    ['quantity', 'Quantity', null],
+    ['budget', 'Budget', null],
+    ['next_action', 'Next Action', null],
+  ] },
+}
+const ALL_FIELD_KEYS = [...FIELD_GROUPS.lead.fields, ...FIELD_GROUPS.order.fields].map((f) => f[0])
 const INPUT = 'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100'
 const initialsOf = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('') || '?'
+
+// Draggable width — list/panel resize; localStorage me persist.
+function useWidth(key, initial, min, max, grows) {
+  const [w, setW] = useState(() => Number(localStorage.getItem(key)) || initial)
+  const start = (e) => {
+    e.preventDefault()
+    const x0 = e.clientX, w0 = w
+    const move = (ev) => { const dx = ev.clientX - x0; const nw = Math.max(min, Math.min(max, grows === 'left' ? w0 + dx : w0 - dx)); setW(nw); localStorage.setItem(key, String(nw)) }
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+  }
+  return [w, start]
+}
 
 export default function AiTraining() {
   const toast = useToast()
@@ -25,11 +43,18 @@ export default function AiTraining() {
   const [msgs, setMsgs] = useState([])
   const [tab, setTab] = useState('reply')
   const [stats, setStats] = useState({ total: 0, byKind: {} })
+  const chatBottom = useRef(null)
 
+  const [listW, startList] = useWidth('aiTrainListW', 280, 200, 480, 'left')
+  const [panelW, startPanel] = useWidth('aiTrainPanelW', 420, 320, 760, 'right')
+
+  // walkthrough (reply tab)
+  const [stepI, setStepI] = useState(0)
   const [reply, setReply] = useState(''); const [replyLogic, setReplyLogic] = useState('')
   const [replyAi, setReplyAi] = useState(null); const [genLoading, setGenLoading] = useState(false)
 
-  const [fields, setFields] = useState({}); const [fieldsLogic, setFieldsLogic] = useState('')
+  // fields (lead/order tabs)
+  const [fields, setFields] = useState({}); const [why, setWhy] = useState({})
   const [fieldsAi, setFieldsAi] = useState(null); const [extractLoading, setExtractLoading] = useState(false)
 
   const loadStats = () => api.get('/api/ai-training/stats').then(setStats).catch(() => {})
@@ -41,13 +66,22 @@ export default function AiTraining() {
     const load = () => api.get(`/api/conversations/${encodeURIComponent(currentId)}/messages`).then((r) => { if (!cancel) setMsgs(Array.isArray(r) ? r : []) }).catch(() => {})
     load()
     const t = setInterval(load, 6000)
-    setReply(''); setReplyLogic(''); setReplyAi(null); setFields({}); setFieldsLogic(''); setFieldsAi(null)
+    setStepI(0); setReply(''); setReplyLogic(''); setReplyAi(null); setFields({}); setWhy({}); setFieldsAi(null)
     return () => { cancel = true; clearInterval(t) }
   }, [currentId])
 
   const sortedMsgs = useMemo(() => [...msgs].filter((m) => (m.dir || m.direction) !== 'note')
     .map((m, i) => ({ m, i, k: Number(m.ts) || Date.parse(m.created_at) || 0 }))
     .sort((a, b) => (a.k - b.k) || (a.i - b.i)).map(({ m }) => m), [msgs])
+
+  const agentIdxs = useMemo(() => sortedMsgs.map((m, i) => ((m.dir || m.direction) === 'out' ? i : -1)).filter((i) => i >= 0), [sortedMsgs])
+  const totalSteps = agentIdxs.length
+  const stepPos = stepI < totalSteps ? agentIdxs[stepI] : sortedMsgs.length      // current agent reply ka index
+  const revealCount = tab === 'reply' && totalSteps ? stepPos : sortedMsgs.length
+  const shownMsgs = sortedMsgs.slice(0, revealCount)
+  const actualReply = stepI < totalSteps ? sortedMsgs[stepPos] : null
+
+  useEffect(() => { chatBottom.current?.scrollIntoView({ block: 'end' }) }, [revealCount, currentId])
 
   const filteredConvs = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -58,15 +92,19 @@ export default function AiTraining() {
     if (!currentId) return
     setGenLoading(true)
     try {
-      const r = await api.post(`/api/ai-training/reply/${encodeURIComponent(currentId)}`, {})
-      if (r.empty) { toast('Is chat me koi message nahi', 'info'); return }
+      const r = await api.post(`/api/ai-training/reply/${encodeURIComponent(currentId)}`, { upto: stepPos })
+      if (r.empty) { toast('Yahan tak koi context nahi', 'info'); return }
       setReply(r.reply || ''); setReplyLogic(r.logic || ''); setReplyAi({ reply: r.reply || '', logic: r.logic || '' })
       if (r.trainedFrom) toast(`${r.trainedFrom} past corrections se seekha`, 'info')
     } catch (e) { toast(e.message || 'Failed', 'error') } finally { setGenLoading(false) }
   }
-  const saveReply = async () => {
-    try { await api.post('/api/ai-training/save', { conversationId: currentId, kind: 'reply', aiOutput: replyAi || {}, corrected: { reply, logic: replyLogic } }); toast('Correction saved — AI is se seekhega', 'success'); loadStats() }
-    catch (e) { toast(e.message || 'Save failed', 'error') }
+  const saveAndNext = async () => {
+    try {
+      await api.post('/api/ai-training/save', { conversationId: currentId, kind: 'reply', upto: stepPos, aiOutput: replyAi || {}, corrected: { reply, logic: replyLogic } })
+      toast('Saved — agli baar AI is se seekhega', 'success'); loadStats()
+    } catch (e) { toast(e.message || 'Save failed', 'error'); return }
+    setReply(''); setReplyLogic(''); setReplyAi(null)
+    setStepI((s) => Math.min(totalSteps, s + 1))      // reveal next messages
   }
 
   const doExtract = async () => {
@@ -75,17 +113,18 @@ export default function AiTraining() {
     try {
       const r = await api.post(`/api/ai-training/extract/${encodeURIComponent(currentId)}`, {})
       if (r.empty) { toast('Is chat me koi message nahi', 'info'); return }
-      setFields(r.fields || {}); setFieldsLogic(r.logic || ''); setFieldsAi({ fields: r.fields || {} })
+      setFields(r.fields || {}); setWhy(r.why || {}); setFieldsAi({ fields: r.fields || {}, why: r.why || {} })
       if (r.trainedFrom) toast(`${r.trainedFrom} past corrections se seekha`, 'info')
     } catch (e) { toast(e.message || 'Failed', 'error') } finally { setExtractLoading(false) }
   }
   const saveFields = async () => {
-    try { await api.post('/api/ai-training/save', { conversationId: currentId, kind: 'fields', aiOutput: fieldsAi || {}, corrected: { fields } }); toast('Fields correction saved', 'success'); loadStats() }
+    try { await api.post('/api/ai-training/save', { conversationId: currentId, kind: 'fields', aiOutput: fieldsAi || {}, corrected: { fields, why } }); toast('Fields correction saved', 'success'); loadStats() }
     catch (e) { toast(e.message || 'Save failed', 'error') }
   }
 
   const dl = (fmt) => window.open(`/api/ai-training/export?format=${fmt}&t=${encodeURIComponent(getToken() || '')}`, '_blank')
   const currentConv = convs.find((c) => c.id === currentId)
+  const Handle = ({ onDown }) => <div onPointerDown={onDown} className="w-1.5 shrink-0 cursor-col-resize bg-slate-100 transition hover:bg-brand-300" />
 
   return (
     <div className="crm-shell grid h-screen overflow-hidden">
@@ -108,9 +147,9 @@ export default function AiTraining() {
           </div>
         </header>
 
-        <main className="grid min-h-0 flex-1 grid-cols-[280px_1fr_400px] overflow-hidden">
+        <main className="flex min-h-0 flex-1 overflow-hidden">
           {/* Chat list */}
-          <div className="flex min-h-0 flex-col border-r border-slate-200 bg-white">
+          <div style={{ width: listW }} className="flex min-h-0 shrink-0 flex-col border-r border-slate-200 bg-white">
             <div className="border-b border-slate-200 p-2.5">
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats…" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white" />
               <div className="mt-1 px-1 text-[11px] text-slate-400">{filteredConvs.length} conversations</div>
@@ -127,19 +166,23 @@ export default function AiTraining() {
               ))}
             </div>
           </div>
+          <Handle onDown={startList} />
 
-          {/* Chat messages */}
-          <div className="flex min-h-0 flex-col bg-slate-50/40">
+          {/* Chat messages (walkthrough par incrementally reveal) */}
+          <div className="flex min-h-0 flex-1 flex-col bg-slate-50/40">
             {!currentId ? (
               <div className="grid flex-1 place-items-center text-sm text-slate-400">Left se koi chat chuno — messages yahan aayenge</div>
             ) : (<>
-              <div className="flex items-center gap-2.5 border-b border-slate-200 bg-white px-4 py-3">
-                <span className={`grid h-9 w-9 place-items-center rounded-full ${currentConv?.avatar_bg || 'bg-slate-200'} text-xs font-bold`}>{initialsOf(currentConv?.name)}</span>
-                <div><div className="text-sm font-bold">{currentConv?.name || 'Unknown'}</div><div className="text-xs text-slate-500">{currentConv?.channel || ''}</div></div>
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <span className={`grid h-9 w-9 place-items-center rounded-full ${currentConv?.avatar_bg || 'bg-slate-200'} text-xs font-bold`}>{initialsOf(currentConv?.name)}</span>
+                  <div><div className="text-sm font-bold">{currentConv?.name || 'Unknown'}</div><div className="text-xs text-slate-500">{currentConv?.channel || ''}</div></div>
+                </div>
+                {tab === 'reply' && totalSteps > 0 && <span className="rounded-md bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">Walkthrough: step {Math.min(stepI + 1, totalSteps)} / {totalSteps}</span>}
               </div>
               <div className="nice-scroll min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-                {sortedMsgs.length === 0 && <div className="py-8 text-center text-sm text-slate-400">Koi message nahi</div>}
-                {sortedMsgs.map((m, i) => {
+                {shownMsgs.length === 0 && <div className="py-8 text-center text-sm text-slate-400">{tab === 'reply' ? 'Conversation shuru — panel me reply generate karo' : 'Koi message nahi'}</div>}
+                {shownMsgs.map((m, i) => {
                   const out = (m.dir || m.direction) === 'out'
                   return (
                     <div key={i} className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
@@ -151,64 +194,86 @@ export default function AiTraining() {
                     </div>
                   )
                 })}
+                {tab === 'reply' && actualReply && <div className="flex justify-end"><div className="max-w-[78%] rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50 px-3 py-2 text-xs text-violet-600">↖ AI is training the reply for this turn (panel me)</div></div>}
+                <div ref={chatBottom} />
               </div>
             </>)}
           </div>
+          <Handle onDown={startPanel} />
 
           {/* AI Trainer panel */}
-          <aside className="flex min-h-0 flex-col border-l border-slate-200 bg-white">
+          <aside style={{ width: panelW }} className="flex min-h-0 shrink-0 flex-col border-l border-slate-200 bg-white">
             <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">🎓</span>
               <h3 className="text-sm font-bold">AI Trainer</h3>
               <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">learns from your fixes</span>
             </div>
             <nav className="flex items-center gap-4 border-b border-slate-200 px-4 text-[13px]">
-              {[['reply', 'Reply + Logic'], ['fields', 'Extracted Fields']].map(([id, lbl]) => (
-                <button key={id} onClick={() => setTab(id)} className={`border-b-2 py-2.5 ${tab === id ? 'border-brand-500 font-semibold text-brand-600' : 'border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
+              {[['reply', 'Reply + Logic'], ['lead', 'Lead Fields'], ['order', 'Order Fields']].map(([id, lbl]) => (
+                <button key={id} onClick={() => setTab(id)} className={`whitespace-nowrap border-b-2 py-2.5 ${tab === id ? 'border-brand-500 font-semibold text-brand-600' : 'border-transparent font-medium text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
               ))}
             </nav>
 
             <div className="nice-scroll min-h-0 flex-1 overflow-y-auto p-4">
-              {!currentId ? <div className="py-8 text-center text-sm text-slate-400">Pehle koi chat chuno</div> : tab === 'reply' ? (
-                <div className="space-y-3">
-                  <button onClick={genReply} disabled={genLoading} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{genLoading ? 'Generating…' : replyAi ? '↻ Regenerate reply' : '✨ Generate recommended reply'}</button>
-                  {replyAi && (<>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-slate-600">Recommended Reply <span className="font-normal text-slate-400">(edit to correct)</span></label>
-                      <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={5} className={INPUT} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-slate-600">Logic / Reasoning <span className="font-normal text-slate-400">(kyun ye reply)</span></label>
-                      <textarea value={replyLogic} onChange={(e) => setReplyLogic(e.target.value)} rows={3} className={INPUT} />
-                    </div>
-                    <button onClick={saveReply} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">💾 Save correction (train AI)</button>
-                    <p className="text-[11px] text-slate-400">Aap jo yahan edit karke save karoge, AI agli baar isi tarah reply karega + ye dataset me bhi save ho jayega.</p>
-                  </>)}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <button onClick={doExtract} disabled={extractLoading} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{extractLoading ? 'Extracting…' : fieldsAi ? '↻ Re-extract fields' : '✨ Extract fields (stage, qualification…)'}</button>
-                  {fieldsAi && (<>
-                    {FIELD_DEFS.map(([key, label, opts]) => (
-                      <div key={key}>
-                        <label className="mb-1 block text-xs font-semibold text-slate-600">{label}</label>
-                        {opts ? (
-                          <select value={fields[key] || ''} onChange={(e) => setFields((f) => ({ ...f, [key]: e.target.value }))} className={INPUT}>
-                            <option value="">—</option>{opts.map((o) => <option key={o} value={o}>{o}</option>)}
-                          </select>
-                        ) : (
-                          <input value={fields[key] || ''} onChange={(e) => setFields((f) => ({ ...f, [key]: e.target.value }))} className={INPUT} />
-                        )}
+              {!currentId ? <div className="py-8 text-center text-sm text-slate-400">Pehle koi chat chuno</div>
+                : tab === 'reply' ? (
+                  <div className="space-y-3">
+                    {stepI >= totalSteps && totalSteps > 0 ? (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center text-sm font-semibold text-emerald-700">✓ Poori chat walk through ho gayi!
+                        <button onClick={() => setStepI(0)} className="mt-2 block w-full rounded-md border border-emerald-300 bg-white px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50">↺ Restart from first message</button>
                       </div>
-                    ))}
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-slate-600">Logic / Reasoning</label>
-                      <textarea value={fieldsLogic} onChange={(e) => setFieldsLogic(e.target.value)} rows={2} className={INPUT} />
-                    </div>
-                    <button onClick={saveFields} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">💾 Save correction (train AI)</button>
-                  </>)}
-                </div>
-              )}
+                    ) : totalSteps === 0 ? (
+                      <div className="text-center text-sm text-slate-400">Is chat me agent ki koi reply nahi — walkthrough ke liye agent replies chahiye.</div>
+                    ) : (<>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Turn {stepI + 1} / {totalSteps}</span>
+                        <div className="flex gap-1">
+                          <button onClick={() => setStepI((s) => Math.max(0, s - 1))} disabled={stepI === 0} className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 disabled:opacity-40 hover:bg-slate-50">‹ Prev</button>
+                        </div>
+                      </div>
+                      <button onClick={genReply} disabled={genLoading} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{genLoading ? 'Generating…' : replyAi ? '↻ Regenerate' : '✨ Generate recommended reply'}</button>
+                      {actualReply && (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                          <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Agent ne actually ye bheja tha</div>
+                          <div className="whitespace-pre-wrap text-sm text-slate-700">{actualReply.text || '—'}</div>
+                        </div>
+                      )}
+                      {replyAi && (<>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold text-slate-600">Recommended Reply <span className="font-normal text-slate-400">(galat ho to sahi karo)</span></label>
+                          <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={5} className={INPUT} />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold text-slate-600">Logic — why this reply?</label>
+                          <textarea value={replyLogic} onChange={(e) => setReplyLogic(e.target.value)} rows={2} className={INPUT} />
+                        </div>
+                        <button onClick={saveAndNext} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">✓ Confirm &amp; Next (reveal next messages)</button>
+                        <p className="text-[11px] text-slate-400">Confirm karte hi ye correction save hogi + agli 2-3 messages chat me reveal ho jaayengi.</p>
+                      </>)}
+                    </>)}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <button onClick={doExtract} disabled={extractLoading} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{extractLoading ? 'Extracting…' : fieldsAi ? '↻ Re-extract fields' : '✨ Extract fields'}</button>
+                    {fieldsAi && (<>
+                      {FIELD_GROUPS[tab].fields.map(([key, label, opts]) => (
+                        <div key={key} className="rounded-lg border border-slate-200 p-2.5">
+                          <label className="mb-1 block text-xs font-semibold text-slate-600">{label}</label>
+                          {opts ? (
+                            <select value={fields[key] || ''} onChange={(e) => setFields((f) => ({ ...f, [key]: e.target.value }))} className={INPUT}>
+                              <option value="">—</option>{opts.map((o) => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          ) : (
+                            <input value={fields[key] || ''} onChange={(e) => setFields((f) => ({ ...f, [key]: e.target.value }))} className={INPUT} />
+                          )}
+                          <label className="mb-0.5 mt-1.5 block text-[11px] font-semibold text-slate-500">Why this? (logic)</label>
+                          <textarea value={why[key] || ''} onChange={(e) => setWhy((w) => ({ ...w, [key]: e.target.value }))} rows={2} className={`${INPUT} bg-slate-50 text-xs`} />
+                        </div>
+                      ))}
+                      <button onClick={saveFields} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">💾 Save correction (train AI)</button>
+                    </>)}
+                  </div>
+                )}
             </div>
           </aside>
         </main>
