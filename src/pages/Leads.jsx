@@ -27,6 +27,7 @@ const AVATAR_BG = ['bg-brand-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-50
 const avatarFor = (name, id) => { const s = String(id || name || ''); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return AVATAR_BG[h % AVATAR_BG.length] }
 const initialsOf = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('') || '?'
 const scoreCls = (s) => s >= 70 ? 'bg-emerald-500' : s >= 40 ? 'bg-amber-500' : 'bg-slate-300'
+const FSEL = 'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 outline-none focus:border-brand-400'
 
 // Time-period → {from,to} ms. Rolling/calendar windows over the lead's start date.
 function periodRange(period, customFrom, customTo) {
@@ -368,24 +369,24 @@ export default function Leads() {
             <StatCard label="Hot Leads" value={s.hot.toLocaleString()} sub="score ≥ 80" tint="bg-rose-50 text-rose-600" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>} />
           </div>
 
-          {/* Filters */}
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
-              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Lead Stage</label>
-                <select value={stage} onChange={(e) => setStage(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{stages.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Lead Status</label>
-                <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{statuses.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Source</label>
-                <select value={source} onChange={(e) => setSource(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{sources.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Waiting for? <span className="font-normal text-slate-400">(auto)</span></label>
-                <select value={pendingFrom} onChange={(e) => setPendingFrom(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
+          {/* Filters — compact, ek saaf row (chhoti screen par neatly wrap) */}
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+            <div className="flex flex-wrap items-end gap-2.5">
+              <div className="min-w-[140px] flex-1"><label className="mb-1 block text-[11px] font-semibold text-slate-500">Lead Stage</label>
+                <select value={stage} onChange={(e) => setStage(e.target.value)} className={FSEL}><option value="">All</option>{stages.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div className="min-w-[140px] flex-1"><label className="mb-1 block text-[11px] font-semibold text-slate-500">Lead Status</label>
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className={FSEL}><option value="">All</option>{statuses.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div className="min-w-[130px] flex-1"><label className="mb-1 block text-[11px] font-semibold text-slate-500">Source</label>
+                <select value={source} onChange={(e) => setSource(e.target.value)} className={FSEL}><option value="">All</option>{sources.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[11px] font-semibold text-slate-500">Waiting for?</label>
+                <select value={pendingFrom} onChange={(e) => setPendingFrom(e.target.value)} className={FSEL}>
                   <option value="">All</option>
                   <option value="agent">Agent (needs to reply)</option>
                   <option value="customer">Customer (their reply)</option>
                 </select></div>
-              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Tags</label>
+              <div className="min-w-[130px] flex-1"><label className="mb-1 block text-[11px] font-semibold text-slate-500">Tags</label>
                 <div className="relative" ref={tagFilterRef}>
-                  <button onClick={() => setTagFilterOpen((o) => !o)} className="flex w-full items-center justify-between gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
+                  <button onClick={() => setTagFilterOpen((o) => !o)} className={`${FSEL} flex items-center justify-between gap-1`}>
                     <span className="truncate text-slate-600">{tagFilter.length ? `${tagFilter.length} selected` : 'All'}</span>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                   </button>
@@ -402,16 +403,16 @@ export default function Leads() {
                     </div>
                   )}
                 </div></div>
-              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date from</label>
-                <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPeriod('custom') }} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm" /></div>
-              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date to</label>
-                <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPeriod('custom') }} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm" /></div>
-              <div className="flex items-end gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                  <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} /> Active only
-                </label>
-                {anyFilter && <button onClick={clearAll} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">✕ Clear</button>}
-              </div>
+              {period === 'custom' && (<>
+                <div className="min-w-[130px]"><label className="mb-1 block text-[11px] font-semibold text-slate-500">From</label>
+                  <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPeriod('custom') }} className={FSEL} /></div>
+                <div className="min-w-[130px]"><label className="mb-1 block text-[11px] font-semibold text-slate-500">To</label>
+                  <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPeriod('custom') }} className={FSEL} /></div>
+              </>)}
+              <label className={`inline-flex h-[34px] shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold ${activeOnly ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} /> Active
+              </label>
+              {anyFilter && <button onClick={clearAll} className="inline-flex h-[34px] shrink-0 items-center gap-1 rounded-lg px-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-100">✕ Clear</button>}
             </div>
           </div>
 
