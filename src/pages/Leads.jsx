@@ -77,16 +77,19 @@ function StatCard({ label, value, icon, tint, sub }) {
 export default function Leads() {
   const toast = useToast()
   const navigate = useNavigate()
+  // Filters session me yaad — chat khol ke wapas aane par reset na ho. Default sirf pehli baar.
+  const sv = (() => { try { return JSON.parse(sessionStorage.getItem('leadsFilters') || '{}') } catch { return {} } })()
   const [data, setData] = useState(null)
-  const [query, setQuery] = useState('')
-  const [period, setPeriod] = useState('today')   // default: daily metrics
-  const [stage, setStage] = useState(''); const [status, setStatus] = useState(''); const [source, setSource] = useState('')
-  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
-  const [page, setPage] = useState(1); const [perPage, setPerPage] = useState(10)
+  const [query, setQuery] = useState(sv.query ?? '')
+  const [period, setPeriod] = useState(sv.period ?? 'today')   // pehli baar: daily metrics
+  const [stage, setStage] = useState(sv.stage ?? ''); const [status, setStatus] = useState(sv.status ?? ''); const [source, setSource] = useState(sv.source ?? '')
+  const [from, setFrom] = useState(sv.from ?? ''); const [to, setTo] = useState(sv.to ?? '')
+  const [page, setPage] = useState(sv.page ?? 1); const [perPage, setPerPage] = useState(sv.perPage ?? 10)
   const [menuId, setMenuId] = useState(null)
-  const [pendingFrom, setPendingFrom] = useState('agent')     // default: agent ko reply karna hai (customer waiting)
-  const [activeOnly, setActiveOnly] = useState(false)         // sirf Active status wale leads
-  const [tagFilter, setTagFilter] = useState([])              // selected tag ids (checkbox multi-select)
+  const [pendingFrom, setPendingFrom] = useState(sv.pendingFrom ?? 'agent')   // pehli baar: agent to reply
+  const [activeOnly, setActiveOnly] = useState(sv.activeOnly ?? false)        // sirf Active status wale leads
+  const [tagFilter, setTagFilter] = useState(sv.tagFilter ?? [])              // selected tag ids
+  const [untagged, setUntagged] = useState(sv.untagged ?? false)             // sirf bina-tag wale leads
   const [tagFilterOpen, setTagFilterOpen] = useState(false)
   const tagFilterRef = useRef(null)
   useEffect(() => { const h = (e) => { if (tagFilterRef.current && !tagFilterRef.current.contains(e.target)) setTagFilterOpen(false) }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [])
@@ -180,12 +183,13 @@ export default function Leads() {
       if (source && l._source !== source) return false
       if (pendingFrom === 'agent' && l._lastBy !== 'in') return false        // agent ko reply karna hai (customer ne last bheja)
       if (pendingFrom === 'customer' && l._lastBy !== 'out') return false     // customer ko reply karna hai (agent ne last bheja)
-      if (tagFilter.length && !(Array.isArray(l._tags) && l._tags.some((t) => tagFilter.includes(t)))) return false   // selected tags me se koi ek
+      if (untagged) { if (Array.isArray(l._tags) && l._tags.length) return false }         // sirf bina-tag wale
+      else if (tagFilter.length && !(Array.isArray(l._tags) && l._tags.some((t) => tagFilter.includes(t)))) return false   // selected tags me se koi ek
       if (activeOnly && String(l._status || '').toLowerCase() !== 'active') return false
       if (q) { const hay = `${l.name || ''} ${l.company || ''} ${l._source} ${leadNo(l._cid)}`.toLowerCase(); if (!hay.includes(q)) return false }
       return true
     }).sort((a, b) => b._firstTs - a._firstTs)
-  }, [inPeriod, stage, status, source, query, pendingFrom, tagFilter, activeOnly])
+  }, [inPeriod, stage, status, source, query, pendingFrom, tagFilter, activeOnly, untagged])
 
   // stat cards (over the selected period)
   const s = useMemo(() => ({
@@ -197,7 +201,11 @@ export default function Leads() {
     orders: inPeriod.filter((l) => ORDER_STAGES.includes(l._stage)).length,
   }), [inPeriod])
 
-  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage, pendingFrom, tagFilter, activeOnly])
+  // filter badalne par page 1 par jao — par pehle mount (restore) par nahi.
+  const firstRun = useRef(true)
+  useEffect(() => { if (firstRun.current) { firstRun.current = false; return } setPage(1) }, [query, period, stage, status, source, perPage, pendingFrom, tagFilter, activeOnly, untagged])
+  // Session me filters + page yaad rakho.
+  useEffect(() => { sessionStorage.setItem('leadsFilters', JSON.stringify({ query, period, stage, status, source, from, to, page, perPage, pendingFrom, activeOnly, tagFilter, untagged })) }, [query, period, stage, status, source, from, to, page, perPage, pendingFrom, activeOnly, tagFilter, untagged])
   // Date fields ko top period tabs ke saath sync rakho (custom chhod ke).
   useEffect(() => {
     if (period === 'custom') return
@@ -211,8 +219,8 @@ export default function Leads() {
   const pageCids = pageRows.filter((l) => l._cid).map((l) => l._cid)
   const allPageSelected = pageCids.length > 0 && pageCids.every((c) => selected.has(c))
   const toggleAllPage = () => setSelected((s) => { const n = new Set(s); if (pageCids.every((c) => n.has(c))) pageCids.forEach((c) => n.delete(c)); else pageCids.forEach((c) => n.add(c)); return n })
-  const anyFilter = stage || status || source || query || pendingFrom || tagFilter.length || activeOnly
-  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setQuery(''); setPeriod('all'); setPendingFrom(''); setTagFilter([]); setActiveOnly(false) }
+  const anyFilter = stage || status || source || query || pendingFrom || tagFilter.length || activeOnly || untagged
+  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setQuery(''); setPeriod('all'); setPendingFrom(''); setTagFilter([]); setActiveOnly(false); setUntagged(false) }
 
   const openChat = (cid) => navigate(`/dashboard?conv=${encodeURIComponent(cid)}`)
   const openMessenger = async (cid) => {
@@ -393,15 +401,20 @@ export default function Leads() {
               <div className="min-w-[130px] flex-1"><label className="mb-1 block text-[11px] font-semibold text-slate-500">Tags</label>
                 <div className="relative" ref={tagFilterRef}>
                   <button onClick={() => setTagFilterOpen((o) => !o)} className={`${FSEL} flex items-center justify-between gap-1`}>
-                    <span className="truncate text-slate-600">{tagFilter.length ? `${tagFilter.length} selected` : 'All'}</span>
+                    <span className="truncate text-slate-600">{untagged ? 'Untagged' : tagFilter.length ? `${tagFilter.length} selected` : 'All'}</span>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                   </button>
                   {tagFilterOpen && (
                     <div className="absolute left-0 top-full z-30 mt-1 max-h-60 w-56 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-semibold hover:bg-slate-50">
+                        <input type="checkbox" checked={untagged} onChange={() => { setUntagged((u) => !u); if (!untagged) setTagFilter([]) }} />
+                        <span className="flex-1">Untagged (no tags)</span>
+                      </label>
+                      <div className="my-1 border-t border-slate-100" />
                       {flags.length === 0 && <div className="px-2 py-1.5 text-xs text-slate-400">No tags yet</div>}
                       {flags.map((f) => { const on = tagFilter.includes(f.id); const c = FLAG_COLORS[f.color] || FLAG_COLORS.slate; return (
                         <label key={f.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
-                          <input type="checkbox" checked={on} onChange={() => setTagFilter((s) => on ? s.filter((x) => x !== f.id) : [...s, f.id])} />
+                          <input type="checkbox" checked={on} onChange={() => { setUntagged(false); setTagFilter((s) => on ? s.filter((x) => x !== f.id) : [...s, f.id]) }} />
                           <span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} /><span className="flex-1">{f.name}</span>
                         </label>
                       )})}
@@ -409,12 +422,15 @@ export default function Leads() {
                     </div>
                   )}
                 </div></div>
-              {period === 'custom' && (<>
-                <div className="min-w-[130px]"><label className="mb-1 block text-[11px] font-semibold text-slate-500">From</label>
-                  <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPeriod('custom') }} className={FSEL} /></div>
-                <div className="min-w-[130px]"><label className="mb-1 block text-[11px] font-semibold text-slate-500">To</label>
-                  <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPeriod('custom') }} className={FSEL} /></div>
-              </>)}
+              {period === 'custom' && (
+                <div className="min-w-[230px]"><label className="mb-1 block text-[11px] font-semibold text-slate-500">Date range <span className="font-normal text-slate-400">(YYYY-MM-DD)</span></label>
+                  <div className="flex items-center gap-1">
+                    <input type="text" inputMode="numeric" value={from} onChange={(e) => { setFrom(e.target.value); setPeriod('custom'); setPage(1) }} placeholder="From" className="w-[104px] rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-brand-400" />
+                    <span className="text-slate-400">–</span>
+                    <input type="text" inputMode="numeric" value={to} onChange={(e) => { setTo(e.target.value); setPeriod('custom'); setPage(1) }} placeholder="To" className="w-[104px] rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-brand-400" />
+                  </div>
+                </div>
+              )}
               <label className={`inline-flex h-[34px] shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold ${activeOnly ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
                 <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} /> Active
               </label>
