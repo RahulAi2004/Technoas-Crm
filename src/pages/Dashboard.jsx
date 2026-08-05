@@ -259,15 +259,13 @@ export default function Dashboard() {
   const [manageFlagsOpen, setManageFlagsOpen] = useState(false)
   const loadFlags = () => api.get('/api/flags').then(setFlags).catch(() => setFlags([]))
   useEffect(() => { loadFlags() }, [])
-  // Meta page info (Open in Messenger deep-link ke liye)
-  const [metaPage, setMetaPage] = useState(null)
-  useEffect(() => { api.get('/api/meta/status').then(setMetaPage).catch(() => {}) }, [])
-  const openInMessenger = () => {
+  const openInMessenger = async () => {
     if (!currentConv) return
-    const psid = String(currentConv.id || '').replace(/^(fb|ig):/, '')
-    const pid = metaPage?.pageId
-    const url = pid ? `https://business.facebook.com/latest/inbox/all?asset_id=${pid}&mailbox_id=${pid}&selected_item_id=${psid}` : 'https://business.facebook.com/latest/inbox/all'
-    window.open(url, '_blank', 'noopener')
+    const w = window.open('', '_blank')                 // pehle blank tab (popup-blocker se bachne ke liye)
+    try {
+      const r = await api.get(`/api/meta/messenger-link/${encodeURIComponent(currentConv.id)}`)
+      if (w) w.location.href = r?.url || 'https://business.facebook.com/latest/inbox/all'
+    } catch { if (w) w.location.href = 'https://business.facebook.com/latest/inbox/all' }
   }
   const setConvTags = (id, next) => patchConv(id, { tags: next })   // optimistic UI + API save dono patchConv mein
 

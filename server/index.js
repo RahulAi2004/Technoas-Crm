@@ -749,6 +749,20 @@ app.get('/api/meta/status', authRequired, (req, res) => {
   })
 })
 
+// "Open in Messenger" — us conversation ka Facebook page-inbox direct link (Graph API se).
+app.get('/api/meta/messenger-link/:id', authRequired, async (req, res) => {
+  const pid = metaPageId(), token = metaToken()
+  const psid = String(req.params.id).replace(/^(fb|ig):/, '')
+  const fallback = pid ? `https://business.facebook.com/latest/inbox/all?asset_id=${pid}&mailbox_id=${pid}` : 'https://business.facebook.com/latest/inbox/all'
+  if (!pid || !token || !psid) return res.json({ url: fallback })
+  try {
+    const r = await fetch(`https://graph.facebook.com/v21.0/${pid}/conversations?user_id=${encodeURIComponent(psid)}&fields=link&access_token=${token}`)
+    const j = await r.json()
+    const link = j?.data?.[0]?.link            // e.g. "/<pageid>/inbox/<threadid>/?section=messages"
+    res.json({ url: link ? `https://www.facebook.com${link}` : fallback })
+  } catch { res.json({ url: fallback }) }
+})
+
 // Save the Page Access Token, verify it via Graph, cache page + IG info.
 app.post('/api/meta/connect', authRequired, async (req, res) => {
   const { pageToken, verifyToken } = req.body || {}
