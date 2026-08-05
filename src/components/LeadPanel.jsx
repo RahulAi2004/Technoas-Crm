@@ -697,6 +697,12 @@ export default function LeadPanel({ conv, onClose }) {
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          {/^(fb|ig):/.test(String(cid || '')) && (
+            <button onClick={async () => { const w = window.open('', '_blank'); try { const r = await api.get(`/api/meta/messenger-link/${encodeURIComponent(cid)}`); if (w) w.location.href = r?.url || 'https://business.facebook.com/latest/inbox/all' } catch { if (w) w.location.href = 'https://business.facebook.com/latest/inbox/all' } }}
+              title="Open in Facebook Messenger" className="grid h-8 w-8 place-items-center rounded-lg text-blue-600 hover:bg-blue-50">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.36 2 2 6.13 2 11.7c0 2.91 1.19 5.44 3.14 7.17.16.14.26.35.27.57l.05 1.78c.02.57.6.94 1.12.71l1.99-.88c.17-.07.35-.09.53-.04.91.25 1.88.38 2.8.38 5.64 0 10-4.13 10-9.7C22 6.13 17.64 2 12 2zm6 7.46l-2.94 4.66c-.47.74-1.47.93-2.18.41l-2.34-1.75a.6.6 0 0 0-.72 0l-3.16 2.4c-.42.32-.97-.18-.69-.63l2.94-4.66c.47-.74 1.47-.93 2.18-.41l2.34 1.75c.21.16.51.16.72 0l3.16-2.4c.42-.32.97.18.69.63z"/></svg>
+            </button>
+          )}
           <button onClick={runExtract} disabled={extracting || !cid} title="Re-extract from chat"
             className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-sky-700 disabled:opacity-50">
             {extracting ? 'Extracting…' : '✨ Extract'}

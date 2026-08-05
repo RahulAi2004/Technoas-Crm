@@ -215,6 +215,11 @@ export default function Leads() {
   const clearAll = () => { setStage(''); setStatus(''); setSource(''); setQuery(''); setPeriod('all'); setPendingFrom(''); setTagFilter([]); setActiveOnly(false) }
 
   const openChat = (cid) => navigate(`/dashboard?conv=${encodeURIComponent(cid)}`)
+  const openMessenger = async (cid) => {
+    const w = window.open('', '_blank')
+    try { const r = await api.get(`/api/meta/messenger-link/${encodeURIComponent(cid)}`); if (w) w.location.href = r?.url || 'https://business.facebook.com/latest/inbox/all' }
+    catch { if (w) w.location.href = 'https://business.facebook.com/latest/inbox/all' }
+  }
 
   // Sirf wahi columns dikhao jinme kam-se-kam ek lead ka data ho (dynamic).
   // Column visible? user preference (show/hide) auto-hide ko override karti hai; warna always ya jab data ho.
@@ -281,7 +286,8 @@ export default function Leads() {
       case 'actions': return (
         <RowMenu open={menuId === rowKey} onToggle={() => setMenuId(menuId === rowKey ? null : rowKey)}
           onChat={() => { setMenuId(null); openChat(l._cid) }}
-          onDetails={() => { setMenuId(null); navigate(`/leads/${encodeURIComponent(l._cid)}`) }} />)
+          onDetails={() => { setMenuId(null); navigate(`/leads/${encodeURIComponent(l._cid)}`) }}
+          onMessenger={/^(fb|ig):/.test(String(l._cid || '')) ? () => { setMenuId(null); openMessenger(l._cid) } : null} />)
       default: return null
     }
   }
@@ -604,7 +610,7 @@ function TempBadge({ t }) {
   return <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold capitalize ${cls}`}>{icon} {t}</span>
 }
 
-function RowMenu({ open, onToggle, onChat, onDetails }) {
+function RowMenu({ open, onToggle, onChat, onDetails, onMessenger }) {
   const ref = useRef(null)
   useEffect(() => {
     if (!open) return
@@ -618,6 +624,7 @@ function RowMenu({ open, onToggle, onChat, onDetails }) {
         <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-left text-sm shadow-pop">
           <button onClick={onChat} className="flex w-full items-center gap-2 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Open chat</button>
           <button onClick={onDetails} className="flex w-full items-center gap-2 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Open lead details</button>
+          {onMessenger && <button onClick={onMessenger} className="flex w-full items-center gap-2 px-3 py-2 font-medium text-blue-600 hover:bg-blue-50"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.36 2 2 6.13 2 11.7c0 2.91 1.19 5.44 3.14 7.17.16.14.26.35.27.57l.05 1.78c.02.57.6.94 1.12.71l1.99-.88c.17-.07.35-.09.53-.04.91.25 1.88.38 2.8.38 5.64 0 10-4.13 10-9.7C22 6.13 17.64 2 12 2zm6 7.46l-2.94 4.66c-.47.74-1.47.93-2.18.41l-2.34-1.75a.6.6 0 0 0-.72 0l-3.16 2.4c-.42.32-.97-.18-.69-.63l2.94-4.66c.47-.74 1.47-.93 2.18-.41l2.34 1.75c.21.16.51.16.72 0l3.16-2.4c.42-.32.97.18.69.63z"/></svg>Open in Messenger</button>}
         </div>
       )}
     </div>
