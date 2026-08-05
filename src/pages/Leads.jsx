@@ -84,6 +84,7 @@ export default function Leads() {
   const [page, setPage] = useState(1); const [perPage, setPerPage] = useState(10)
   const [menuId, setMenuId] = useState(null)
   const [pendingFrom, setPendingFrom] = useState('agent')     // default: agent ko reply karna hai (customer waiting)
+  const [activeOnly, setActiveOnly] = useState(false)         // sirf Active status wale leads
   const [tagFilter, setTagFilter] = useState([])              // selected tag ids (checkbox multi-select)
   const [tagFilterOpen, setTagFilterOpen] = useState(false)
   const tagFilterRef = useRef(null)
@@ -179,10 +180,11 @@ export default function Leads() {
       if (pendingFrom === 'agent' && l._lastBy !== 'in') return false        // agent ko reply karna hai (customer ne last bheja)
       if (pendingFrom === 'customer' && l._lastBy !== 'out') return false     // customer ko reply karna hai (agent ne last bheja)
       if (tagFilter.length && !(Array.isArray(l._tags) && l._tags.some((t) => tagFilter.includes(t)))) return false   // selected tags me se koi ek
+      if (activeOnly && String(l._status || '').toLowerCase() !== 'active') return false
       if (q) { const hay = `${l.name || ''} ${l.company || ''} ${l._source} ${leadNo(l._cid)}`.toLowerCase(); if (!hay.includes(q)) return false }
       return true
     }).sort((a, b) => b._firstTs - a._firstTs)
-  }, [inPeriod, stage, status, source, query, pendingFrom, tagFilter])
+  }, [inPeriod, stage, status, source, query, pendingFrom, tagFilter, activeOnly])
 
   // stat cards (over the selected period)
   const s = useMemo(() => ({
@@ -194,7 +196,7 @@ export default function Leads() {
     orders: inPeriod.filter((l) => ORDER_STAGES.includes(l._stage)).length,
   }), [inPeriod])
 
-  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage, pendingFrom, tagFilter])
+  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage, pendingFrom, tagFilter, activeOnly])
   // Date fields ko top period tabs ke saath sync rakho (custom chhod ke).
   useEffect(() => {
     if (period === 'custom') return
@@ -208,8 +210,8 @@ export default function Leads() {
   const pageCids = pageRows.filter((l) => l._cid).map((l) => l._cid)
   const allPageSelected = pageCids.length > 0 && pageCids.every((c) => selected.has(c))
   const toggleAllPage = () => setSelected((s) => { const n = new Set(s); if (pageCids.every((c) => n.has(c))) pageCids.forEach((c) => n.delete(c)); else pageCids.forEach((c) => n.add(c)); return n })
-  const anyFilter = stage || status || source || query || pendingFrom || tagFilter.length
-  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setQuery(''); setPeriod('all'); setPendingFrom(''); setTagFilter([]) }
+  const anyFilter = stage || status || source || query || pendingFrom || tagFilter.length || activeOnly
+  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setQuery(''); setPeriod('all'); setPendingFrom(''); setTagFilter([]); setActiveOnly(false) }
 
   const openChat = (cid) => navigate(`/dashboard?conv=${encodeURIComponent(cid)}`)
 
@@ -405,6 +407,9 @@ export default function Leads() {
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date to</label>
                 <input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPeriod('custom') }} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm" /></div>
               <div className="flex items-end gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                  <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} /> Active only
+                </label>
                 {anyFilter && <button onClick={clearAll} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">✕ Clear</button>}
               </div>
             </div>

@@ -1479,9 +1479,30 @@ function knownOutgoing(convId, mid, text, ts, hasAtt) {
 }
 
 // Save a message to Postgres AND push it to Qdrant (used by every insert path).
+// Auto-tag rules — message text ke keywords se conversation par tag lagao.
+// Existing flag ids: 'unsubcribe' (Unsubscribe), 'blocked', 'spam'.
+const AUTO_TAG_RULES = [
+  { id: 'unsubcribe', re: /\bunsubscribe(d)?\b|opt[\s-]?out|remove me from/i },
+  { id: 'spam', re: /\bscam\b|\bspam\b|\bfraud(ulent)?\b/i },
+  { id: 'blocked', re: /blocked me|you(?:'re| are)\s+blocked|i(?:'ll| will|'m going to)\s+block (?:you|this|your)/i },
+]
+function autoTagConv(convId) {
+  const conv = findById('conversations', convId)
+  if (!conv) return false
+  const text = getAll('messages').filter((m) => m.conversation_id === convId).map((m) => m.text || '').join('\n')
+  const cur = new Set(Array.isArray(conv.tags) ? conv.tags : [])
+  let changed = false
+  for (const r of AUTO_TAG_RULES) if (!cur.has(r.id) && r.re.test(text)) { cur.add(r.id); changed = true }
+  if (changed) update('conversations', convId, { tags: [...cur] })
+  return changed
+}
+// system/automated messages — real agent/customer reply NAHI (last-message detection me skip).
+const isSystemMsg = (m) => /replied to an ad|assigned (this|the) conversation|assigned this to|Badge Confirmed|account is currently elig|conversation assigned/i.test(String(m.text || ''))
+
 function saveMessage(row) {
   const m = insert('messages', row)
   ingestMessage(m)
+  autoTagConv(m.conversation_id)                 // keyword auto-tag (unsubscribe/spam/blocked)
   // "chat kab shuru hui" — sabse pehle message ka time. Pehle message par set; koi purana
   // message aaye (backfill/reorder) to neeche le aao. Established chats me kuch update nahi hota.
   const t = Number(m.ts) || Date.parse(m.created_at) || 0
@@ -1490,6 +1511,13 @@ function saveMessage(row) {
   captureSourceArtworks(m).catch(() => {})
   return m
 }
+
+// One-time: purani saari chats par keyword auto-tag chalao (unsubscribe/spam/blocked).
+app.post('/api/auto-tag/backfill', authRequired, (req, res) => {
+  let tagged = 0
+  for (const c of getAll('conversations')) if (autoTagConv(c.id)) tagged++
+  res.json({ ok: true, tagged })
+})
 
 // Pull relevant Knowledge Base snippets from Qdrant for a query (RAG).
 async function ragContext(query) {
@@ -1584,7 +1612,7 @@ app.get('/api/leads-list', authRequired, async (req, res) => {
     let _i = 0
     for (const m of getAll('messages')) {
       const i = _i++
-      if (m.dir === 'note') continue
+      if (m.dir === 'note' || isSystemMsg(m)) continue        // note + system/auto messages skip (Agent/Customer clean)
       const k = Number(m.ts) || (m.created_at ? Date.parse(m.created_at) : 0) || 0
       const prev = lastByConv[m.conversation_id]
       if (!prev || k >= prev.k) lastByConv[m.conversation_id] = { m, k, i }
