@@ -84,6 +84,10 @@ export default function Leads() {
   const [page, setPage] = useState(1); const [perPage, setPerPage] = useState(10)
   const [menuId, setMenuId] = useState(null)
   const [pendingFrom, setPendingFrom] = useState('agent')     // default: agent ko reply karna hai (customer waiting)
+  const [tagFilter, setTagFilter] = useState([])              // selected tag ids (checkbox multi-select)
+  const [tagFilterOpen, setTagFilterOpen] = useState(false)
+  const tagFilterRef = useRef(null)
+  useEffect(() => { const h = (e) => { if (tagFilterRef.current && !tagFilterRef.current.contains(e.target)) setTagFilterOpen(false) }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h) }, [])
   // Column show/hide — user preference (localStorage). 'show'/'hide' set kare to auto-hide ko override karta hai.
   const [colPref, setColPref] = useState(() => { try { return JSON.parse(localStorage.getItem('leadsColPref') || '{}') } catch { return {} } })
   useEffect(() => { localStorage.setItem('leadsColPref', JSON.stringify(colPref)) }, [colPref])
@@ -174,10 +178,11 @@ export default function Leads() {
       if (source && l._source !== source) return false
       if (pendingFrom === 'agent' && l._lastBy !== 'in') return false        // agent ko reply karna hai (customer ne last bheja)
       if (pendingFrom === 'customer' && l._lastBy !== 'out') return false     // customer ko reply karna hai (agent ne last bheja)
+      if (tagFilter.length && !(Array.isArray(l._tags) && l._tags.some((t) => tagFilter.includes(t)))) return false   // selected tags me se koi ek
       if (q) { const hay = `${l.name || ''} ${l.company || ''} ${l._source} ${leadNo(l._cid)}`.toLowerCase(); if (!hay.includes(q)) return false }
       return true
     }).sort((a, b) => b._firstTs - a._firstTs)
-  }, [inPeriod, stage, status, source, query, pendingFrom])
+  }, [inPeriod, stage, status, source, query, pendingFrom, tagFilter])
 
   // stat cards (over the selected period)
   const s = useMemo(() => ({
@@ -189,14 +194,22 @@ export default function Leads() {
     orders: inPeriod.filter((l) => ORDER_STAGES.includes(l._stage)).length,
   }), [inPeriod])
 
-  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage, pendingFrom])
+  useEffect(() => { setPage(1) }, [query, period, stage, status, source, from, to, perPage, pendingFrom, tagFilter])
+  // Date fields ko top period tabs ke saath sync rakho (custom chhod ke).
+  useEffect(() => {
+    if (period === 'custom') return
+    const r = periodRange(period)
+    const s = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+    setFrom(r.from ? s(r.from) : '')                          // 'all' -> khaali
+    setTo(period === 'all' ? '' : s(Date.now()))             // rolling periods -> aaj tak
+  }, [period])
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage))
   const pageRows = filtered.slice((page - 1) * perPage, page * perPage)
   const pageCids = pageRows.filter((l) => l._cid).map((l) => l._cid)
   const allPageSelected = pageCids.length > 0 && pageCids.every((c) => selected.has(c))
   const toggleAllPage = () => setSelected((s) => { const n = new Set(s); if (pageCids.every((c) => n.has(c))) pageCids.forEach((c) => n.delete(c)); else pageCids.forEach((c) => n.add(c)); return n })
-  const anyFilter = stage || status || source || from || to || query || pendingFrom
-  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setFrom(''); setTo(''); setQuery(''); setPeriod('all'); setPendingFrom('') }
+  const anyFilter = stage || status || source || query || pendingFrom || tagFilter.length
+  const clearAll = () => { setStage(''); setStatus(''); setSource(''); setQuery(''); setPeriod('all'); setPendingFrom(''); setTagFilter([]) }
 
   const openChat = (cid) => navigate(`/dashboard?conv=${encodeURIComponent(cid)}`)
 
@@ -362,12 +375,31 @@ export default function Leads() {
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{statuses.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Source</label>
                 <select value={source} onChange={(e) => setSource(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm"><option value="">All</option>{sources.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
-              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Reply Pending From</label>
+              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Waiting for? <span className="font-normal text-slate-400">(auto)</span></label>
                 <select value={pendingFrom} onChange={(e) => setPendingFrom(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
                   <option value="">All</option>
-                  <option value="agent">Agent needs to reply (Customer waiting)</option>
-                  <option value="customer">Customer needs to reply (We are waiting)</option>
+                  <option value="agent">Agent (needs to reply)</option>
+                  <option value="customer">Customer (their reply)</option>
                 </select></div>
+              <div><label className="mb-1 block text-xs font-semibold text-slate-600">Tags</label>
+                <div className="relative" ref={tagFilterRef}>
+                  <button onClick={() => setTagFilterOpen((o) => !o)} className="flex w-full items-center justify-between gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm">
+                    <span className="truncate text-slate-600">{tagFilter.length ? `${tagFilter.length} selected` : 'All'}</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  {tagFilterOpen && (
+                    <div className="absolute left-0 top-full z-30 mt-1 max-h-60 w-56 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                      {flags.length === 0 && <div className="px-2 py-1.5 text-xs text-slate-400">No tags yet</div>}
+                      {flags.map((f) => { const on = tagFilter.includes(f.id); const c = FLAG_COLORS[f.color] || FLAG_COLORS.slate; return (
+                        <label key={f.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
+                          <input type="checkbox" checked={on} onChange={() => setTagFilter((s) => on ? s.filter((x) => x !== f.id) : [...s, f.id])} />
+                          <span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} /><span className="flex-1">{f.name}</span>
+                        </label>
+                      )})}
+                      {tagFilter.length > 0 && <button onClick={() => setTagFilter([])} className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50">Clear tags</button>}
+                    </div>
+                  )}
+                </div></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date from</label>
                 <input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPeriod('custom') }} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm" /></div>
               <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date to</label>
