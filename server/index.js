@@ -761,9 +761,9 @@ app.get('/api/meta/messenger-link/:id', authRequired, async (req, res) => {
     const r = await fetch(`https://graph.facebook.com/v21.0/${pid}/conversations?user_id=${encodeURIComponent(psid)}&fields=id,link&access_token=${token}`, { signal: AbortSignal.timeout(6000) })
     const j = await r.json()
     const link = j?.data?.[0]?.link              // "/<pid>/inbox/<NUMERIC_THREAD>/?section=messages"
-    const num = (/\/inbox\/(\d+)/.exec(link || '') || [])[1]   // actual numeric thread id (URL me yehi kaam karta hai)
-    const url = num ? `${inbox}&selected_item_id=${num}` : (link ? `https://www.facebook.com${link}` : inbox)
-    res.json({ url, threadId: num || null })
+    const num = (/\/inbox\/(\d+)/.exec(link || '') || [])[1]   // actual numeric thread id
+    const url = num ? `${inbox}&selected_item_id=${num}&thread_type=FB_MESSAGE` : (link ? `https://www.facebook.com${link}` : inbox)
+    res.json({ url, threadId: num || null, link: link || null })
   } catch { res.json({ url: inbox }) }
 })
 
