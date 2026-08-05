@@ -749,18 +749,22 @@ app.get('/api/meta/status', authRequired, (req, res) => {
   })
 })
 
-// "Open in Messenger" — us conversation ka Facebook page-inbox direct link (Graph API se).
+// "Open in Messenger" — us conversation ka Meta Business Suite direct deep-link.
+// Graph se thread id (t_...) le kar Business Suite inbox me us hi chat ko select karta hai.
+// Graph slow/hang na kare isliye 6s timeout — warna sirf inbox link.
 app.get('/api/meta/messenger-link/:id', authRequired, async (req, res) => {
   const pid = metaPageId(), token = metaToken()
   const psid = String(req.params.id).replace(/^(fb|ig):/, '')
-  const fallback = pid ? `https://business.facebook.com/latest/inbox/all?asset_id=${pid}&mailbox_id=${pid}` : 'https://business.facebook.com/latest/inbox/all'
-  if (!pid || !token || !psid) return res.json({ url: fallback })
+  const inbox = pid ? `https://business.facebook.com/latest/inbox/all?asset_id=${pid}&mailbox_id=${pid}` : 'https://business.facebook.com/latest/inbox/all'
+  if (!pid || !token || !psid) return res.json({ url: inbox })
   try {
-    const r = await fetch(`https://graph.facebook.com/v21.0/${pid}/conversations?user_id=${encodeURIComponent(psid)}&fields=link&access_token=${token}`)
+    const r = await fetch(`https://graph.facebook.com/v21.0/${pid}/conversations?user_id=${encodeURIComponent(psid)}&fields=id,link&access_token=${token}`, { signal: AbortSignal.timeout(6000) })
     const j = await r.json()
-    const link = j?.data?.[0]?.link            // e.g. "/<pageid>/inbox/<threadid>/?section=messages"
-    res.json({ url: link ? `https://www.facebook.com${link}` : fallback })
-  } catch { res.json({ url: fallback }) }
+    const tid = j?.data?.[0]?.id                 // e.g. "t_3227283397476681"
+    const link = j?.data?.[0]?.link              // page-inbox path fallback
+    const url = tid ? `${inbox}&selected_item_id=${tid}` : (link ? `https://www.facebook.com${link}` : inbox)
+    res.json({ url, threadId: tid || null })
+  } catch { res.json({ url: inbox }) }
 })
 
 // Save the Page Access Token, verify it via Graph, cache page + IG info.
