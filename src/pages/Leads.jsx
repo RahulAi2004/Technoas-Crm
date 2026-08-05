@@ -78,12 +78,12 @@ export default function Leads() {
   const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [query, setQuery] = useState('')
-  const [period, setPeriod] = useState('all')
+  const [period, setPeriod] = useState('today')   // default: daily metrics
   const [stage, setStage] = useState(''); const [status, setStatus] = useState(''); const [source, setSource] = useState('')
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [page, setPage] = useState(1); const [perPage, setPerPage] = useState(10)
   const [menuId, setMenuId] = useState(null)
-  const [pendingFrom, setPendingFrom] = useState('')          // '' | 'agent' | 'customer' — reply kiski taraf se pending
+  const [pendingFrom, setPendingFrom] = useState('agent')     // default: agent ko reply karna hai (customer waiting)
   // Column show/hide — user preference (localStorage). 'show'/'hide' set kare to auto-hide ko override karta hai.
   const [colPref, setColPref] = useState(() => { try { return JSON.parse(localStorage.getItem('leadsColPref') || '{}') } catch { return {} } })
   useEffect(() => { localStorage.setItem('leadsColPref', JSON.stringify(colPref)) }, [colPref])

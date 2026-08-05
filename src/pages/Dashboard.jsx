@@ -327,6 +327,8 @@ export default function Dashboard() {
     setConversationsRaw((cs) => cs.map((c) => c.id === id ? { ...c, ...patch } : c))
     api.patch(`/api/conversations/${encodeURIComponent(id)}`, patch).catch(() => {})
   }
+  // Chat se pichhli screen pe wapas — agar Leads/kisi page se aaye to wahin, warna list par.
+  const goBack = () => { if (window.history.length > 1) navigate(-1); else setCurrentId(null) }
   const toggleBookmark = () => currentConv && patchConv(currentConv.id, { bookmarked: !currentConv.bookmarked })
   const assignToMe = () => currentConv && patchConv(currentConv.id, { assigned_to: myName })
 
@@ -922,8 +924,8 @@ export default function Dashboard() {
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-3 py-2.5 sm:px-5">
               <div className="flex min-w-0 items-start gap-3">
                 {/* back to the conversation list — phones only */}
-                <button type="button" onClick={() => setCurrentId(null)} aria-label="Back to conversations"
-                  className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden">
+                <button type="button" onClick={goBack} aria-label="Back" title="Back"
+                  className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </button>
                 <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${conv.avatarBg} text-sm font-bold`}>{conv.initials}</span>
