@@ -541,6 +541,7 @@ export default function Leads() {
 // Messages popup — customer/agent ke messages (kaunsa customer ka, kaunsa hamra)
 function MsgPopup({ cid, name, onClose }) {
   const [msgs, setMsgs] = useState(null)
+  const [view, setView] = useState('normal')   // 'normal' | 'max' | 'min' — window controls
   const bottomRef = useRef(null)
   const lenRef = useRef(0)
   useEffect(() => {
@@ -554,17 +555,49 @@ function MsgPopup({ cid, name, onClose }) {
   }, [cid])
   // naye message aane par hi neeche scroll (warna user upar padh raha ho to yank na ho)
   useEffect(() => { if (msgs && msgs.length !== lenRef.current) { lenRef.current = msgs.length; bottomRef.current?.scrollIntoView({ block: 'end' }) } }, [msgs])
+  useEffect(() => { if (view !== 'min') bottomRef.current?.scrollIntoView({ block: 'end' }) }, [view])   // restore/maximize par neeche scroll
   // Inbox jaise `ts` se sort (stable) — recent hamesha neeche. created_at re-ingest par badalta hai.
   const list = (msgs || []).filter((m) => (m.dir || m.direction) !== 'note')
     .map((m, idx) => ({ m, idx, k: Number(m.ts) || Date.parse(m.created_at) || 0 }))
     .sort((a, b) => (a.k - b.k) || (a.idx - b.idx))
     .map(({ m }) => m)
+  const maximized = view === 'max'
+
+  // Minimized: chhota floating bar niche-right — backdrop nahi taaki peeche ki page use ho sake
+  if (view === 'min') {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 w-72 rounded-t-xl bg-white shadow-2xl ring-1 ring-slate-200">
+        <div className="flex items-center justify-between rounded-t-xl bg-slate-50 px-3 py-2">
+          <button onClick={() => setView('normal')} title="Open" className="truncate text-sm font-bold text-slate-700 hover:text-brand-600">💬 {name || 'Customer'}</button>
+          <div className="flex items-center gap-0.5">
+            <button onClick={() => setView('normal')} title="Restore" className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+            </button>
+            <button onClick={onClose} title="Close" className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">×</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={onClose}>
-      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div className={`fixed inset-0 z-50 grid place-items-center bg-black/30 ${maximized ? 'p-2 sm:p-3' : 'p-4'}`} onClick={onClose}>
+      <div className={`flex flex-col rounded-xl bg-white shadow-xl ${maximized ? 'h-full w-full max-w-none' : 'max-h-[80vh] w-full max-w-lg'}`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <h3 className="text-sm font-bold">Messages — {name || 'Customer'}</h3>
-          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100">×</button>
+          <div className="flex items-center gap-0.5">
+            <button onClick={() => setView('min')} title="Minimize" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="4" y1="11" x2="12" y2="11" /></svg>
+            </button>
+            <button onClick={() => setView(maximized ? 'normal' : 'max')} title={maximized ? 'Restore' : 'Maximize'} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100">
+              {maximized ? (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="5" width="8" height="8" rx="1" /><path d="M6 5V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-1" /></svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+              )}
+            </button>
+            <button onClick={onClose} title="Close" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">×</button>
+          </div>
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto bg-slate-50/60 p-4">
           {msgs === null && <div className="py-6 text-center text-sm text-slate-400">Loading…</div>}
