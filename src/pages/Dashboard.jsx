@@ -850,15 +850,17 @@ export default function Dashboard() {
             )}
 
             <div id="filters-list" className="nice-scroll flex-1 overflow-y-auto">
+              {loadingConvs && (
+                <div className="px-4 py-8 text-center">
+                  <div className="mx-auto mb-3 h-7 w-7 animate-spin rounded-full border-4 border-slate-200 border-t-brand-500" />
+                  <p className="text-sm font-semibold text-slate-600">Loading Decoinks chats…</p>
+                </div>
+              )}
               {visibleConvs.length === 0 && !loadingConvs && (
                 <div className="px-4 py-8 text-center">
                   <div className="text-3xl">💬</div>
-                  <p className="mt-2 text-sm font-semibold text-slate-700">No conversations yet</p>
-                  <p className="mt-1 text-xs text-slate-500">Waiting for ManyChat webhooks. Configure the webhook URL on the <Link to="/integrations" className="font-semibold text-brand-600">Integrations</Link> page.</p>
-                  <div className="mt-4 flex gap-1 px-2">
-                    <input value={lookupId} onChange={(e) => setLookupId(e.target.value)} placeholder="Or paste a Subscriber ID..." className="flex-1 rounded-md border border-slate-200 px-2 py-1 text-xs" />
-                    <button onClick={lookupSubscriber} className="rounded-md bg-brand-600 px-2 py-1 text-xs font-semibold text-white hover:bg-brand-700">Add</button>
-                  </div>
+                  <p className="mt-2 text-sm font-semibold text-slate-700">No conversations found</p>
+                  <p className="mt-1 text-xs text-slate-500">New customer chats will appear here automatically.</p>
                 </div>
               )}
               {visibleConvs.map((c) => {
@@ -898,34 +900,19 @@ export default function Dashboard() {
           <div id="panel-chat" className="flex h-full flex-col overflow-hidden bg-white">
             {!conv && (
               <div className="grid flex-1 place-items-center px-6 py-8">
-                <div className="w-full max-w-xl text-center">
-                  <div className="text-5xl">📥</div>
-                  <h2 className="mt-3 text-lg font-bold">Inbox is empty</h2>
-                  <p className="mt-1 text-sm text-slate-500">When a customer messages your ManyChat bot, that conversation will land here.</p>
-
-                  <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm">
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                      <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-50 text-emerald-600">⚡</span>
-                      Quick: Add a subscriber by ID
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">Paste a subscriber ID from ManyChat → Audience (the URL contains it). Their info is pulled live + a conversation opens here.</p>
-                    <div className="mt-3 flex items-center gap-2">
-                      <input value={lookupId} onChange={(e) => setLookupId(e.target.value)} placeholder="e.g. 12345678901234567" className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm" />
-                      <button onClick={lookupSubscriber} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Add</button>
-                    </div>
+                {loadingConvs ? (
+                  <div className="text-center">
+                    <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-500" />
+                    <p className="text-base font-semibold text-slate-700">Decoinks chats are loading, please wait!</p>
+                    <p className="mt-1 text-sm text-slate-400">Fetching your conversations…</p>
                   </div>
-
-                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-5 text-left">
-                    <div className="flex items-center gap-2 text-sm font-bold text-amber-800">🔌 Webhook setup for live messages</div>
-                    <p className="mt-1 text-xs text-amber-900/70">ManyChat needs a <strong>public URL</strong> for the webhook — your <code className="rounded bg-white px-1">localhost</code> URL is not reachable from the internet.</p>
-                    <div className="mt-2 space-y-1 text-xs text-amber-900/80">
-                      <div><strong>Option A — ngrok (5 min):</strong> Install ngrok → run <code className="rounded bg-white px-1">ngrok http 3001</code> → use the <code className="rounded bg-white px-1">https://....ngrok.io/api/webhooks/manychat</code> URL in ManyChat → Automation → External Triggers.</div>
-                      <div><strong>Option B — Deploy:</strong> Push this project to Vercel and use <code className="rounded bg-white px-1">https://&lt;your-app&gt;.vercel.app/api/webhooks/manychat</code>.</div>
-                    </div>
+                ) : (
+                  <div className="text-center">
+                    <div className="text-5xl">💬</div>
+                    <h2 className="mt-3 text-lg font-bold text-slate-700">Select a conversation</h2>
+                    <p className="mt-1 text-sm text-slate-500">Choose a chat from the list to view its messages.</p>
                   </div>
-
-                  <Link to="/integrations" className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50">Configure ManyChat →</Link>
-                </div>
+                )}
               </div>
             )}
             {conv && (<>
