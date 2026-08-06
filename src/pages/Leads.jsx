@@ -223,7 +223,9 @@ export default function Leads() {
   const anyFilter = stage || status || source || query || pendingFrom || tagFilter.length || activeOnly || untagged
   const clearAll = () => { setStage(''); setStatus(''); setSource(''); setQuery(''); setPeriod('all'); setPendingFrom(''); setTagFilter([]); setActiveOnly(false); setUntagged(false) }
 
-  const openChat = (cid) => navigate(`/dashboard?conv=${encodeURIComponent(cid)}`)
+  // Chat ek hi reusable "chat tab" mein khulti hai: fixed window-name se doosri lead pe click
+  // karne par naya tab nahi banta — wahi tab nayi chat pe chala jaata hai (band ho to naya khulta hai).
+  const openChat = (cid) => { if (!cid) return; const w = window.open(`/dashboard?conv=${encodeURIComponent(cid)}`, 'crm_chat'); if (w) w.focus() }
   const openMessenger = async (cid) => {
     const w = window.open('', '_blank')
     try { const r = await api.get(`/api/meta/messenger-link/${encodeURIComponent(cid)}`); if (w) w.location.href = r?.url || 'https://business.facebook.com/latest/inbox/all' }
