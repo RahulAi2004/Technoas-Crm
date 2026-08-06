@@ -110,6 +110,7 @@ export default function Leads() {
     if (l._cid) api.patch(`/api/conversations/${encodeURIComponent(l._cid)}`, { tags: next }).catch(() => {})
   }
   const [msgPopup, setMsgPopup] = useState(null)   // { cid, name } — messages popup
+  const [summaryPopup, setSummaryPopup] = useState(null)   // { cid, name } — AI summary popup
   const [tagPopup, setTagPopup] = useState(null)   // lead — tag picker popup
   // Bulk select + bulk tag
   const [selected, setSelected] = useState(() => new Set())
@@ -271,10 +272,16 @@ export default function Leads() {
         : <span className="text-slate-300">—</span>
       case 'lastName': return <span className="whitespace-nowrap text-slate-700">{l._lastBy === 'in' ? (l.name || 'Customer') : l._lastBy === 'out' ? (l._lastAgent || 'Agent') : '—'}</span>
       case 'messages': return l._lastBy ? (
-        <button onClick={() => setMsgPopup({ cid: l._cid, name: l.name })} title="View messages"
-          className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-600">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setMsgPopup({ cid: l._cid, name: l.name })} title="View messages"
+            className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-600">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+          </button>
+          <button onClick={() => setSummaryPopup({ cid: l._cid, name: l.name })} title="View summary"
+            className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          </button>
+        </div>
       ) : <span className="text-slate-300">—</span>
       case 'lastTime': return <span className="whitespace-nowrap text-slate-600">{fmtDateTime(l._lastAt)}</span>
       case 'pending': return l._lastAt
@@ -537,6 +544,7 @@ export default function Leads() {
       </div>
       {manageFlagsOpen && <ManageFlagsModal flags={flags} onClose={() => setManageFlagsOpen(false)} onChanged={loadFlags} />}
       {msgPopup && <MsgPopup cid={msgPopup.cid} name={msgPopup.name} onClose={() => setMsgPopup(null)} />}
+      {summaryPopup && <SummaryPopup cid={summaryPopup.cid} name={summaryPopup.name} onClose={() => setSummaryPopup(null)} />}
       {tagPopup && <TagPopup lead={tagPopup} flags={flags} onClose={() => setTagPopup(null)}
         onSave={(next) => setLeadTags(tagPopup, next)} onManage={() => { setTagPopup(null); setManageFlagsOpen(true) }} />}
     </div>
@@ -620,6 +628,92 @@ function MsgPopup({ cid, name, onClose }) {
             )
           })}
           <div ref={bottomRef} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Summary popup — conversation ka AI summary (Leads se, messages popup jaisa: maximize/close).
+function SummaryPopup({ cid, name, onClose }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [working, setWorking] = useState(false)
+  const [err, setErr] = useState('')
+  const [max, setMax] = useState(false)
+  const load = () => {
+    setLoading(true)
+    api.get(`/api/ai/summary/${encodeURIComponent(cid)}`)
+      .then((r) => { setData(r); setErr('') })
+      .catch((e) => setErr(e?.message || 'Summary failed'))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [cid])
+  const generate = () => {
+    setWorking(true)
+    api.post(`/api/ai/summary/${encodeURIComponent(cid)}`, {})
+      .then(() => load())
+      .catch((e) => setErr(e?.message || 'Generate failed'))
+      .finally(() => setWorking(false))
+  }
+  const s = data?.summary
+  return (
+    <div className={`fixed inset-0 z-50 grid place-items-center bg-black/30 ${max ? 'p-2 sm:p-3' : 'p-4'}`} onClick={onClose}>
+      <div className={`flex flex-col rounded-xl bg-white shadow-xl ${max ? 'h-[92vh] w-full max-w-none' : 'max-h-[80vh] w-full max-w-lg'}`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <h3 className="text-sm font-bold">Summary — {name || 'Customer'}</h3>
+          <div className="flex items-center gap-0.5">
+            {s && <button onClick={generate} disabled={working} title="Update summary" className="mr-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50">{working ? '…' : '↻'}</button>}
+            <button onClick={() => setMax((m) => !m)} title={max ? 'Restore' : 'Maximize'} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100">
+              {max
+                ? <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="5" width="8" height="8" rx="1" /><path d="M6 5V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-1" /></svg>
+                : <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>}
+            </button>
+            <button onClick={onClose} title="Close" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600">×</button>
+          </div>
+        </div>
+        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
+          {loading && <div className="py-6 text-center text-sm text-slate-400">Loading summary…</div>}
+          {!loading && err && <div className="py-6 text-center text-sm text-rose-500">{err}</div>}
+          {!loading && data?.empty && <div className="py-6 text-center text-sm text-slate-400">No messages to summarize.</div>}
+          {!loading && !err && !data?.empty && (<>
+            {data?.stale && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <span className="text-xs font-semibold text-amber-800">{data.newCount} new message{data.newCount > 1 ? 's' : ''} since this summary.</span>
+                <button onClick={generate} disabled={working} className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50">{working ? 'Updating…' : '↻ Update'}</button>
+              </div>
+            )}
+            {s ? (<>
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="text-sm font-bold">📝 Conversation summary</div>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{s.overview}</p>
+              </div>
+              {Array.isArray(s.keyPoints) && s.keyPoints.length > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-sm font-bold">Key points</div>
+                  <ul className="mt-2 space-y-1.5">
+                    {s.keyPoints.map((k, i) => <li key={i} className="flex gap-2 text-sm text-slate-700"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" /><span>{k}</span></li>)}
+                  </ul>
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Current status</div>
+                  <p className="mt-1 text-sm font-medium text-slate-800">{s.status || '—'}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Next step</div>
+                  <p className="mt-1 text-sm font-medium text-emerald-900">{s.nextStep || '—'}</p>
+                </div>
+              </div>
+              {data?.summaryAt && <div className="text-center text-[11px] text-slate-400">Saved {new Date(data.summaryAt).toLocaleString()}</div>}
+            </>) : (
+              <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center">
+                <div className="text-sm text-violet-700">Abhi koi summary nahi hai.</div>
+                <button onClick={generate} disabled={working} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{working ? 'Generating…' : '✨ Generate summary'}</button>
+              </div>
+            )}
+          </>)}
         </div>
       </div>
     </div>
