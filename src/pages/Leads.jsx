@@ -406,6 +406,12 @@ export default function Leads() {
                   </button>
                   {tagFilterOpen && (
                     <div className="absolute left-0 top-full z-30 mt-1 max-h-60 w-56 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                      {flags.length > 0 && (
+                        <div className="flex items-center gap-1 px-1 pb-1">
+                          <button onClick={() => { setUntagged(false); setTagFilter(flags.map((f) => f.id)) }} className="flex-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200">Select all</button>
+                          <button onClick={() => { setUntagged(false); setTagFilter([]) }} className="flex-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200">Unselect all</button>
+                        </div>
+                      )}
                       <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm font-semibold hover:bg-slate-50">
                         <input type="checkbox" checked={untagged} onChange={() => { setUntagged((u) => !u); if (!untagged) setTagFilter([]) }} />
                         <span className="flex-1">Untagged (no tags)</span>
@@ -418,7 +424,6 @@ export default function Leads() {
                           <span className={`h-2.5 w-2.5 rounded-full ${c.dot}`} /><span className="flex-1">{f.name}</span>
                         </label>
                       )})}
-                      {tagFilter.length > 0 && <button onClick={() => setTagFilter([])} className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50">Clear tags</button>}
                     </div>
                   )}
                 </div></div>
