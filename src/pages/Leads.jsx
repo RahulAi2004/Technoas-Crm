@@ -582,7 +582,7 @@ function MsgPopup({ cid, name, onClose }) {
 
   return (
     <div className={`fixed inset-0 z-50 grid place-items-center bg-black/30 ${maximized ? 'p-2 sm:p-3' : 'p-4'}`} onClick={onClose}>
-      <div className={`flex flex-col rounded-xl bg-white shadow-xl ${maximized ? 'h-full w-full max-w-none' : 'max-h-[80vh] w-full max-w-lg'}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`flex flex-col rounded-xl bg-white shadow-xl ${maximized ? 'h-[92vh] w-full max-w-none' : 'max-h-[80vh] w-full max-w-lg'}`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <h3 className="text-sm font-bold">Messages — {name || 'Customer'}</h3>
           <div className="flex items-center gap-0.5">
