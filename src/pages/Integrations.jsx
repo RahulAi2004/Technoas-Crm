@@ -55,7 +55,7 @@ export default function Integrations() {
   const connectMeta = async (e) => {
     e.preventDefault()
     if (!metaAppId.trim() || !metaAppSecret.trim() || !metaToken.trim()) {
-      toast('App ID, App Secret aur Access Token — teeno zaroori hain', 'error'); return
+      toast('App ID, App Secret, and Access Token are all required', 'error'); return
     }
     setMetaBusy(true)
     try {
@@ -73,7 +73,7 @@ export default function Integrations() {
 
   // "Continue with Facebook" — OAuth via the FB JS SDK, then connect using the granted token.
   const continueWithFacebook = async () => {
-    if (!metaAppId.trim() || !metaAppSecret.trim()) { toast('Pehle App ID aur App Secret bharo (token Facebook se aa jayega)', 'error'); return }
+    if (!metaAppId.trim() || !metaAppSecret.trim()) { toast('Enter the App ID and App Secret first (the token will come from Facebook)', 'error'); return }
     setMetaBusy(true)
     try {
       const FB = await loadFacebookSDK(metaAppId.trim())
@@ -221,7 +221,7 @@ export default function Integrations() {
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>
                   {metaBusy ? 'Connecting…' : 'Continue with Facebook'}
                 </button>
-                <p className="text-[11px] text-slate-500">App ID + App Secret bharke ye dabao — Facebook ka login + permissions popup khulega, phir aapka Page + Instagram khud connect ho jayega.</p>
+                <p className="text-[11px] text-slate-500">Enter the App ID + App Secret and click this — Facebook's login + permissions popup will open, then your Page + Instagram will connect automatically.</p>
 
                 <div className="relative my-1"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"></div></div><div className="relative flex justify-center"><span className="bg-white px-2 text-[11px] font-semibold text-slate-400">OR paste a token manually</span></div></div>
 
@@ -234,7 +234,7 @@ export default function Integrations() {
                     placeholder="EAAT... (production page access token)"
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-mono outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20"
                   />
-                  <p className="mt-1 text-[11px] text-slate-500">App ID + Secret + Token sirf aapke server (DB) pe store hote hain. Connect ke baad app khud permanent Page token bana leta hai aur zarurat par auto-refresh karta hai. Detailed never-expire guide: <Link to="/connect-meta" className="font-semibold text-brand-600 hover:underline">Connect Meta page</Link>.</p>
+                  <p className="mt-1 text-[11px] text-slate-500">App ID + Secret + Token are stored only on your server (DB). After connecting, the app creates a permanent Page token itself and auto-refreshes it when needed. Detailed never-expire guide: <Link to="/connect-meta" className="font-semibold text-brand-600 hover:underline">Connect Meta page</Link>.</p>
                 </div>
                 <button type="submit" disabled={metaBusy} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
                   {metaBusy ? 'Connecting & syncing…' : 'Connect & Sync'}

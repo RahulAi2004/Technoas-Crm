@@ -403,7 +403,7 @@ export default function Dashboard() {
   // File (attach ya paste) ko QUEUE me daalo — preview dikhega, Send pe jayegi (turant nahi).
   const queueFile = async (file) => {
     if (!file || !currentId) return
-    if (file.size > 24 * 1024 * 1024) { toast('File 24MB se chhoti honi chahiye', 'error'); return }
+    if (file.size > 24 * 1024 * 1024) { toast('File must be smaller than 24MB', 'error'); return }
     const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file) })
     const id = `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     setAttachQueue((q) => [...q, { id, dataUrl, isImg: (file.type || '').startsWith('image/'),
@@ -1088,7 +1088,7 @@ export default function Dashboard() {
                           {it.isImg
                             ? <img src={it.dataUrl} alt={it.name} className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200" />
                             : <div className="grid h-16 w-16 place-items-center rounded-lg bg-slate-100 px-1 text-center text-[9px] font-semibold text-slate-500 ring-1 ring-slate-200">📎 {it.name.slice(0, 14)}</div>}
-                          <button onClick={() => setAttachQueue((q) => q.filter((x) => x.id !== it.id))} title="Hatao"
+                          <button onClick={() => setAttachQueue((q) => q.filter((x) => x.id !== it.id))} title="Remove"
                             className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-slate-700 text-[11px] font-bold text-white shadow hover:bg-rose-600">×</button>
                         </div>
                       ))}
@@ -1246,7 +1246,7 @@ function TranslationHelper({ onSendReply, lastIncoming }) {
       {/* Customer message -> English */}
       <div className="mt-3">
         <label className="mb-1 block text-[11px] font-semibold text-slate-600">Last customer message ({langName}) → English</label>
-        <textarea rows="2" value={lastIncoming} readOnly placeholder="Abhi koi customer message nahi aaya" className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none" />
+        <textarea rows="2" value={lastIncoming} readOnly placeholder="No customer message yet" className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none" />
         <button onClick={doIncoming} disabled={inBusy || !lastIncoming.trim()} className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
           {inBusy ? 'Translating…' : 'Translate to English'}
         </button>
@@ -1263,7 +1263,7 @@ function TranslationHelper({ onSendReply, lastIncoming }) {
       {/* English -> customer language */}
       <div>
         <label className="mb-1 block text-[11px] font-semibold text-slate-600">Your reply (English) → {langName}</label>
-        <textarea rows="2" value={outText} onChange={(e) => setOutText(e.target.value)} placeholder="English mein type karo..." className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" />
+        <textarea rows="2" value={outText} onChange={(e) => setOutText(e.target.value)} placeholder="Type in English..." className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" />
         <button onClick={doOutgoing} disabled={outBusy || !outText.trim()} className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
           {outBusy ? 'Translating…' : `Translate to ${langName}`}
         </button>
@@ -1286,7 +1286,7 @@ function AnalyzePrompt({ onAnalyze, loading, label }) {
     <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center">
       <div className="text-2xl">✨</div>
       <p className="mt-1 text-sm font-semibold text-slate-700">{label || 'AI analysis not run yet'}</p>
-      <p className="mt-0.5 text-xs text-slate-500">Is conversation ko AI se analyze karo — Intent, Insights, Reply sab real generate honge.</p>
+      <p className="mt-0.5 text-xs text-slate-500">Analyze this conversation with AI — Intent, Insights and Reply are all generated for real.</p>
       <button onClick={onAnalyze} disabled={loading} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
         {loading ? 'Analyzing…' : '✨ Analyze with AI'}
       </button>
@@ -1347,7 +1347,7 @@ function SendPanel({ title, hint, items, onSendReply, onSendImage }) {
   const pickImage = (key) => (e) => {
     const f = e.target.files?.[0]; e.target.value = ''
     if (!f) return
-    if (f.size > 6 * 1024 * 1024) { toast('Image 6MB se chhoti ho', 'error'); return }
+    if (f.size > 6 * 1024 * 1024) { toast('Image must be smaller than 6MB', 'error'); return }
     const r = new FileReader()
     r.onload = async () => {
       try { await api.post('/api/quick-assets', { key, dataBase64: r.result }); setAssets((a) => ({ ...a, [key]: r.result })); toast(`${key} image set ✓`, 'success') }
@@ -1358,7 +1358,7 @@ function SendPanel({ title, hint, items, onSendReply, onSendImage }) {
 
   const send = async () => {
     const chosen = items.filter((_, i) => checked[i])
-    if (!chosen.length) { toast('Pehle kuch select karo', 'info'); return }
+    if (!chosen.length) { toast('Select something first', 'info'); return }
     setBusy(true)
     const texts = []
     for (const it of chosen) {
@@ -1394,7 +1394,7 @@ function SendPanel({ title, hint, items, onSendReply, onSendImage }) {
             {x.key ? (<>
               {assets[x.key] && <img src={assets[x.key]} alt="" className="h-5 w-5 shrink-0 rounded object-cover ring-1 ring-slate-200" />}
               <input ref={(el) => (fileRefs.current[x.key] = el)} type="file" accept="image/*,application/pdf" onChange={pickImage(x.key)} className="hidden" />
-              <button onClick={(e) => { e.preventDefault(); fileRefs.current[x.key]?.click() }} title={assets[x.key] ? 'Image badlo' : 'QR/image upload karo'}
+              <button onClick={(e) => { e.preventDefault(); fileRefs.current[x.key]?.click() }} title={assets[x.key] ? 'Change image' : 'Upload QR/image'}
                 className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${assets[x.key] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{assets[x.key] ? '✓ img' : '⬆ set'}</button>
             </>) : (
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-300"><path d="m9 18 6-6-6-6"/></svg>
@@ -1506,14 +1506,14 @@ function TranslationTab({ onSendReply, incoming }) {
           {replyEn && <button onClick={() => { setReplyEn(''); setNative('') }} className="shrink-0 text-[11px] font-semibold text-slate-400 hover:text-rose-600">Clear</button>}
         </div>
         <textarea value={replyEn} onChange={(e) => setReplyEn(e.target.value)} onBlur={updateNative} rows={4}
-          placeholder="Yahan apna message / question type karo… Send pe customer ki language me chala jayega."
+          placeholder="Type your message / question here… On Send it goes in the customer's language."
           className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:bg-white" />
         {!isEnglish && <button onClick={updateNative} disabled={transBusy} className="mt-2 rounded-md border border-violet-200 px-2.5 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">{transBusy ? 'Translating…' : `↻ Preview ${data.detectedLanguage}`}</button>}
       </div>
 
       {!isEnglish && (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
-          <div className="text-sm font-bold text-emerald-800">Reply in {data.detectedLanguage} (ye send hoga)</div>
+          <div className="text-sm font-bold text-emerald-800">Reply in {data.detectedLanguage} (this will be sent)</div>
           <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-2.5 text-sm text-slate-800">{native || '—'}</p>
         </div>
       )}
@@ -1525,7 +1525,7 @@ function TranslationTab({ onSendReply, incoming }) {
             <button onClick={verifyTranslation} disabled={verifyBusy} className="shrink-0 rounded-md border border-violet-200 px-2.5 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">{verifyBusy ? 'Checking…' : (verify ? '↻ Re-check' : 'Check translation')}</button>
           </div>
           {!verify ? (
-            <p className="mt-2 text-xs text-slate-500">Confirm karo ki Spanish sahi hai — ise word-by-word wapas English mein dekho.</p>
+            <p className="mt-2 text-xs text-slate-500">Confirm the Spanish is correct — review it word by word back in English.</p>
           ) : (
             <>
               <div className="mt-2 rounded-lg bg-slate-50 p-2.5 text-sm text-slate-700">
@@ -1694,7 +1694,7 @@ function HistoryTab({ conv }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {visibleRows.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">Is filter mein koi reply nahi.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">No replies for this filter.</td></tr>
               )}
               {visibleRows.map((r, i) => {
                 const isAgent = r.dir === 'out'
@@ -1781,10 +1781,10 @@ function NotesTab({ conv, onAddNote }) {
     setAiBusy(true)
     try {
       const r = await api.post(`/api/ai/notes/${encodeURIComponent(conv.id)}`, {})
-      if (r.empty || !r.notes?.length) { toast('Is chat se koi note nahi bana', 'info'); return }
+      if (r.empty || !r.notes?.length) { toast('No notes could be generated from this chat', 'info'); return }
       let ok = 0
       for (const n of r.notes) { if (await onAddNote(n.text, n.category, { silent: true })) ok++ }
-      toast(ok === r.notes.length ? `${ok} AI notes added` : `${ok}/${r.notes.length} notes saved (kuch fail — dobara try karo)`, ok ? 'success' : 'error')
+      toast(ok === r.notes.length ? `${ok} AI notes added` : `${ok}/${r.notes.length} notes saved (some failed — try again)`, ok ? 'success' : 'error')
     } catch (ex) { toast(ex.message || 'Failed', 'error') }
     finally { setAiBusy(false) }
   }
@@ -1832,7 +1832,7 @@ function NotesTab({ conv, onAddNote }) {
       </div>
 
       {shown.length === 0 ? (
-        <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">Koi note nahi. "+ Add Note" se naya note banao.</div>
+        <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No notes yet. Use "+ Add Note" to create one.</div>
       ) : (
         <div className="mt-3 space-y-3">
           {shown.map((n, i) => {
@@ -1982,14 +1982,14 @@ function SummaryTab({ conv, msgCount }) {
   // Generate: window + (optionally edited) prompt. savePrompt=true persists it as the new default.
   const runGenerate = (savePrompt = false) => {
     if (!cid) return
-    if (win === 'custom' && !from && !to) { toast('Custom range: From/To date choose karo', 'info'); return }
+    if (win === 'custom' && !from && !to) { toast('Custom range: choose a From/To date', 'info'); return }
     setWorking(true)
     const body = { prompt, savePrompt }
     if (win === 'custom') { body.from = from; body.to = to }
     else if (win !== 'full') body.days = Number(win)
     api.post(`/api/ai/summary/${encodeURIComponent(cid)}`, body)
       .then((r) => {
-        if (r.empty === 'window') { setAdhoc(null); toast('Is time-window me koi message nahi', 'info'); return }
+        if (r.empty === 'window') { setAdhoc(null); toast('No messages in this time window', 'info'); return }
         if (r.adhoc) { setAdhoc({ summary: r.summary, count: r.count, window: r.window }); toast('Summary ready', 'success') }
         else { setInfo((p) => ({ ...(p || {}), cached: true, stale: false, newCount: 0, summary: r.summary, summaryAt: r.summaryAt })); setAdhoc(null); toast(r.mode === 'incremental' ? 'Summary updated with new messages' : 'Summary saved', 'success') }
         if (savePrompt) toast('Prompt saved as default ✓', 'success')
@@ -1998,7 +1998,7 @@ function SummaryTab({ conv, msgCount }) {
       .finally(() => setWorking(false))
   }
 
-  if (!cid) return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Koi conversation select karo.</div>
+  if (!cid) return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Select a conversation.</div>
   if (loading && !info) return <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center text-sm text-violet-700">📝 Loading summary…</div>
   if (error) return <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-6 text-center text-sm text-amber-700">{error}</div>
 
@@ -2033,19 +2033,19 @@ function SummaryTab({ conv, msgCount }) {
           {promptOpen && (
             <div className="mt-2">
               <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}
-                placeholder="Kaisi summary chahiye… (e.g. focus on pricing & objections, ya 2-line TL;DR)"
+                placeholder="What kind of summary do you want… (e.g. focus on pricing & objections, or a 2-line TL;DR)"
                 className="w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[12px] leading-relaxed outline-none focus:border-brand-500 focus:bg-white" />
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <button onClick={() => setPrompt(defaultPrompt)} className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">Reset to default</button>
                 <button onClick={() => runGenerate(true)} disabled={working} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">💾 Save as default + Generate</button>
               </div>
-              <p className="mt-1 text-[10px] text-slate-400">Output format (overview / key points / status / next step) fixed rehta hai — sirf style/focus badalta hai.</p>
+              <p className="mt-1 text-[10px] text-slate-400">The output format (overview / key points / status / next step) stays fixed — only the style/focus changes.</p>
             </div>
           )}
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
-          <span className="text-[11px] text-slate-400">{isDefaultRun ? 'Poori chat ka running summary (saved).' : 'Ad-hoc — running summary ko nahi chhedta.'}</span>
+          <span className="text-[11px] text-slate-400">{isDefaultRun ? 'Running summary of the whole chat (saved).' : 'Ad-hoc — does not touch the running summary.'}</span>
           <button onClick={() => runGenerate(false)} disabled={working} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{working ? 'Generating…' : (isDefaultRun ? '↻ Generate / Update' : '✨ Generate')}</button>
         </div>
       </div>
@@ -2071,7 +2071,7 @@ function SummaryTab({ conv, msgCount }) {
         <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center">
           <div className="text-2xl">📝</div>
           <p className="mt-1 text-sm font-semibold text-slate-700">No summary yet</p>
-          <p className="mt-0.5 text-xs text-slate-500">Upar se period choose karke "Generate" dabao. Full chat ki summary save ho jayegi.</p>
+          <p className="mt-0.5 text-xs text-slate-500">Choose a period above and press "Generate". The full chat summary will be saved.</p>
         </div>
       )}
 
@@ -2117,14 +2117,14 @@ function ResponsesTab({ onSendReply, onSendImage, conv, msgCount }) {
         </div>
 
         {!cid ? (
-          <p className="mt-3 text-sm text-slate-500">Koi conversation select karo.</p>
+          <p className="mt-3 text-sm text-slate-500">Select a conversation.</p>
         ) : loading && !reply ? (
           <p className="mt-3 text-sm text-violet-700">✨ Generating reply for unanswered messages…</p>
         ) : info?.empty ? (
           <p className="mt-3 text-sm text-slate-500">No messages in this chat yet.</p>
         ) : info && info.pending === false && !reply ? (
           <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-sm text-emerald-800">
-            ✅ Aap latest customer message ka reply de chuke ho — koi pending message nahi.
+            ✅ You've already replied to the latest customer message — nothing pending.
             <button onClick={() => generate(true)} className="ml-2 font-semibold text-violet-700 underline hover:text-violet-800">Generate anyway</button>
           </div>
         ) : (
@@ -2261,7 +2261,7 @@ function DesignerTab({ conv }) {
       const jobs = r.jobs || []
       nextRef.current = jobs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1
       setRows(jobs)   // server already saved them
-      toast(jobs.length ? `${jobs.length} design task${jobs.length > 1 ? 's' : ''} extracted` : 'Koi design task nahi mila', 'success')
+      toast(jobs.length ? `${jobs.length} design task${jobs.length > 1 ? 's' : ''} extracted` : 'No design tasks found', 'success')
     } catch (ex) { toast(ex.message || 'Failed', 'error') }
     finally { setExtracting(false) }
   }
@@ -2278,7 +2278,7 @@ function DesignerTab({ conv }) {
       </div>
       {rows.length === 0 && (
         <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-xs text-slate-500">
-          Abhi koi designer job nahi. <b>"✨ Extract from chat"</b> dabao — AI is chat se design tasks nikal dega, ya neeche se manually add karo.
+          No designer jobs yet. Press <b>"✨ Extract from chat"</b> — AI will pull design tasks from this chat, or add them manually below.
         </div>
       )}
       <ul className="space-y-2">

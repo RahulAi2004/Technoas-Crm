@@ -33,7 +33,7 @@ export default function Team() {
 
   const addMember = async (e) => {
     e.preventDefault()
-    if (!form.name.trim() || !form.email.trim() || !form.password) { toast('Name, email aur password zaroori hain', 'error'); return }
+    if (!form.name.trim() || !form.email.trim() || !form.password) { toast('Name, email, and password are required', 'error'); return }
     setBusy(true)
     try {
       await api.post('/api/users', form)
@@ -51,7 +51,7 @@ export default function Team() {
   }
 
   const removeMember = async (u) => {
-    if (!confirm(`Remove ${u.name}? Ye undo nahi hoga.`)) return
+    if (!confirm(`Remove ${u.name}? This cannot be undone.`)) return
     try { await api.del(`/api/users/${u.id}`); toast(`${u.name} removed`, 'info'); load() }
     catch (ex) { toast(ex.message || 'Remove failed', 'error') }
   }
@@ -80,7 +80,7 @@ export default function Team() {
             <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center">
               <div className="text-3xl">🔒</div>
               <h2 className="mt-2 text-lg font-bold">No access</h2>
-              <p className="mt-1 text-sm text-slate-500">Aapke role ko users manage karne ki ijazat nahi hai. Admin se sampark karein.</p>
+              <p className="mt-1 text-sm text-slate-500">Your role does not have permission to manage users. Please contact an admin.</p>
             </div>
           ) : (
           <>

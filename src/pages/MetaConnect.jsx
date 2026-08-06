@@ -39,7 +39,7 @@ export default function MetaConnect() {
 
   // "Continue with Facebook" — OAuth via FB JS SDK, then connect with the granted token.
   const continueWithFacebook = async () => {
-    if (!appId.trim() || !appSecret.trim()) { toast('Pehle App ID aur App Secret bharo (token Facebook se aa jayega)', 'error'); return }
+    if (!appId.trim() || !appSecret.trim()) { toast('Enter your App ID and App Secret first (the token will come from Facebook)', 'error'); return }
     setBusy(true); setResult(null)
     try {
       const FB = await loadFacebookSDK(appId.trim())
@@ -62,7 +62,7 @@ export default function MetaConnect() {
   const connect = async (e) => {
     e.preventDefault()
     if (!appId.trim() || !appSecret.trim() || !token.trim()) {
-      toast('App ID, App Secret aur Access Token — teeno zaroori hain', 'error'); return
+      toast('App ID, App Secret and Access Token are all required', 'error'); return
     }
     setBusy(true); setResult(null)
     try {
@@ -112,7 +112,7 @@ export default function MetaConnect() {
               <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-xl font-bold">f</div>
               <div>
                 <h1 className="text-2xl font-extrabold tracking-tight">{channelTitle}</h1>
-                <p className="text-sm text-slate-500">Facebook Messenger &amp; Instagram DMs — ek baar connect karo, token kabhi expire nahi hoga.</p>
+                <p className="text-sm text-slate-500">Facebook Messenger &amp; Instagram DMs — connect once and the token never expires.</p>
               </div>
             </div>
 
@@ -162,13 +162,13 @@ export default function MetaConnect() {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"/></svg>
                     {busy ? 'Connecting…' : 'Continue with Facebook'}
                   </button>
-                  <p className="text-[11px] text-slate-500">App ID + App Secret bharke ye dabao — Facebook ka login + permissions popup khulega, aapka Page + Instagram khud connect ho jayega.</p>
+                  <p className="text-[11px] text-slate-500">Enter your App ID and App Secret, then click this — Facebook's login and permissions popup will open, and your Page and Instagram will connect automatically.</p>
 
                   <div className="relative my-1"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"></div></div><div className="relative flex justify-center"><span className="bg-white px-2 text-[11px] font-semibold text-slate-400">OR paste a token manually</span></div></div>
 
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-slate-600">3 · Access Token (fresh User token)</label>
-                    <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAT... (Graph API Explorer se naya User token)" className={field} />
+                    <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAT... (a fresh User token from Graph API Explorer)" className={field} />
                   </div>
                   <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
                     {busy ? 'Connecting…' : 'Connect & Sync'}
@@ -176,38 +176,38 @@ export default function MetaConnect() {
                   {result && !result.ok && (
                     <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{result.error}</div>
                   )}
-                  <p className="text-[11px] text-slate-500">App ID, App Secret aur token sirf aapke server (DB) pe store hote hain. Connect ke baad app inse khud permanent Page token bana leta hai aur zarurat padne par auto-refresh karta hai.</p>
+                  <p className="text-[11px] text-slate-500">Your App ID, App Secret and token are stored only on your server (DB). After connecting, the app uses them to create a permanent Page token automatically and refreshes it when needed.</p>
                 </form>
 
                 {/* Help */}
                 <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5 text-sm">
-                  <h2 className="font-bold">Ye teen cheezein kahan se layein?</h2>
+                  <h2 className="font-bold">Where do I get these three things?</h2>
                   <ol className="mt-2 list-decimal space-y-2 pl-5 text-slate-600">
-                    <li><strong>App ID + App Secret:</strong> <a className="text-brand-600 underline" href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer">developers.facebook.com/apps</a> → apni app → <em>Settings → Basic</em>. App Secret ke aage <em>Show</em> dabao.</li>
-                    <li><strong>Access Token:</strong> <a className="text-brand-600 underline" href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noreferrer">Graph API Explorer</a> → app select karo → <em>User Token</em> rakho (Page token nahi) → permissions add karo:
+                    <li><strong>App ID + App Secret:</strong> <a className="text-brand-600 underline" href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer">developers.facebook.com/apps</a> → your app → <em>Settings → Basic</em>. Click <em>Show</em> next to App Secret.</li>
+                    <li><strong>Access Token:</strong> <a className="text-brand-600 underline" href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noreferrer">Graph API Explorer</a> → select your app → choose <em>User Token</em> (not Page token) → add permissions:
                       <code className="mt-1 block break-words rounded bg-white px-2 py-1 font-mono text-[11px]">pages_show_list, pages_messaging, pages_read_engagement, instagram_basic, instagram_manage_messages</code>
                       → <em>Generate Access Token</em> → copy.</li>
                   </ol>
-                  <p className="mt-3 text-[12px] text-amber-700">⚠ Token abhi-abhi (fresh) banao — expired token kaam nahi karega. Ek baar valid token de diya, phir app khud permanent bana leta hai.</p>
+                  <p className="mt-3 text-[12px] text-amber-700">⚠ Generate a fresh token — an expired token won't work. Once you provide a valid token, the app makes it permanent automatically.</p>
                 </section>
               </>
             )}
 
             {/* Permanent-token guide — always visible (the usual reason chats stop syncing) */}
             <section className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 text-sm">
-              <h2 className="flex items-center gap-2 font-bold text-indigo-800">♾ Token jo KABHI expire na ho (recommended)</h2>
+              <h2 className="flex items-center gap-2 font-bold text-indigo-800">♾ A token that NEVER expires (recommended)</h2>
               <p className="mt-1 text-slate-600">
-                Graph API Explorer ka token kuch ghanton mein expire ho jaata hai — isliye sync ruk jaata hai aur naye chats aana band ho jaate hain.
-                Hamesha chalne ke liye ek <strong>System User token</strong> banao (ye never-expire hota hai):
+                The Graph API Explorer token expires within a few hours — so syncing stops and new chats stop coming in.
+                To keep it running, create a <strong>System User token</strong> (this one never expires):
               </p>
               <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-slate-600">
                 <li><a className="text-brand-600 underline" href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer">business.facebook.com → Business Settings → System Users</a></li>
-                <li><strong>Add</strong> → naam do (e.g. "CRM") → role <em>Admin</em></li>
-                <li><strong>Add Assets</strong> → apni Page (Decoinks) + Instagram select karo, full control do</li>
-                <li><strong>Generate New Token</strong> → app select karo → <strong>Token expiration: Never</strong> → permissions: <code className="rounded bg-white px-1 text-[11px]">pages_messaging, pages_read_engagement, pages_show_list, instagram_basic, instagram_manage_messages</code></li>
-                <li>Token copy karke upar <strong>Access Token</strong> field mein paste karo (App ID + App Secret ke saath) → Connect</li>
+                <li><strong>Add</strong> → give it a name (e.g. "CRM") → role <em>Admin</em></li>
+                <li><strong>Add Assets</strong> → select your Page (Decoinks) + Instagram, grant full control</li>
+                <li><strong>Generate New Token</strong> → select your app → <strong>Token expiration: Never</strong> → permissions: <code className="rounded bg-white px-1 text-[11px]">pages_messaging, pages_read_engagement, pages_show_list, instagram_basic, instagram_manage_messages</code></li>
+                <li>Copy the token and paste it into the <strong>Access Token</strong> field above (along with App ID + App Secret) → Connect</li>
               </ol>
-              <p className="mt-2 text-[12px] text-indigo-700">Connect ke baad ye page batayega token "♾ Never expires" hai ya nahi — taaki aapko pakka pata chale.</p>
+              <p className="mt-2 text-[12px] text-indigo-700">After connecting, this page will tell you whether the token is "♾ Never expires" or not — so you can be sure.</p>
             </section>
           </div>
         </main>

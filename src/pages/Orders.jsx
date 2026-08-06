@@ -67,7 +67,7 @@ export default function Orders() {
               <div className="px-6 py-16 text-center">
                 <div className="text-3xl">🛒</div>
                 <p className="mt-2 text-sm font-semibold text-slate-700">{loading ? 'Loading…' : 'No orders yet'}</p>
-                <p className="mt-1 text-xs text-slate-500">Orders banaye jaane par yahan list honge. Customer 360 → Orders tab se bhi dekh sakte ho.</p>
+                <p className="mt-1 text-xs text-slate-500">Orders will appear here once created. You can also view them from the Customer 360 → Orders tab.</p>
                 <button onClick={() => toast('New Order flow — coming next', 'info')} className="mt-4 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">+ New Order</button>
               </div>
             ) : (

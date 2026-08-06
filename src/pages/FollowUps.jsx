@@ -41,7 +41,7 @@ export default function FollowUps() {
 
           <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
             {items.length === 0 ? (
-              <div className="px-6 py-16 text-center"><div className="text-3xl">⏰</div><p className="mt-2 text-sm font-semibold text-slate-700">No open follow-ups 🎉</p><p className="mt-1 text-xs text-slate-500">Saare leads handled hain.</p></div>
+              <div className="px-6 py-16 text-center"><div className="text-3xl">⏰</div><p className="mt-2 text-sm font-semibold text-slate-700">No open follow-ups 🎉</p><p className="mt-1 text-xs text-slate-500">All leads are handled.</p></div>
             ) : (
               <ul className="divide-y divide-slate-100">
                 {items.map((l) => (

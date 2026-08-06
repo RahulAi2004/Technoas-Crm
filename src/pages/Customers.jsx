@@ -47,7 +47,7 @@ export default function Customers() {
   // Kisi customer par flags set/unset — foran UI update + backend save.
   const setCustomerFlags = (id, next) => {
     setData((prev) => (prev || []).map((c) => String(c.id) === String(id) ? { ...c, flags: next } : c))
-    api.patch(`/api/customers/${id}`, { flags: next }).catch(() => toast('Flag save nahi hua — dobara koshish karein', 'error'))
+    api.patch(`/api/customers/${id}`, { flags: next }).catch(() => toast('Could not save flag — please try again', 'error'))
   }
 
   const source = data || []

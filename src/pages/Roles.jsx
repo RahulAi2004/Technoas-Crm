@@ -121,7 +121,7 @@ export default function Roles() {
             <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center">
               <div className="text-3xl">🔒</div>
               <h2 className="mt-2 text-lg font-bold">No access</h2>
-              <p className="mt-1 text-sm text-slate-500">Aapke role ko roles &amp; permissions manage karne ki ijazat nahi hai. Admin se sampark karein.</p>
+              <p className="mt-1 text-sm text-slate-500">Your role does not have permission to manage roles &amp; permissions. Please contact an admin.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_1fr]">
@@ -147,7 +147,7 @@ export default function Roles() {
               {/* Permissions editor */}
               <section className="rounded-2xl border border-slate-200 bg-white p-5">
                 {!selected ? (
-                  <div className="grid h-40 place-items-center text-sm text-slate-400">Ek role select karein</div>
+                  <div className="grid h-40 place-items-center text-sm text-slate-400">Select a role</div>
                 ) : (
                   <>
                     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

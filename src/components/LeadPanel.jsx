@@ -170,7 +170,7 @@ function Validate({ state, filled, val, onClick, label = 'Validate' }) {
     </span>
   )
   return (
-    <button onClick={onClick} disabled={saving} title="Is field ko database me save karo"
+    <button onClick={onClick} disabled={saving} title="Save this field to the database"
       className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-[10px] font-bold text-white ${err ? 'bg-rose-500 hover:bg-rose-600' : 'bg-amber-500 hover:bg-amber-600'} disabled:opacity-60`}>
       {saving ? 'Saving…' : err ? 'Retry' : label}
     </button>
@@ -213,7 +213,7 @@ function Field({ k, label, type, val, filled, state, onChange, onValidate, locke
           )}
         </div>
         {locked
-          ? <span title="Aapke role ko ye section validate/fill karne ki permission nahi" className="shrink-0 select-none px-1 text-[13px] text-slate-300">🔒</span>
+          ? <span title="Your role doesn't have permission to validate or fill this section" className="shrink-0 select-none px-1 text-[13px] text-slate-300">🔒</span>
           : <Validate k={k} state={state} filled={filled} val={val} onClick={onValidate} />}
       </div>
       {auditInfo?.at && <div className="mt-0.5 text-right"><AuditTag info={auditInfo} /></div>}
@@ -543,7 +543,7 @@ export default function LeadPanel({ conv, onClose }) {
       .catch((e) => {
         const msg = e?.message || 'AI extract failed'
         if (/failed to fetch|network|load failed|aborted|fetch/i.test(msg) && attempt < 2) {
-          setErr(`Network dikkat — dobara koshish (${attempt + 1}/2)…`)
+          setErr(`Network issue — retrying (${attempt + 1}/2)…`)
           setTimeout(() => runExtract(attempt + 1), 2000)   // transient -> retry
         } else {
           setErr(msg); setExtracting(false)
@@ -611,7 +611,7 @@ export default function LeadPanel({ conv, onClose }) {
     const failed = await saveAll()
     if (failed.length) {
       const t = tabOfKey(failed[0]); if (t) setTab(t)   // pehle fail field wale tab pe le jao
-      setErr('Ye fields save nahi hue — theek karke dobara Submit karo: ' + failed.map((k) => `${labelOf(k)}${saveErrs.current[k] ? ` (${saveErrs.current[k]})` : ''}`).join(' · '))
+      setErr('These fields did not save — fix them and Submit again: ' + failed.map((k) => `${labelOf(k)}${saveErrs.current[k] ? ` (${saveErrs.current[k]})` : ''}`).join(' · '))
       return
     }
     setSavingAll(true)
@@ -733,7 +733,7 @@ export default function LeadPanel({ conv, onClose }) {
       {unsavedKeys.length > 0 && (
         <div className="flex items-center justify-between gap-2 border-b border-amber-100 bg-amber-50/60 px-4 py-2">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-800">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />{unsavedKeys.length} field{unsavedKeys.length > 1 ? 's' : ''} bhare hain — save nahi hue
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />{unsavedKeys.length} field{unsavedKeys.length > 1 ? 's' : ''} filled — not saved
           </span>
           <button onClick={confirmTab} disabled={savingAll}
             className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
@@ -745,13 +745,13 @@ export default function LeadPanel({ conv, onClose }) {
       {/* Body */}
       <div className="nice-scroll flex-1 overflow-y-auto px-4 py-3">
         {tab !== 'pending' && !canValidate(tab) && (
-          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">🔒 Aapke role ko is section ke fields validate/fill karne ki permission nahi — view-only.</div>
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">🔒 Your role doesn't have permission to validate or fill fields in this section — view-only.</div>
         )}
         {tab === 'pending' && (<div className="space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="text-sm font-bold text-slate-800">Pending Validation</h3>
-              <p className="text-[11px] leading-snug text-slate-500">AI/agent ne jo fields update kiye — validate karke DB me confirm karein. Kisi bhi row pe click karke seedha us field pe jaayein.</p>
+              <p className="text-[11px] leading-snug text-slate-500">Fields updated by the AI/agent — validate them to confirm in the database. Click any row to jump straight to that field.</p>
             </div>
             {pendings.length > 0 && (
               <button onClick={saveAll} disabled={savingAll} className="shrink-0 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
@@ -760,7 +760,7 @@ export default function LeadPanel({ conv, onClose }) {
             )}
           </div>
           {pendings.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50/50 py-8 text-center text-[12px] font-semibold text-emerald-700">✓ All caught up — koi pending field nahi</div>
+            <div className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50/50 py-8 text-center text-[12px] font-semibold text-emerald-700">✓ All caught up — no pending fields</div>
           ) : (
             TABS.filter(([id]) => id !== 'pending').map(([id, lbl]) => {
               const rows = (TAB_KEYS[id] || []).filter((k) => pendings.includes(k))
@@ -814,11 +814,11 @@ export default function LeadPanel({ conv, onClose }) {
           <div className={grid}><Field k="special_instructions" label="Special Instructions" type="textarea" val={vals.special_instructions} filled={filled.special_instructions} state={fs.special_instructions} onChange={(v) => setVal('special_instructions', v)} onValidate={validate('special_instructions')} locked={!canValidate('product')} auditInfo={audit['special_instructions']} /></div>
           <div className="rounded-lg bg-slate-50 p-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Artwork</div>
           <div className={grid}>{renderFields(ART_FIELDS)}</div>
-          <p className="text-[10px] text-slate-400">Artwork files chat se aati hain (Files tab me dikhti hain). "Received" auto; Quality/Approve agent set kare.</p>
+          <p className="text-[10px] text-slate-400">Artwork files come from the chat (shown in the Files tab). "Received" is set automatically; the agent sets Quality/Approve.</p>
         </div>)}
 
         {tab === 'shipping' && (<div className="space-y-3">
-          <p className="rounded-lg bg-slate-50 p-2 text-[10px] text-slate-400">Shipping address ab "Customer" tab me hai. Yahan sirf delivery/logistics.</p>
+          <p className="rounded-lg bg-slate-50 p-2 text-[10px] text-slate-400">The shipping address is now in the "Customer" tab. This section is delivery/logistics only.</p>
           <div className={grid}>{renderFields(SHIP_FIELDS)}</div>
         </div>)}
 
@@ -834,7 +834,7 @@ export default function LeadPanel({ conv, onClose }) {
             onChange={(v) => setVal('invoice_lines', v)} onValidate={validate('invoice_lines')} /></div>
           <div className={grid}>{renderFields(INVOICE_FIELDS)}</div>
           <div className={grid}><Field k="invoice_notes" label="Invoice Notes" type="textarea" val={vals.invoice_notes} filled={filled.invoice_notes} state={fs.invoice_notes} onChange={(v) => setVal('invoice_notes', v)} onValidate={validate('invoice_notes')} locked={!canValidate('invoice')} auditInfo={audit['invoice_notes']} /></div>
-          <p className="text-[10px] text-slate-400">Sales Order banne se pehle billing capture. Har field Validate karte hi lead ke saath save ho jaati hai.</p>
+          <p className="text-[10px] text-slate-400">Capture billing before the Sales Order is created. Each field saves with the lead as soon as you validate it.</p>
         </div>)}
 
         {tab === 'order' && (<div className="space-y-3">
@@ -842,7 +842,7 @@ export default function LeadPanel({ conv, onClose }) {
           <div id="fld-order_lines" className="scroll-mt-4"><OrderLines items={vals.order_lines} filled={filled.order_lines} state={fs.order_lines} auditInfo={audit['order_lines']}
             onChange={(v) => setVal('order_lines', v)} onValidate={validate('order_lines')} /></div>
           <div className={grid}>{renderFields(ORDER_FIELDS)}</div>
-          <p className="text-[10px] text-slate-400">Validate karte hi <b>app.orders / app.order_lines</b> me save — POS Decoinks yahi se auto-populate karega.</p>
+          <p className="text-[10px] text-slate-400">Saved to <b>app.orders / app.order_lines</b> as soon as you validate — the Decoinks POS auto-populates from here.</p>
         </div>)}
       </div>
 
