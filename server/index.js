@@ -14,6 +14,7 @@ import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
+import { tmConfigured, tmBaseUrl, tmHealth, tmStats, tmListTasks, tmCreateTask, tmUsers } from './taskmgmt.js'
 import { randomUUID, createHash } from 'node:crypto'
 
 const PORT = process.env.PORT || 3001
@@ -2869,6 +2870,24 @@ app.put('/api/quick-actions', authRequired, async (req, res) => {
 })
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }))
+
+// ── Task Management connection (Decoinks Task API) ─────────────────────────
+// Connection layer only — no CRM→task flows are wired yet. /ping verifies that
+// the CRM can authenticate to and reach the Task Management API.
+app.get('/api/taskmgmt/ping', authRequired, async (req, res) => {
+  if (!tmConfigured()) return res.json({ ok: false, configured: false, url: tmBaseUrl, error: 'TASKMGMT_PASSWORD not set' })
+  try {
+    const [health, stats] = await Promise.all([tmHealth(), tmStats()])
+    res.json({ ok: true, configured: true, url: tmBaseUrl, health, stats: stats?.stats || stats })
+  } catch (e) {
+    res.status(502).json({ ok: false, configured: true, url: tmBaseUrl, error: e.message, detail: e.detail || e.data })
+  }
+})
+// Read-only passthrough — lists Task Management tasks (useful when wiring flows later).
+app.get('/api/taskmgmt/tasks', authRequired, async (req, res) => {
+  try { res.json(await tmListTasks(req.query)) }
+  catch (e) { res.status(e.status || 502).json({ error: e.message, data: e.data }) }
+})
 
 app.use((req, res) => res.status(404).json({ error: 'Not found', path: req.path }))
 app.use((err, req, res, _next) => {
