@@ -193,20 +193,43 @@ async function resolveIds(conversationId) {
   return r.rows[0] || null
 }
 
-async function findLead(convId) {
+// Ek conversation ka EK hi lead — usko uski SAARI identities se dhoondo:
+// conversation_id (UUID FK), conversation_primary_id, AUR legacy_id (fb:/ig:… string).
+// ensureLeadForConversation (index.js) legacy_id se lead banata hai (conversation_id NULL rehta),
+// isliye sirf conversation_id pe match karne se woh lead nahi milta tha -> duplicate ban jaata tha.
+async function findLead(co) {
   const r = await dbQuery(
     `SELECT * FROM app.leads
-      WHERE conversation_id = $1 OR conversation_primary_id = $1
-      ORDER BY created_at DESC LIMIT 1`, [convId])
+      WHERE conversation_id = $1
+         OR conversation_primary_id = $1
+         OR ($2::text IS NOT NULL AND legacy_id = $2)
+      ORDER BY created_at ASC LIMIT 1`, [co.conversation_id, co.legacy_id || null])
   return r.rows[0] || null
 }
 
 async function ensureLead(co) {
-  const found = await findLead(co.conversation_id)
-  if (found) return found.lead_id
+  const found = await findLead(co)
+  if (found) {
+    // Purani row me jo identity/customer link missing hai use bhar do, taake aage har
+    // lookup (kisi bhi key se) isi ek row pe match kare — dobara duplicate na bane.
+    if ((co.conversation_id && !found.conversation_id) ||
+        (co.legacy_id && !found.legacy_id) ||
+        (co.customer_id && !found.customer_id)) {
+      await dbQuery(
+        `UPDATE app.leads
+            SET conversation_id = COALESCE(conversation_id, $2),
+                legacy_id       = COALESCE(legacy_id, $3),
+                customer_id     = COALESCE(customer_id, $4),
+                updated_at      = now()
+          WHERE lead_id = $1`,
+        [found.lead_id, co.conversation_id, co.legacy_id || null, co.customer_id || null]).catch(() => {})
+    }
+    return found.lead_id
+  }
   const ins = await dbQuery(
-    `INSERT INTO app.leads (conversation_id, customer_id, created_at, updated_at)
-     VALUES ($1, $2, now(), now()) RETURNING lead_id`, [co.conversation_id, co.customer_id || null])
+    `INSERT INTO app.leads (conversation_id, legacy_id, customer_id, created_at, updated_at)
+     VALUES ($1, $2, $3, now(), now()) RETURNING lead_id`,
+    [co.conversation_id, co.legacy_id || null, co.customer_id || null])
   return ins.rows[0].lead_id
 }
 
@@ -382,7 +405,7 @@ export async function getLeadBundle(conversationId) {
   const metaFirst = memConv?.meta_first || ''
   const metaLast = memConv?.meta_last || ''
 
-  const lead = await findLead(co.conversation_id)
+  const lead = await findLead(co)
   if (lead) {
     out.has.lead = true
     out.lead = {
@@ -723,7 +746,7 @@ export async function getLeadScore(conversationId) {
   const temperature = deriveTemperature(qualification.score, purchase_intent)
   const co = await resolveIds(conversationId)
   if (co) {
-    const lead = await findLead(co.conversation_id)
+    const lead = await findLead(co)
     if (lead) await dbQuery(
       `UPDATE app.leads SET score_total = $1, temperature = $2, updated_at = now() WHERE lead_id = $3`,
       [qualification.score, temperature, lead.lead_id]).catch(() => {})

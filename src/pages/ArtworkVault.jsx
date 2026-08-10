@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import SidebarCrm from '../components/SidebarCrm.jsx'
 import TopBarUser from '../components/TopBarUser.jsx'
-import { api } from '../lib/api.js'
+import { api, getToken } from '../lib/api.js'
 
 const FALLBACK_ARTWORKS = [
   { id:1, name:'Eagles Logo - Full Front', type:'Artwork', order:'#ORD-1042', customers:11, product:'T-Shirts, Hoodies', date:'May 10, 2024', fav:true,  bg:'bg-slate-900' },
@@ -46,12 +46,20 @@ export default function ArtworkVault() {
   const [active, setActive] = useState(FALLBACK_ARTWORKS[0])
 
   useEffect(() => {
-    api.get('/api/artworks')
+    let active = true
+    const reload = () => api.get('/api/artworks')
       .then((rows) => {
         const mapped = rows.map(fromServerArt)
-        if (mapped.length) { setData(mapped); setActive(mapped[0]) }
+        if (active && mapped.length) { setData(mapped); setActive(mapped[0]) }
       })
       .catch(() => { /* keep fallback */ })
+    reload()
+    const token = getToken()
+    const stream = token ? new EventSource(`/api/stream?token=${encodeURIComponent(token)}`) : null
+    if (stream) stream.onmessage = (event) => {
+      try { if (JSON.parse(event.data)?.type === 'artwork_vault_changed') reload() } catch { /* ignore keepalive */ }
+    }
+    return () => { active = false; stream?.close() }
   }, [])
 
   return (

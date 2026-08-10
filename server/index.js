@@ -15,6 +15,7 @@ import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile,
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { randomUUID, createHash } from 'node:crypto'
+import { nextcloudWebhook } from './nextcloud-webhook.js'
 
 const PORT = process.env.PORT || 3001
 const JWT_SECRET = process.env.JWT_SECRET || 'technocas-dev-secret-change-in-prod'
@@ -81,6 +82,9 @@ app.get('/api/stream', (req, res) => {
   const ping = setInterval(() => { try { res.write(': ping\n\n') } catch {} }, 25000)
   req.on('close', () => { clearInterval(ping); sseClients.delete(res) })
 })
+
+// Nextcloud authenticates with the shared webhook secret, not a CRM JWT.
+app.post('/api/webhooks/nextcloud', (req, res) => nextcloudWebhook(req, res, broadcast))
 
 // ============================================================
 // AUTH
