@@ -11,7 +11,7 @@ import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
-import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
+import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
 import { tmConfigured, tmBaseUrl, tmHealth, tmStats, tmListTasks, tmCreateTask, tmUsers } from './taskmgmt.js'
@@ -2875,6 +2875,21 @@ app.get('/api/artwork-file', authImg, async (req, res) => {
     if (!f) return res.status(404).json({ error: 'not stored' })
     sendArtworkBytes(res, f)
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ---- Files tab: client-sent files review + routing to NextCloud ----
+// Client ki bheji har file yahan preview ke saath aati hai; agent dropdown se SRC/REF/DOCS/TRASH
+// chun kar usse Leads 2.0/<client>/<Artworks|references|Documents>/ (ya top-level trash/) me bhejta hai.
+app.get('/api/files', authRequired, async (req, res) => {
+  try { res.json(await listClientFiles(req.query.conversation_id)) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/files/route', authRequired, async (req, res) => {
+  try {
+    const { name, artwork_no, bucket } = req.body || {}
+    const out = await routeFile({ artworkNo: artwork_no, name, bucket, by: agentName(req) })
+    res.json(out)
+  } catch (e) { res.status(400).json({ error: e.message }) }
 })
 
 app.get('/api/quick-actions', authRequired, (req, res) => {

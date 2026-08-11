@@ -55,6 +55,15 @@ export async function ncGet(remotePath) {
   } catch { return null }
 }
 
+// WebDAV MOVE — file ko NextCloud ke andar ek jagah se doosri jagah le jao (overwrite ok).
+// Destination header ko FULL url chahiye. Target ka parent folder pehle se hona chahiye.
+export async function ncMove(fromPath, toPath) {
+  try {
+    const res = await req(davUrl(fromPath), { method: 'MOVE', headers: { Destination: davUrl(toPath), Overwrite: 'T' } }, 30000)
+    return res.status === 201 || res.status === 204 || res.ok
+  } catch { return false }
+}
+
 // OCS public share link (shareType 3 = public link, permission 1 = read-only)
 export async function ncShareLink(remotePath) {
   const res = await req(`${B}/ocs/v2.php/apps/files_sharing/api/v1/shares`, {

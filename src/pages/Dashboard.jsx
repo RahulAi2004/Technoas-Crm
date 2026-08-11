@@ -1858,60 +1858,102 @@ function NotesTab({ conv, onAddNote }) {
   )
 }
 
-// Files tab — every image/video/document shared in this conversation (from attachments).
-function FilesTab({ conv }) {
-  const [filter, setFilter] = useState('all')
-  const files = []
-  ;(conv?.messages || []).forEach((m) => (Array.isArray(m.attachments) ? m.attachments : []).forEach((a) => {
-    if (!a?.url) return
-    files.push({ url: a.url, type: a.type || 'file', name: a.name || '', by: m.dir === 'out' ? (m.agent || 'Agent') : (conv.name || 'Customer'), time: m.time || '' })
-  }))
-  const counts = { all: files.length, image: files.filter((f) => f.type === 'image').length, document: files.filter((f) => f.type !== 'image').length }
-  const shown = files.filter((f) => filter === 'all' ? true : filter === 'image' ? f.type === 'image' : f.type !== 'image')
-  const typeLabel = (t) => t === 'image' ? 'Image' : t === 'video' ? 'Video' : 'Document'
+// Files tab — CLIENT-sent files ka preview + manual routing. Agent har file dekh kar dropdown
+// se decide karta hai wo NextCloud me kahan jaye: SRC (Artworks), REF (references), DOCS
+// (Documents), ya TRASH (top-level trash/, list se hat jaati hai). Sirf tabhi file NextCloud
+// pe jaati hai — junk/stickers apne-aap save nahi hote.
+const FILE_BUCKETS = [
+  { id: 'SRC', label: 'SRC', hint: 'Source artwork → Artworks/' },
+  { id: 'REF', label: 'REF', hint: 'Reference image → references/' },
+  { id: 'DOCS', label: 'DOCS', hint: 'Document → Documents/' },
+  { id: 'TRASH', label: 'TRASH', hint: 'Junk → trash/ (list se hat jaayega)' },
+]
+const BUCKET_STYLE = {
+  SRC: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  REF: 'bg-sky-50 text-sky-700 ring-sky-200',
+  DOCS: 'bg-violet-50 text-violet-700 ring-violet-200',
+  TRASH: 'bg-rose-50 text-rose-700 ring-rose-200',
+}
 
+function FileCard({ f, onRoute }) {
+  const [busy, setBusy] = useState(false)
+  const pick = async (bucket) => {
+    if (busy || bucket === f.bucket) return
+    setBusy(true)
+    try { await onRoute(f, bucket) } finally { setBusy(false) }
+  }
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="relative grid aspect-square place-items-center bg-slate-50">
+        <ChatImage att={{ name: f.name }} className="h-full w-full object-contain" />
+        {f.bucket && (
+          <span className={`absolute left-1.5 top-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ring-1 ${BUCKET_STYLE[f.bucket] || 'bg-slate-100 text-slate-600 ring-slate-200'}`}>{f.bucket}</span>
+        )}
+        {busy && <div className="absolute inset-0 grid place-items-center bg-white/60"><span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500" /></div>}
+      </div>
+      <div className="border-t border-slate-100 p-2">
+        <div className="mb-1.5 truncate text-[11px] text-slate-500" title={f.artwork_no}>{f.artwork_no}</div>
+        <div className="grid grid-cols-4 gap-1">
+          {FILE_BUCKETS.map((b) => (
+            <button key={b.id} onClick={() => pick(b.id)} disabled={busy} title={b.hint}
+              className={`rounded-md px-1 py-1 text-[11px] font-bold ring-1 transition disabled:opacity-50 ${f.bucket === b.id ? (BUCKET_STYLE[b.id] || '') : 'bg-white text-slate-500 ring-slate-200 hover:bg-slate-50'}`}>
+              {b.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FilesTab({ conv }) {
+  const toast = useToast()
+  const [files, setFiles] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState(null)
+  const cid = conv?.id
+
+  useEffect(() => {
+    let cancelled = false
+    setFiles([]); setErr(null)
+    if (!cid) return
+    setLoading(true)
+    api.get(`/api/files?conversation_id=${encodeURIComponent(cid)}`)
+      .then((r) => { if (!cancelled) setFiles(Array.isArray(r) ? r : []) })
+      .catch((e) => { if (!cancelled) setErr(e.message || 'load failed') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+  }, [cid])
+
+  const onRoute = async (f, bucket) => {
+    try {
+      await api.post('/api/files/route', { conversation_id: cid, artwork_no: f.artwork_no, name: f.name, bucket })
+      if (bucket === 'TRASH') {
+        setFiles((xs) => xs.filter((x) => x.artwork_no !== f.artwork_no))
+        toast('Moved to trash', 'success')
+      } else {
+        setFiles((xs) => xs.map((x) => x.artwork_no === f.artwork_no ? { ...x, bucket } : x))
+        toast(`Saved to ${bucket}`, 'success')
+      }
+    } catch (e) { toast(e.message || 'Routing failed', 'error') }
+  }
+
+  const routed = files.filter((f) => f.bucket).length
   return (
     <div className="nice-scroll min-h-0 flex-1 overflow-y-auto px-6 py-5">
-      <div className="text-lg font-bold">Files</div>
-      <p className="mb-3 text-xs text-slate-500">All images, files and documents shared in this conversation.</p>
-      <div className="mb-3 flex flex-wrap gap-2">
-        {[['all', 'All Files', counts.all], ['image', 'Images', counts.image], ['document', 'Documents', counts.document]].map(([id, lbl, n]) => (
-          <button key={id} onClick={() => setFilter(id)} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${filter === id ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{lbl} ({n})</button>
-        ))}
+      <div className="flex items-center justify-between">
+        <div className="text-lg font-bold">Files</div>
+        {files.length > 0 && <div className="text-xs text-slate-500">{routed}/{files.length} filed</div>}
       </div>
-      {shown.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No files / images shared in this chat yet.</div>
+      <p className="mb-3 text-xs text-slate-500">Files the client sent. Check each preview, then file it to <b>SRC</b>, <b>REF</b>, <b>DOCS</b> or send junk to <b>TRASH</b> — it saves straight into this client's NextCloud folder.</p>
+      {loading ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">Loading files…</div>
+      ) : err ? (
+        <div className="rounded-xl border border-dashed border-rose-300 bg-rose-50 p-8 text-center text-sm text-rose-600">Could not load files: {err}</div>
+      ) : files.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No files shared by this client yet.</div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-2 font-semibold">File</th>
-                <th className="px-4 py-2 font-semibold">Type</th>
-                <th className="px-4 py-2 font-semibold">Shared By</th>
-                <th className="px-4 py-2 font-semibold">Time</th>
-                <th className="px-4 py-2 font-semibold">Open</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {shown.map((f, i) => (
-                <tr key={i} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      {f.type === 'image'
-                        ? <ChatImage att={f} className="h-9 w-9 rounded object-cover ring-1 ring-slate-200" />
-                        : <span className="grid h-9 w-9 place-items-center rounded bg-slate-100 text-base">{f.type === 'video' ? '🎥' : '📄'}</span>}
-                      <span className="max-w-[140px] truncate text-slate-700">{f.name || `${typeLabel(f.type)} ${i + 1}`}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5"><span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{typeLabel(f.type)}</span></td>
-                  <td className="px-4 py-2.5 text-slate-600">{f.by}</td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-slate-500">{f.time || '—'}</td>
-                  <td className="px-4 py-2.5"><a href={f.url} target="_blank" rel="noreferrer" className="font-semibold text-brand-600 hover:underline">Open ↗</a></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {files.map((f) => <FileCard key={f.artwork_no} f={f} onRoute={onRoute} />)}
         </div>
       )}
     </div>

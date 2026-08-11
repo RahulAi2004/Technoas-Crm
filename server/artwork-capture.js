@@ -4,7 +4,13 @@
 // NextCloud mein customer ke bheje files `references/` mein, hamare bheje mockups `sent/` mein.
 // Local disk par koi copy nahi.
 import pg from 'pg'
-import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath, ncEnsureCustomerFolders, ncGet } from './nextcloud.js'
+import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath, ncEnsureCustomerFolders, ncEnsureFolder, ncGet, ncPut, ncMove, NC_ROOT } from './nextcloud.js'
+
+// Client ke bheje (SRC) images ka NextCloud auto-upload DEFAULT band hai — pehle sab
+// apne-aap references/ me chale jate the (stickers/junk bhi), jise agent ab Files tab se
+// khud SRC/REF/DOCS/TRASH me route karta hai. Hamare bheje mockups (OUT/combo) waise hi
+// jate rahenge. Purana behaviour wapas chahiye to env AUTO_NC_PUSH=1 kar do.
+const AUTO_NC_PUSH = process.env.AUTO_NC_PUSH === '1'
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3, connectionTimeoutMillis: 20000, query_timeout: 60000 })
 const SRC_SUBFOLDER = 'references'   // customer ke bheje files (source/reference material)
@@ -148,20 +154,23 @@ export async function storeArtwork({ ref, convRef, url, name }) {
   const buf = await fetchBytes(url)                       // null bhi chalega — record phir bhi banta hai
   const ext = extOf(url, name)
   const artworkNo = await nextArtworkNo(ctx?.client_code, kindForRef(ref))
+  // Client-sent (SRC) file: auto-push default OFF -> 'held' (bytes PG me rehte hain preview ke
+  // liye; retry-worker 'held' ko chhuta nahi). Hamare bheje (OUT/combo) -> 'pending' -> upload.
+  const holdSrc = !isOut(ref) && !isCombo(ref) && !AUTO_NC_PUSH
+  const status = holdSrc ? 'held' : 'pending'
   const ins = await pool.query(
     `INSERT INTO app.customer_artwork
-       (lead_id, customer_id, conversation_id, message_ref, folder, file_name, file_type, file_size_bytes, source_url, image_data, artwork_no)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       (lead_id, customer_id, conversation_id, message_ref, folder, file_name, file_type, file_size_bytes, source_url, image_data, artwork_no, upload_status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      ON CONFLICT (message_ref) DO NOTHING
      RETURNING artwork_id, artwork_no`,
     [ctx?.lead_id || null, ctx?.customer_id || null, ctx?.conversation_id || null, ref, folder,
-     safeName(name) || null, ext, buf ? buf.length : null, url, buf, artworkNo])
+     safeName(name) || null, ext, buf ? buf.length : null, url, buf, artworkNo, status])
   const rec = ins.rows[0]
   if (!rec) return null
-  // Dono taraf ki files ab NextCloud pe jaati hain (customer -> references/, hamari -> sent/ subfolder;
-  // subfolder message_ref se decide hota hai). Upload hote hi PG se bytes HAT jaate hain (storage
-  // bachane ko) — chat phir NextCloud se serve karta hai. Local disk pe koi copy NAHI.
-  if (buf) {
+  // OUT/combo (hamare bheje mockups/proofs) hamesha NextCloud pe (sent/ subfolder). Client SRC
+  // sirf tab jab AUTO_NC_PUSH on ho; warna Files tab se agent manually route karega.
+  if (buf && !holdSrc) {
     pushToNextcloud({ artwork_id: rec.artwork_id, artwork_no: rec.artwork_no, folder, file_type: ext, message_ref: ref, image_data: buf }).catch(() => {})
   }
   return rec.artwork_no
@@ -379,7 +388,9 @@ async function ncFetchBytes(row) {
   if (!ncConfigured() || !row?.folder || !row?.artwork_no) return null
   const cached = ncCacheGet(row.artwork_no)
   if (cached) return cached
-  const remote = ncRemotePath(row.folder, subfolderForRef(row.message_ref), `${row.artwork_no}.${row.file_type || 'jpg'}`)
+  // routed_sub = manual routing ke baad ka asli subfolder (Artworks/references/Documents);
+  // na ho to message_ref se default (references/ ya sent/).
+  const remote = ncRemotePath(row.folder, row.routed_sub || subfolderForRef(row.message_ref), `${row.artwork_no}.${row.file_type || 'jpg'}`)
   const buf = await ncGet(remote)
   if (buf) ncCacheSet(row.artwork_no, buf)
   return buf
@@ -394,7 +405,7 @@ async function withBytes(row) {
 
 export async function getArtworkFile(idOrNo) {
   const r = await pool.query(
-    `SELECT artwork_no, file_type, image_data, folder, message_ref FROM app.customer_artwork
+    `SELECT artwork_no, file_type, image_data, folder, message_ref, routed_sub FROM app.customer_artwork
       WHERE artwork_id::text = $1 OR artwork_no = $1 LIMIT 1`, [String(idOrNo)])
   return withBytes(r.rows[0])
 }
@@ -405,9 +416,102 @@ export async function getArtworkFileByName(fileName) {
   // file_name (customer ki bheji, jaise "image-123") YA artwork_no (hamari bheji, "AW-...-OUT") dono match.
   // image_data hone wali row ko pehle (DESC), warna NextCloud-wali row (bytes wahan se aayenge).
   const r = await pool.query(
-    `SELECT artwork_no, file_type, image_data, folder, message_ref FROM app.customer_artwork
+    `SELECT artwork_no, file_type, image_data, folder, message_ref, routed_sub FROM app.customer_artwork
       WHERE (file_name = $1 OR artwork_no = $1)
         AND (image_data IS NOT NULL OR upload_status = 'nextcloud_ok')
       ORDER BY (image_data IS NOT NULL) DESC, created_at DESC LIMIT 1`, [String(fileName)])
   return withBytes(r.rows[0])
+}
+
+// ── Files tab: client-sent files review + manual routing ───────────────────
+// Agent har client-bheji file ka preview dekh kar dropdown se decide karta hai ki wo
+// NextCloud me kahan jaye. Dropdown -> asli NextCloud subfolder ka mapping:
+const BUCKET_SUB = { SRC: 'Artworks', REF: 'references', DOCS: 'Documents' }
+const BUCKETS = ['SRC', 'REF', 'DOCS', 'TRASH']
+
+// conv.id (uuid ya legacy) -> asli conversation uuid
+async function resolveConvId(convRef) {
+  if (!convRef) return null
+  const c = await pool.query(
+    `SELECT conversation_id FROM app.conversations WHERE conversation_id::text = $1 OR legacy_id = $1 LIMIT 1`,
+    [String(convRef)])
+  return c.rows[0]?.conversation_id || null
+}
+
+// Ek conversation ki CLIENT-bheji files (SRC only — hamare bheje OUT/combo nahi), TRASH ki
+// hui hides. Har file preview /api/artwork-file?name=<name> se dikhti hai.
+export async function listClientFiles(convRef) {
+  const cid = await resolveConvId(convRef)
+  if (!cid) return []
+  const r = await pool.query(
+    `SELECT artwork_no, file_name, file_type, created_at, routed_bucket
+       FROM app.customer_artwork
+      WHERE conversation_id = $1
+        AND message_ref NOT LIKE 'out:%' AND message_ref NOT LIKE 'combo:%'
+        AND COALESCE(routed_bucket, '') <> 'TRASH'
+        AND COALESCE(upload_status, '') <> 'trashed'
+      ORDER BY created_at DESC LIMIT 300`, [cid])
+  return r.rows.map((x) => ({
+    artwork_no: x.artwork_no,
+    name: x.file_name || x.artwork_no,   // preview key
+    type: 'image',
+    ext: x.file_type || 'jpg',
+    time: x.created_at,
+    bucket: x.routed_bucket || null,
+  }))
+}
+
+// Ek file ko chune gaye bucket me NextCloud pe bhejo. Bytes PG me ho to seedhe upload; warna
+// (purani references/-wali file) NextCloud ke andar hi MOVE. Phir routing DB me record.
+export async function routeFile({ artworkNo, name, bucket, by }) {
+  bucket = String(bucket || '').toUpperCase()
+  if (!BUCKETS.includes(bucket)) throw new Error('invalid bucket')
+  if (!ncConfigured()) throw new Error('NextCloud not configured')
+  const key = String(artworkNo || name || '').trim()
+  if (!key) throw new Error('file id required')
+  const r = await pool.query(
+    `SELECT artwork_id, artwork_no, folder, file_type, message_ref, routed_sub,
+            image_data, (image_data IS NOT NULL) AS has_bytes
+       FROM app.customer_artwork
+      WHERE artwork_no = $1 OR file_name = $1
+      ORDER BY (image_data IS NOT NULL) DESC, created_at DESC LIMIT 1`, [key])
+  const row = r.rows[0]
+  if (!row) throw new Error('file not found')
+  if (!row.folder) throw new Error('file has no client folder')
+
+  const ext = row.file_type || 'jpg'
+  const fileName = `${row.artwork_no}.${ext}`
+  const curSub = row.routed_sub || subfolderForRef(row.message_ref)
+  const curPath = ncRemotePath(row.folder, curSub, fileName)   // NC_ROOT/<folder>/<sub>/<file>
+  const rootParts = NC_ROOT.split('/').filter(Boolean)
+
+  // TRASH -> top-level `trash/` folder (Leads 2.0 ke bahar), file naam client-prefixed.
+  if (bucket === 'TRASH') {
+    await ncEnsureFolder(['trash'])
+    const target = `trash/${row.folder}__${fileName}`
+    const ok = row.has_bytes ? await ncPut(target, row.image_data) : await ncMove(curPath, target)
+    if (!ok) throw new Error('trash move failed')
+    await pool.query(
+      `UPDATE app.customer_artwork SET routed_bucket='TRASH', routed_sub=NULL, routed_at=now(),
+              routed_by=$2, upload_status='trashed', image_data=NULL WHERE artwork_id=$1`,
+      [row.artwork_id, by || null])
+    ncCache.delete(row.artwork_no)
+    return { ok: true, bucket, remote: target }
+  }
+
+  // SRC/REF/DOCS -> Leads 2.0/<folder>/<Artworks|references|Documents>/<file>
+  const sub = BUCKET_SUB[bucket]
+  await ncEnsureFolder([...rootParts, row.folder, sub])
+  const target = ncRemotePath(row.folder, sub, fileName)
+  if (row.has_bytes) {
+    if (!(await ncPut(target, row.image_data))) throw new Error('upload failed')
+  } else if (curPath !== target) {
+    if (!(await ncMove(curPath, target))) throw new Error('move failed')
+  }
+  await pool.query(
+    `UPDATE app.customer_artwork SET routed_bucket=$2, routed_sub=$3, routed_at=now(),
+            routed_by=$4, upload_status='nextcloud_ok', image_data=NULL WHERE artwork_id=$1`,
+    [row.artwork_id, bucket, sub, by || null])
+  ncCache.delete(row.artwork_no)
+  return { ok: true, bucket, remote: target }
 }
