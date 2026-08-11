@@ -2876,7 +2876,7 @@ const DEFAULT_QUICK_ACTIONS = {
   payment: [
     { label: 'Zelle QR Code',          key: 'zelle',   msg: '💳 Pay via Zelle: info@decoinks.com' },
     { label: 'Cash App QR Code',       key: 'cashapp', msg: '💵 Cash App: $decoinks' },
-    { label: 'PayPal QR Code',         key: 'paypal',  msg: '🅿️ PayPal: https://paypal.me/decoinks' },
+    { label: 'PayPal QR Code',         key: 'paypal',  msg: '🅿️ Pay via PayPal' },
     { label: 'PayPal Invoice (Cards)', msg: '🧾 We will send a secure PayPal invoice link (cards accepted).' },
   ],
   document: [
