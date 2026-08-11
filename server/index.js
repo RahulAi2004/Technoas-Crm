@@ -349,6 +349,25 @@ crud('receipts',      'receipts',      { searchFields: ['receipt_no','order_no',
 crud('artworks',      'artworks',      { searchFields: ['name','type','product'] })
 crud('conversations', 'conversations', { searchFields: ['name','company','list_preview'] })
 
+// Lightweight inbox list — the heavy full GET /api/conversations returned ALL ~2000
+// conversations (2.7MB) which made the inbox slow to load + render. This returns only
+// the most-recent `limit` conversations with just the list-display fields; `?q=` searches
+// ALL conversations server-side so older chats are still findable.
+app.get('/api/inbox', authRequired, (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase()
+  const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000)
+  const LIST = ['id','name','company','phone','channel','channel_bg','avatar','avatar_bg','initials',
+    'list_preview','list_time','last_ts','last_dir','last_out_ts','last_in_ts','first_ts','unread','tags',
+    'status','status_bg','status_icon','assigned_to','bookmarked','created_at','meta_recipient_id','customer_id','lead_id','stage']
+  const cts = (c) => Number(c.last_ts) || (c.created_at ? Date.parse(c.created_at) : 0) || 0
+  let convs = getAll('conversations')
+  if (q) convs = convs.filter((c) => `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.list_preview || ''}`.toLowerCase().includes(q))
+  convs = convs.slice().sort((a, b) => cts(b) - cts(a))
+  const total = convs.length
+  const light = convs.slice(0, limit).map((c) => { const o = {}; for (const f of LIST) if (c[f] !== undefined) o[f] = c[f]; return o })
+  res.json({ conversations: light, total, returned: light.length, q: q || null })
+})
+
 // ============================================================
 // Customer FLAGS — user-defined labels (koi bhi naam + rang), customer par lagte hain.
 // Definitions settings mein (koi nayi table nahi — DB role app schema mein CREATE nahi kar sakta).

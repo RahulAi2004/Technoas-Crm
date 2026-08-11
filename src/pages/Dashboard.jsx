@@ -162,6 +162,10 @@ export default function Dashboard() {
 
   // Conversation state — fetched from API
   const [conversationsRaw, setConversationsRaw] = useState([])
+  const [convTotal, setConvTotal] = useState(0)            // total conversations on server (list shows the recent slice)
+  const [renderCount, setRenderCount] = useState(80)       // how many rows to actually render (grows on scroll)
+  const searchRef = useRef('')                             // current search text — read by the 5s poller
+  const firstSearchRun = useRef(true)
   // Remember the last opened conversation so a reload continues where you left off.
   const [currentId, setCurrentId] = useState(() => localStorage.getItem('currentConvId') || null)
   const [messages, setMessages] = useState([])
@@ -204,13 +208,18 @@ export default function Dashboard() {
     } catch (e) { toast(e.message || 'Delete failed', 'error') }
   }
 
-  // Fetch conversations (with polling for new ones from webhook)
+  // Fetch conversations — lightweight inbox list (recent ~500, list fields only) instead of the
+  // heavy full list (~2000 convs / 2.7MB). `?q=` searches ALL conversations server-side, so older
+  // chats stay findable without loading everything up front.
   const fetchConvs = async () => {
     try {
-      const rows = await api.get('/api/conversations')
+      const q = searchRef.current.trim()
+      const r = await api.get(`/api/inbox?limit=500${q ? `&q=${encodeURIComponent(q)}` : ''}`)
+      const rows = Array.isArray(r?.conversations) ? r.conversations : (Array.isArray(r) ? r : [])
       setConversationsRaw(rows)
-      // Keep the saved conversation if it still exists; otherwise fall back to the first.
-      setCurrentId((cur) => (cur && rows.some((r) => r.id === cur)) ? cur : (rows[0]?.id ?? null))
+      setConvTotal(r?.total ?? rows.length)
+      // Keep the open chat; on first load (nothing open) fall back to the most recent.
+      setCurrentId((cur) => cur || (rows[0]?.id ?? null))
     } catch { /* keep what we have */ }
     finally { setLoadingConvs(false) }
   }
@@ -245,6 +254,14 @@ export default function Dashboard() {
 
   // Search + view filter (all / unassigned / mentions / bookmarks)
   const [search, setSearch] = useState('')
+  // Search runs server-side over ALL conversations (debounced 300ms). The 5s poller reads searchRef.
+  useEffect(() => {
+    searchRef.current = search
+    setRenderCount(80)
+    if (firstSearchRun.current) { firstSearchRun.current = false; return }
+    const t = setTimeout(fetchConvs, 300)
+    return () => clearTimeout(t)
+  }, [search])
   const [view, setView] = useState(() => searchParams.get('view') || 'all')   // ?view= se deep-link (dusre pages ke sidebar se)
   const [sortDir, setSortDir] = useState('latest') // 'latest' | 'oldest'
   const emptyFilters = { channel: '', agent: '', status: '', tag: '', from: '', to: '', fromTime: '', toTime: '', dateBasis: 'activity' }
@@ -849,7 +866,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            <div id="filters-list" className="nice-scroll flex-1 overflow-y-auto">
+            <div id="filters-list" className="nice-scroll flex-1 overflow-y-auto" onScroll={(e) => { const el = e.currentTarget; if (el.scrollHeight - el.scrollTop - el.clientHeight < 400 && renderCount < visibleConvs.length) setRenderCount((n) => n + 80) }}>
               {loadingConvs && (
                 <div className="px-4 py-8 text-center">
                   <div className="mx-auto mb-3 h-7 w-7 animate-spin rounded-full border-4 border-slate-200 border-t-brand-500" />
@@ -863,7 +880,7 @@ export default function Dashboard() {
                   <p className="mt-1 text-xs text-slate-500">New customer chats will appear here automatically.</p>
                 </div>
               )}
-              {visibleConvs.map((c) => {
+              {visibleConvs.slice(0, renderCount).map((c) => {
                 const id = c.id; const active = id === currentId
                 return (
                   <button key={id} onClick={() => { setCurrentId(id); if (search) setSearch('') }} className={`group relative mx-1.5 my-0.5 flex w-[calc(100%-0.75rem)] gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition ${active ? 'bg-brand-50 ring-1 ring-inset ring-brand-100' : 'hover:bg-slate-100/70'}`}>
