@@ -37,7 +37,7 @@ export const FIELD_MAP = {
   segment:          { t: 'customers', c: 'customer_segment' },
   loyalty_tier:     { t: 'customers', c: 'tier' },
   cust_status:      { t: 'customers', c: 'status' },
-  tax_exempt:       { t: 'customers', j: 'tax_exempt' },
+  tax_exempt:       { t: 'customers', j: 'tax_exempt', bool: true },
   customer_notes:   { t: 'customers', j: 'customer_notes' },
   shipping_address: { t: 'customers', j: 'shipping_address' },
   billing_address:  { t: 'customers', j: 'billing_address' },
@@ -293,21 +293,30 @@ async function saveOrderLines(orderId, lines) {
   }
 }
 
+// Parse a money/number input tolerantly ("$1,500" -> 1500). Empty/NaN -> null.
+const toNum = (v) => { if (v === '' || v == null) return null; const n = Number(String(v).replace(/[$,\s]/g, '')); return Number.isNaN(n) ? null : n }
+// Coerce a value by its declared type so the JSON (map.j) path and typed columns store the SAME
+// clean type (numbers as numbers, booleans as booleans, dates as YYYY-MM-DD). Previously map.j
+// stored the raw string, so invoice amounts / dates / flags landed in extra JSON as text.
+const coerce = (map, value) => {
+  if (map.num) return toNum(value)
+  if (map.bool) return (value === true || value === 'true' || value === 'Yes' || value === 'yes' || value === 1 || value === '1')
+  if (map.date) return (value === '' || value == null ? null : String(value).slice(0, 10))
+  return value ?? ''
+}
+
 async function writeCol(table, idCol, idVal, map, value) {
-  if (map.j) {
-    await dbQuery(
-      `UPDATE ${table} SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb, updated_at = now() WHERE ${idCol} = $2`,
-      [JSON.stringify({ [map.j]: value }), idVal])
-  } else if (map.jsonCol) {
+  if (map.jsonCol) {
+    // arrays/objects (size_breakdown, print_locations, line_items) — store as-is
     await dbQuery(
       `UPDATE ${table} SET ${map.jsonCol} = $1::jsonb, updated_at = now() WHERE ${idCol} = $2`,
       [JSON.stringify(value ?? null), idVal])
+  } else if (map.j) {
+    await dbQuery(
+      `UPDATE ${table} SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb, updated_at = now() WHERE ${idCol} = $2`,
+      [JSON.stringify({ [map.j]: coerce(map, value) }), idVal])
   } else {
-    let v = value ?? ''
-    if (map.num) v = (v === '' || v == null ? null : Number(v))
-    else if (map.bool) v = (v === true || v === 'true' || v === 'Yes' || v === 'yes' || v === 1 || v === '1')
-    else if (map.date) v = (v === '' || v == null ? null : v)
-    await dbQuery(`UPDATE ${table} SET ${map.c} = $1, updated_at = now() WHERE ${idCol} = $2`, [v, idVal])
+    await dbQuery(`UPDATE ${table} SET ${map.c} = $1, updated_at = now() WHERE ${idCol} = $2`, [coerce(map, value), idVal])
   }
 }
 
@@ -334,7 +343,7 @@ export async function saveField({ conversationId, field, value, convName }) {
   if (FIELD_OPTS[field] && sval && !FIELD_OPTS[field].includes(sval)) bad(`Invalid ${field}. Allowed: ${FIELD_OPTS[field].join(', ')}`)
   // 4) Numbers — valid + 0 ya zyada
   if (map.num && sval !== '') {
-    const n = Number(value)
+    const n = Number(sval.replace(/[$,\s]/g, ''))   // tolerate "$1,500"
     if (isNaN(n)) bad('Must be a number')
     if (n < 0) bad('Must be 0 or more')
   }
@@ -716,7 +725,8 @@ export function deriveTemperature(score, intent) {
 function computeQualification(conversationId, bundle) {
   const P = bundle?.product || {}, S = bundle?.shipping || {}, C = bundle?.customer || {}, Q = bundle?.quote || {}
   const msgs = getAll('messages').filter((m) => m.conversation_id === conversationId)
-  const hasImg = msgs.some((m) => (m.attachments || []).some((a) => a?.type === 'image'))
+  // Artwork = an image the CUSTOMER sent (dir 'in') — not a mockup we sent (dir 'out').
+  const hasImg = msgs.some((m) => (m.direction === 'in' || m.dir === 'in') && (m.attachments || []).some((a) => a?.type === 'image'))
   const got = {
     customer_responded: msgs.some((m) => m.direction === 'in' || m.dir === 'in'),
     human_engaged: msgs.some((m) => m.direction === 'out' || m.dir === 'out'),
@@ -815,7 +825,7 @@ export async function completeLead(conversationId) {
     ? product.size_breakdown.map((x) => [x.size, x.qty ?? x.quantity].filter((v) => v !== undefined && v !== '').join(': ')).filter(Boolean).join(', ')
     : null
   const colors = [product.garment_color, product.brand_style].filter(Boolean).join(', ') || null
-  const artworkReceived = /received|review|approved|changes/i.test(product.artwork_status || '')
+  const artworkReceived = !!score.facts.artwork   // customer sent art OR status = received (matches the qualification score)
   const shippingAddress = addressText(customer.shipping_address)
   const billingAddress = addressText(customer.billing_address)
   const customerName = bundle.customerName || [customer.first_name, customer.last_name].filter(Boolean).join(' ') || conv?.name || 'Unknown'
