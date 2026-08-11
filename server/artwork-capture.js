@@ -438,8 +438,10 @@ async function resolveConvId(convRef) {
   return c.rows[0]?.conversation_id || null
 }
 
-// Ek conversation ki CLIENT-bheji files (SRC only — hamare bheje OUT/combo nahi), TRASH ki
-// hui hides. Har file preview /api/artwork-file?name=<name> se dikhti hai.
+// Ek conversation ki CLIENT-bheji files jo abhi FILE karni hain — sirf 'held' (auto-push OFF
+// ke baad aayi nayi images jinhe agent ne abhi tak route nahi kiya). Purani already-filed
+// files (nextcloud_ok, disconnect se pehle wali) yahan NAHI dikhtin; route karte hi file
+// 'nextcloud_ok'/'trashed' ho kar list se hat jaati hai. (Hamare bheje OUT/combo bhi nahi.)
 export async function listClientFiles(convRef) {
   const cid = await resolveConvId(convRef)
   if (!cid) return []
@@ -448,8 +450,7 @@ export async function listClientFiles(convRef) {
        FROM app.customer_artwork
       WHERE conversation_id = $1
         AND message_ref NOT LIKE 'out:%' AND message_ref NOT LIKE 'combo:%'
-        AND COALESCE(routed_bucket, '') <> 'TRASH'
-        AND COALESCE(upload_status, '') <> 'trashed'
+        AND upload_status = 'held'
       ORDER BY created_at DESC LIMIT 300`, [cid])
   return r.rows.map((x) => ({
     artwork_no: x.artwork_no,

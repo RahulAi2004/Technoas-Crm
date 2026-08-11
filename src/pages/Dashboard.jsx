@@ -1944,13 +1944,13 @@ function FilesTab({ conv }) {
         <div className="text-lg font-bold">Files</div>
         {files.length > 0 && <div className="text-xs text-slate-500">{routed}/{files.length} filed</div>}
       </div>
-      <p className="mb-3 text-xs text-slate-500">Files the client sent. Check each preview, then file it to <b>SRC</b>, <b>REF</b>, <b>DOCS</b> or send junk to <b>TRASH</b> — it saves straight into this client's NextCloud folder.</p>
+      <p className="mb-3 text-xs text-slate-500">New files the client sent that still need filing. Check each preview, then file it to <b>SRC</b>, <b>REF</b>, <b>DOCS</b> or send junk to <b>TRASH</b> — it saves straight into this client's NextCloud folder and leaves this list.</p>
       {loading ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">Loading files…</div>
       ) : err ? (
         <div className="rounded-xl border border-dashed border-rose-300 bg-rose-50 p-8 text-center text-sm text-rose-600">Could not load files: {err}</div>
       ) : files.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No files shared by this client yet.</div>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No new files to sort. New files the client sends will appear here for filing.</div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {files.map((f) => <FileCard key={f.artwork_no} f={f} onRoute={onRoute} />)}
