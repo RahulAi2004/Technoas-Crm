@@ -387,7 +387,7 @@ crud('conversations', 'conversations', { searchFields: ['name','company','list_p
 // ALL conversations server-side so older chats are still findable.
 app.get('/api/inbox', authRequired, (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase()
-  const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000)
+  const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 6000)
   const LIST = ['id','name','company','phone','channel','channel_bg','avatar','avatar_bg','initials',
     'list_preview','list_time','last_ts','last_dir','last_out_ts','last_in_ts','first_ts','unread','tags',
     'status','status_bg','status_icon','assigned_to','bookmarked','created_at','meta_recipient_id','customer_id','lead_id','stage']

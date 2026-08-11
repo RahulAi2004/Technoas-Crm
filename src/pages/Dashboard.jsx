@@ -214,7 +214,7 @@ export default function Dashboard() {
   const fetchConvs = async () => {
     try {
       const q = searchRef.current.trim()
-      const r = await api.get(`/api/inbox?limit=500${q ? `&q=${encodeURIComponent(q)}` : ''}`)
+      const r = await api.get(`/api/inbox?limit=6000${q ? `&q=${encodeURIComponent(q)}` : ''}`)
       const rows = Array.isArray(r?.conversations) ? r.conversations : (Array.isArray(r) ? r : [])
       setConversationsRaw(rows)
       setConvTotal(r?.total ?? rows.length)
