@@ -63,10 +63,10 @@ const eventCid = (e) => e?.conversationId || e?.conversation?.id || e?.message?.
 function broadcast(event) {
   const payload = `data: ${JSON.stringify(event)}\n\n`
   const cid = eventCid(event)
-  const assignee = cid != null ? String(assigneeOf(cid) || '') : null
+  const assignees = cid != null ? assigneesOf(cid) : null
   for (const res of sseClients) {
-    // conversation-scoped event: sirf view-all clients + us chat ke assigned agent ko bhejo
-    if (cid != null && !res._seeAll && String(res._uid || '') !== assignee) continue
+    // conversation-scoped event: sirf view-all clients + us chat ke assigned agents ko bhejo
+    if (cid != null && !res._seeAll && !assignees.includes(String(res._uid || ''))) continue
     try { res.write(payload) } catch { /* client gone; cleaned up on close */ }
   }
 }
@@ -273,11 +273,14 @@ function requirePerm(key) { return (req, res, next) => reqCan(req, key) ? next()
 // (restricted DB role safe — jaise flags/roles). Jinke paas cap:view_all_chats NAHI, wo
 // sirf apni assigned conversations dekh/khol/reply kar sakte hain.
 const getAssignments = () => getSetting('chat_assignments') || {}
-const assigneeOf = (cid) => getAssignments()[String(cid)] || null
+// ek chat MULTIPLE agents ko assign ho sakta hai — value array hai. Purani single-value
+// entries ko bhi array ki tarah normalize karo (backward-safe).
+const asIds = (v) => Array.isArray(v) ? v.map(String) : (v == null || v === '' ? [] : [String(v)])
+const assigneesOf = (cid) => asIds(getAssignments()[String(cid)])
 // user is jis conversation ko access kar sakta hai? (view_all_chats waale sab; warna sirf apni assigned)
 function canAccessConv(req, cid) {
   if (reqCan(req, 'cap:view_all_chats')) return true
-  return String(assigneeOf(cid) || '') === String(req.user?.id || '_')
+  return assigneesOf(cid).includes(String(req.user?.id || '_'))
 }
 // route guard — non-view-all user doosre ki chat na khol sake (403)
 function requireConvAccess(cid, req, res) {
@@ -393,11 +396,11 @@ app.get('/api/inbox', authRequired, (req, res) => {
   // Sirf assigned chats — jinke paas cap:view_all_chats nahi (sales agent), unhe apni hi dikhein.
   const seeAll = reqCan(req, 'cap:view_all_chats')
   const assignments = getAssignments()
-  if (!seeAll) convs = convs.filter((c) => String(assignments[String(c.id)] || '') === String(req.user?.id || '_'))
+  if (!seeAll) { const uid = String(req.user?.id || '_'); convs = convs.filter((c) => asIds(assignments[String(c.id)]).includes(uid)) }
   if (q) convs = convs.filter((c) => `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.list_preview || ''}`.toLowerCase().includes(q))
   convs = convs.slice().sort((a, b) => cts(b) - cts(a))
   const total = convs.length
-  const light = convs.slice(0, limit).map((c) => { const o = {}; for (const f of LIST) if (c[f] !== undefined) o[f] = c[f]; o.assigned_user_id = assignments[String(c.id)] || null; return o })
+  const light = convs.slice(0, limit).map((c) => { const o = {}; for (const f of LIST) if (c[f] !== undefined) o[f] = c[f]; o.assigned_user_ids = asIds(assignments[String(c.id)]); return o })
   res.json({ conversations: light, total, returned: light.length, q: q || null, scoped: !seeAll })
 })
 
@@ -406,17 +409,19 @@ app.get('/api/assignments', authRequired, (req, res) => res.json(getAssignments(
 // Admin: ek conversation ko sales agent ko assign/unassign karo. userId null/'' = unassign.
 app.post('/api/conversations/:id/assign', authRequired, requirePerm('cap:assign_chats'), async (req, res) => {
   const cid = String(req.params.id)
-  const userId = req.body?.userId
+  const body = req.body || {}
+  // Accept full set { userIds: [...] } (multi-select) YA legacy single { userId } (null = unassign)
+  let ids
+  if (Array.isArray(body.userIds)) ids = body.userIds
+  else if ('userId' in body) ids = (body.userId == null || body.userId === '') ? [] : [body.userId]
+  else return res.status(400).json({ error: 'userIds or userId required' })
+  const valid = new Set(getAll('users').map((u) => String(u.id)))
+  ids = [...new Set(ids.map(String))].filter((x) => valid.has(x))    // dedupe + sirf real users
   const map = { ...getAssignments() }
-  if (userId === null || userId === '' || userId === undefined) {
-    delete map[cid]
-  } else {
-    if (!getAll('users').some((u) => String(u.id) === String(userId))) return res.status(400).json({ error: 'Unknown user' })
-    map[cid] = userId
-  }
+  if (ids.length) map[cid] = ids; else delete map[cid]
   setSetting('chat_assignments', map)
   await flush()
-  res.json({ ok: true, conversation_id: cid, userId: map[cid] || null })
+  res.json({ ok: true, conversation_id: cid, userIds: map[cid] || [] })
 })
 
 // ============================================================

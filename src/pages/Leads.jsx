@@ -63,6 +63,57 @@ const LEAD_COLUMNS = [
   { key: 'actions', header: 'Actions', always: true, right: true },
 ]
 
+// Multi-agent assign — checkbox dropdown. Ek chat ko kai agents ko assign/unassign karo.
+const asArr = (v) => Array.isArray(v) ? v.map(String) : (v == null || v === '' ? [] : [String(v)])
+function AssignCell({ cid, agents, value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h)
+  }, [])
+  const ids = asArr(value)
+  const toggle = (id) => {
+    const sid = String(id)
+    const next = ids.includes(sid) ? ids.filter((x) => x !== sid) : [...ids, sid]
+    onChange(cid, next)
+  }
+  const chosen = ids.map((id) => agents.find((a) => String(a.id) === id)).filter(Boolean)
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen((o) => !o)}
+        className="flex w-[150px] items-center justify-between gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] hover:border-brand-300">
+        <span className={`truncate ${chosen.length ? 'font-medium text-slate-700' : 'text-slate-400'}`}>
+          {chosen.length === 0 ? 'Assign…' : chosen.length === 1 ? (chosen[0].name || chosen[0].email) : `${chosen.length} agents`}
+        </span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 text-slate-400"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 z-30 mt-1 max-h-56 w-56 overflow-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+          {agents.length === 0 ? (
+            <div className="px-2 py-2 text-[11px] text-slate-400">No agents found</div>
+          ) : (<>
+            {agents.map((a) => {
+              const on = ids.includes(String(a.id))
+              return (
+                <button key={a.id} onClick={() => toggle(a.id)}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] hover:bg-slate-50 ${on ? 'font-semibold text-brand-700' : 'text-slate-600'}`}>
+                  <span className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] ${on ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300'}`}>{on ? '✓' : ''}</span>
+                  <span className="truncate">{a.name || a.email}</span>
+                </button>
+              )
+            })}
+            {ids.length > 0 && (
+              <button onClick={() => onChange(cid, [])}
+                className="mt-1 w-full rounded-md border-t border-slate-100 px-2 py-1.5 text-left text-[11px] font-semibold text-rose-600 hover:bg-rose-50">Clear all</button>
+            )}
+          </>)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function StatCard({ label, value, icon, tint, sub }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
@@ -123,15 +174,15 @@ export default function Leads() {
     Promise.all([api.get('/api/users').catch(() => []), api.get('/api/assignments').catch(() => ({}))])
       .then(([us, map]) => { setAgents(Array.isArray(us) ? us : (us?.users || [])); setAssignMap(map && typeof map === 'object' ? map : {}) })
   }, [canAssign])
-  const assignChat = async (cid, userId) => {
+  // userIds = poori list (multi-select). Ek chat kai agents ko assign ho sakta hai.
+  const assignChat = async (cid, userIds) => {
     if (!cid) return
-    const prev = assignMap[cid] || ''
-    setAssignMap((m) => ({ ...m, [cid]: userId || undefined }))   // optimistic
+    const prev = assignMap[cid]
+    setAssignMap((m) => ({ ...m, [cid]: userIds }))   // optimistic
     try {
-      await api.post(`/api/conversations/${encodeURIComponent(cid)}/assign`, { userId: userId || null })
-      const who = agents.find((a) => String(a.id) === String(userId))
-      toast(userId ? `Assigned to ${who?.name || 'agent'}` : 'Unassigned', 'success')
-    } catch (e) { setAssignMap((m) => ({ ...m, [cid]: prev || undefined })); toast(e.message || 'Assign failed', 'error') }
+      await api.post(`/api/conversations/${encodeURIComponent(cid)}/assign`, { userIds })
+      toast(userIds.length ? `Assigned to ${userIds.length} agent${userIds.length > 1 ? 's' : ''}` : 'Unassigned', 'success')
+    } catch (e) { setAssignMap((m) => ({ ...m, [cid]: prev })); toast(e.message || 'Assign failed', 'error') }
   }
   // Bulk select + bulk tag
   const [selected, setSelected] = useState(() => new Set())
@@ -275,13 +326,7 @@ export default function Leads() {
       case 'assign': {
         if (!canAssign) return null
         if (!l._cid) return <span className="text-slate-300">—</span>
-        return (
-          <select value={assignMap[l._cid] || ''} onChange={(e) => assignChat(l._cid, e.target.value)}
-            className="max-w-[130px] rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[11px] font-medium text-slate-700 focus:border-brand-400 focus:outline-none">
-            <option value="">— Unassigned —</option>
-            {agents.map((a) => <option key={a.id} value={a.id}>{a.name || a.email}</option>)}
-          </select>
-        )
+        return <AssignCell cid={l._cid} agents={agents} value={assignMap[l._cid]} onChange={assignChat} />
       }
       case 'source': return <span className="whitespace-nowrap text-slate-600">{l._source || '—'}</span>
       case 'stage': return <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">{l._stage}</span>
