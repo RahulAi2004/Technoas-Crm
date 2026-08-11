@@ -404,6 +404,35 @@ app.get('/api/inbox', authRequired, (req, res) => {
   res.json({ conversations: light, total, returned: light.length, q: q || null, scoped: !seeAll })
 })
 
+// Inbox summary counts — spam / done / followup / unread etc. (ek call). Agent ke liye
+// sirf uski assigned chats par (scoped); admin/manager ke liye poora inbox.
+//   done     = 'converted' tag
+//   spam     = 'spam' tag
+//   followup = pending reply (customer ne last bheja, humne abhi reply nahi kiya)
+//   unread   = unread > 0
+app.get('/api/inbox/stats', authRequired, (req, res) => {
+  const seeAll = reqCan(req, 'cap:view_all_chats')
+  const assignments = getAssignments()
+  const uid = String(req.user?.id || '_')
+  let convs = getAll('conversations')
+  if (!seeAll) convs = convs.filter((c) => asIds(assignments[String(c.id)]).includes(uid))
+  const n = (v) => Number(v) || 0
+  const tagsOf = (c) => Array.isArray(c.tags) ? c.tags : []
+  let unread = 0, spam = 0, done = 0, followup = 0, unassigned = 0, bookmarked = 0
+  const byTag = {}
+  for (const c of convs) {
+    if (n(c.unread) > 0) unread++
+    const tg = tagsOf(c)
+    if (tg.includes('spam')) spam++
+    if (tg.includes('converted')) done++
+    if (n(c.last_in_ts) > n(c.last_out_ts)) followup++        // customer ka last message unanswered
+    if (!c.assigned_to && !asIds(assignments[String(c.id)]).length) unassigned++
+    if (c.bookmarked) bookmarked++
+    for (const t of tg) byTag[t] = (byTag[t] || 0) + 1
+  }
+  res.json({ total: convs.length, unread, spam, done, followup, unassigned, bookmarked, byTag, scoped: !seeAll })
+})
+
 // Admin: kis conversation ka kaunse users ko assignment — { [cid]: userId } map.
 app.get('/api/assignments', authRequired, (req, res) => res.json(getAssignments()))
 // Admin: ek conversation ko sales agent ko assign/unassign karo. userId null/'' = unassign.
