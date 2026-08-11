@@ -52,6 +52,7 @@ export default function SidebarCrm({ active }) {
 
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-6">
         <ul className="space-y-1">
+          {can('page:leads') && (
           <li>
             <Link to="/leads" title="Leads" className={active === 'leads'
               ? 'flex items-center justify-between rounded-lg bg-brand-600 px-3 py-2.5 text-white'
@@ -62,6 +63,7 @@ export default function SidebarCrm({ active }) {
               </span>
             </Link>
           </li>
+          )}
           <li>
             <Link to="/dashboard" title="Inbox" className={active === 'inbox'
               ? 'flex items-center justify-between rounded-lg bg-brand-600 px-3 py-2.5 text-white'

@@ -5,6 +5,7 @@ import TopBarUser from '../components/TopBarUser.jsx'
 import { useToast } from '../components/ToastContext.jsx'
 import { FlagChip, FLAG_COLORS, ManageFlagsModal } from '../components/CustomerFlags.jsx'
 import { api } from '../lib/api.js'
+import { can } from '../lib/auth.js'
 
 // --- helpers ---
 const fmt$ = (n) => (n == null || n === '' || Number(n) === 0) ? '—' : `$${Number(n).toLocaleString()}`
@@ -49,6 +50,7 @@ const LEAD_COLUMNS = [
   { key: 'date', header: 'Lead Date & Time', always: true },
   { key: 'name', header: 'Customer Name', always: true },
   { key: 'tags', header: 'Tags', always: true },
+  { key: 'assign', header: 'Assign', has: () => can('cap:assign_chats') },   // admin: chat kis agent ko
   { key: 'source', header: 'Source', has: (l) => !!l._source },
   { key: 'stage', header: 'Stage', has: (l) => !!l._stage },
   { key: 'status', header: 'Lead Status', has: (l) => !!l._status },
@@ -112,6 +114,25 @@ export default function Leads() {
   const [msgPopup, setMsgPopup] = useState(null)   // { cid, name } — messages popup
   const [summaryPopup, setSummaryPopup] = useState(null)   // { cid, name } — AI summary popup
   const [tagPopup, setTagPopup] = useState(null)   // lead — tag picker popup
+  // Chat assignment (admin) — agents list + current { cid: userId } map
+  const canAssign = can('cap:assign_chats')
+  const [agents, setAgents] = useState([])
+  const [assignMap, setAssignMap] = useState({})
+  useEffect(() => {
+    if (!canAssign) return
+    Promise.all([api.get('/api/users').catch(() => []), api.get('/api/assignments').catch(() => ({}))])
+      .then(([us, map]) => { setAgents(Array.isArray(us) ? us : (us?.users || [])); setAssignMap(map && typeof map === 'object' ? map : {}) })
+  }, [canAssign])
+  const assignChat = async (cid, userId) => {
+    if (!cid) return
+    const prev = assignMap[cid] || ''
+    setAssignMap((m) => ({ ...m, [cid]: userId || undefined }))   // optimistic
+    try {
+      await api.post(`/api/conversations/${encodeURIComponent(cid)}/assign`, { userId: userId || null })
+      const who = agents.find((a) => String(a.id) === String(userId))
+      toast(userId ? `Assigned to ${who?.name || 'agent'}` : 'Unassigned', 'success')
+    } catch (e) { setAssignMap((m) => ({ ...m, [cid]: prev || undefined })); toast(e.message || 'Assign failed', 'error') }
+  }
   // Bulk select + bulk tag
   const [selected, setSelected] = useState(() => new Set())
   const [bulkTagOpen, setBulkTagOpen] = useState(null)   // 'add' | 'remove' | null
@@ -251,6 +272,17 @@ export default function Leads() {
           <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${avatarFor(l.name, l._cid)} text-xs font-bold text-white`}>{initialsOf(l.name)}</span>
           <span className="font-semibold text-slate-800">{l.name || 'Unknown'}</span>
         </div>)
+      case 'assign': {
+        if (!canAssign) return null
+        if (!l._cid) return <span className="text-slate-300">—</span>
+        return (
+          <select value={assignMap[l._cid] || ''} onChange={(e) => assignChat(l._cid, e.target.value)}
+            className="max-w-[130px] rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[11px] font-medium text-slate-700 focus:border-brand-400 focus:outline-none">
+            <option value="">— Unassigned —</option>
+            {agents.map((a) => <option key={a.id} value={a.id}>{a.name || a.email}</option>)}
+          </select>
+        )
+      }
       case 'source': return <span className="whitespace-nowrap text-slate-600">{l._source || '—'}</span>
       case 'stage': return <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">{l._stage}</span>
       case 'status': return <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{l._status}</span>
@@ -519,7 +551,7 @@ export default function Leads() {
                   <tr key={rowKey} onClick={() => openChat(l._cid)} className={`cursor-pointer transition hover:bg-brand-50/40 ${l._cid && selected.has(l._cid) ? 'bg-brand-50/60' : ''}`}>
                     <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>{l._cid ? <input type="checkbox" checked={selected.has(l._cid)} onChange={() => toggleRow(l._cid)} /> : null}</td>
                     {activeCols.map((c) => (
-                      <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={(c.key === 'actions' || c.key === 'tags' || c.key === 'messages') ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l, rowKey)}</td>
+                      <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={(c.key === 'actions' || c.key === 'tags' || c.key === 'messages' || c.key === 'assign') ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l, rowKey)}</td>
                     ))}
                   </tr>
                 )})}

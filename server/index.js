@@ -57,9 +57,16 @@ function agentName(req) {
 // ============================================================
 const sseClients = new Set()
 
+// Event kis conversation ka hai (agar hai to) — SSE ko assignment se filter karne ke liye.
+const eventCid = (e) => e?.conversationId || e?.conversation?.id || e?.message?.conversation_id || null
+
 function broadcast(event) {
   const payload = `data: ${JSON.stringify(event)}\n\n`
+  const cid = eventCid(event)
+  const assignee = cid != null ? String(assigneeOf(cid) || '') : null
   for (const res of sseClients) {
+    // conversation-scoped event: sirf view-all clients + us chat ke assigned agent ko bhejo
+    if (cid != null && !res._seeAll && String(res._uid || '') !== assignee) continue
     try { res.write(payload) } catch { /* client gone; cleaned up on close */ }
   }
 }
@@ -67,8 +74,12 @@ function broadcast(event) {
 app.get('/api/stream', (req, res) => {
   // EventSource can't send Authorization headers, so accept the JWT as a query param.
   const token = req.query.token
-  try { jwt.verify(token, JWT_SECRET) }
+  let payload
+  try { payload = jwt.verify(token, JWT_SECRET) }
   catch { return res.status(401).json({ error: 'Invalid token' }) }
+  // Assignment-scoping: non view-all user ko sirf apni assigned chats ke events milein (leak na ho)
+  res._uid = payload.id
+  res._seeAll = permsHas(permsForUser(payload.id), 'cap:view_all_chats')
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -224,14 +235,14 @@ app.delete('/api/users/:id', authRequired, requirePerm('cap:manage_users'), asyn
 // Permission strings:  page:<key> · cap:<key> · validate:<section>   ('*' = sab, Admin)
 // ============================================================
 const PERM_PAGES = ['leads','inbox','orders','receipts','reports','campaigns','follow-ups','artwork-vault','ai-assistant','after-session','team','settings','connect-meta','integrations','roles']
-const PERM_CAPS = ['manage_users','manage_roles','delete_leads','send_messages']
+const PERM_CAPS = ['manage_users','manage_roles','delete_leads','send_messages','view_all_chats','assign_chats']
 const VALIDATE_SECTIONS = ['lead','customer','product','shipping','quote','invoice','order']
 
 const DEFAULT_ROLES = [
   { id: 'admin', name: 'Admin', builtin: true, permissions: ['*'] },
   { id: 'manager', name: 'Manager', builtin: true, permissions: [
       ...PERM_PAGES.filter((p) => p !== 'roles').map((p) => 'page:' + p),
-      'cap:manage_users', 'cap:delete_leads', 'cap:send_messages',
+      'cap:manage_users', 'cap:delete_leads', 'cap:send_messages', 'cap:view_all_chats', 'cap:assign_chats',
       ...VALIDATE_SECTIONS.map((s) => 'validate:' + s),
     ] },
   { id: 'agent', name: 'Agent', builtin: true, permissions: [
@@ -256,6 +267,24 @@ const permsForUser = (userId) => {
 const permsHas = (perms, key) => perms.includes('*') || perms.includes(key)
 function reqCan(req, key) { return permsHas(permsForUser(req.user?.id), key) }
 function requirePerm(key) { return (req, res, next) => reqCan(req, key) ? next() : res.status(403).json({ error: `Not allowed — missing permission: ${key}` }) }
+
+// ── Chat assignment (admin assigns a conversation to a sales agent) ──────────
+// Store: settings key `chat_assignments` = { [conversationId]: userId }. No new table
+// (restricted DB role safe — jaise flags/roles). Jinke paas cap:view_all_chats NAHI, wo
+// sirf apni assigned conversations dekh/khol/reply kar sakte hain.
+const getAssignments = () => getSetting('chat_assignments') || {}
+const assigneeOf = (cid) => getAssignments()[String(cid)] || null
+// user is jis conversation ko access kar sakta hai? (view_all_chats waale sab; warna sirf apni assigned)
+function canAccessConv(req, cid) {
+  if (reqCan(req, 'cap:view_all_chats')) return true
+  return String(assigneeOf(cid) || '') === String(req.user?.id || '_')
+}
+// route guard — non-view-all user doosre ki chat na khol sake (403)
+function requireConvAccess(cid, req, res) {
+  if (canAccessConv(req, cid)) return true
+  res.status(403).json({ error: 'This chat is not assigned to you' })
+  return false
+}
 // login/me responses me role + permissions bhejo (frontend UI gating ke liye)
 function authPayload(user) {
   const role = roleById(user.role) || roleById('agent')
@@ -361,11 +390,33 @@ app.get('/api/inbox', authRequired, (req, res) => {
     'status','status_bg','status_icon','assigned_to','bookmarked','created_at','meta_recipient_id','customer_id','lead_id','stage']
   const cts = (c) => Number(c.last_ts) || (c.created_at ? Date.parse(c.created_at) : 0) || 0
   let convs = getAll('conversations')
+  // Sirf assigned chats — jinke paas cap:view_all_chats nahi (sales agent), unhe apni hi dikhein.
+  const seeAll = reqCan(req, 'cap:view_all_chats')
+  const assignments = getAssignments()
+  if (!seeAll) convs = convs.filter((c) => String(assignments[String(c.id)] || '') === String(req.user?.id || '_'))
   if (q) convs = convs.filter((c) => `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.list_preview || ''}`.toLowerCase().includes(q))
   convs = convs.slice().sort((a, b) => cts(b) - cts(a))
   const total = convs.length
-  const light = convs.slice(0, limit).map((c) => { const o = {}; for (const f of LIST) if (c[f] !== undefined) o[f] = c[f]; return o })
-  res.json({ conversations: light, total, returned: light.length, q: q || null })
+  const light = convs.slice(0, limit).map((c) => { const o = {}; for (const f of LIST) if (c[f] !== undefined) o[f] = c[f]; o.assigned_user_id = assignments[String(c.id)] || null; return o })
+  res.json({ conversations: light, total, returned: light.length, q: q || null, scoped: !seeAll })
+})
+
+// Admin: kis conversation ka kaunse users ko assignment — { [cid]: userId } map.
+app.get('/api/assignments', authRequired, (req, res) => res.json(getAssignments()))
+// Admin: ek conversation ko sales agent ko assign/unassign karo. userId null/'' = unassign.
+app.post('/api/conversations/:id/assign', authRequired, requirePerm('cap:assign_chats'), async (req, res) => {
+  const cid = String(req.params.id)
+  const userId = req.body?.userId
+  const map = { ...getAssignments() }
+  if (userId === null || userId === '' || userId === undefined) {
+    delete map[cid]
+  } else {
+    if (!getAll('users').some((u) => String(u.id) === String(userId))) return res.status(400).json({ error: 'Unknown user' })
+    map[cid] = userId
+  }
+  setSetting('chat_assignments', map)
+  await flush()
+  res.json({ ok: true, conversation_id: cid, userId: map[cid] || null })
 })
 
 // ============================================================
@@ -419,11 +470,13 @@ app.delete('/api/flags/:id', authRequired, (req, res) => {
 // Messages nested under a conversation
 // ============================================================
 app.get('/api/conversations/:id/messages', authRequired, (req, res) => {
+  if (!requireConvAccess(req.params.id, req, res)) return
   const msgs = getAll('messages').filter(m => m.conversation_id === req.params.id)
   res.json(msgs)
 })
 
 app.post('/api/conversations/:id/messages', authRequired, (req, res) => {
+  if (!requireConvAccess(req.params.id, req, res)) return
   const { dir, text, time, category } = req.body || {}
   if (!dir || !text) return res.status(400).json({ error: 'dir and text required' })
   const msg = saveMessage({
@@ -516,6 +569,7 @@ app.get('/api/manychat/subscribers/:id', authRequired, async (req, res) => {
 app.post('/api/manychat/send', authRequired, async (req, res) => {
   const { subscriberId, text, messageTag } = req.body || {}
   if (!subscriberId || !text) return res.status(400).json({ error: 'subscriberId and text required' })
+  if (!requireConvAccess(`mc:${subscriberId}`, req, res)) return
   try {
     const result = await manychat().sendText(subscriberId, text, { messageTag })
     // Save a copy locally as an outgoing message
@@ -741,6 +795,7 @@ async function upsertMetaConversation(channel, senderId, profile = {}) {
 // customer + notes, deletes its Qdrant vectors, and tells the poller never to re-create it.
 app.post('/api/conversations/:id/delete', authRequired, async (req, res) => {
   const id = req.params.id
+  if (!requireConvAccess(id, req, res)) return
   try {
     const msgs = getAll('messages').filter((m) => m.conversation_id === id)
     if (qdrantConfigured() && msgs.length) {
@@ -896,6 +951,10 @@ app.post('/api/meta/disconnect', authRequired, (req, res) => {
 app.post('/api/meta/send', authRequired, async (req, res) => {
   let { conversationId, recipientId, channel, text } = req.body || {}
   if (!text) return res.status(400).json({ error: 'text required' })
+  // assignment guard — agar conversationId hai to uspe access chahiye; agar nahi (raw recipient)
+  // to sirf view-all waale (admin/manager) hi bhej sakte hain.
+  if (conversationId) { if (!requireConvAccess(conversationId, req, res)) return }
+  else if (!reqCan(req, 'cap:view_all_chats')) return res.status(403).json({ error: 'This chat is not assigned to you' })
 
   let conv = conversationId ? findById('conversations', conversationId) : null
   if (conv) {
@@ -953,6 +1012,7 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
 app.post('/api/meta/send-file', authRequired, async (req, res) => {
   const { conversationId, fileName, fileType, dataBase64, text } = req.body || {}
   if (!conversationId || !dataBase64) return res.status(400).json({ error: 'conversationId and file required' })
+  if (!requireConvAccess(conversationId, req, res)) return
   const conv = findById('conversations', conversationId)
   const recipientId = conv?.meta_recipient_id || String(conversationId).split(':')[1]
   if (!recipientId) return res.status(400).json({ error: 'unknown conversation' })
@@ -1327,6 +1387,7 @@ app.post('/api/webhooks/meta', async (req, res) => {
 
 // Mark a conversation as read (clears the unread badge)
 app.post('/api/conversations/:id/read', authRequired, (req, res) => {
+  if (!requireConvAccess(req.params.id, req, res)) return
   const conv = update('conversations', req.params.id, { unread: 0 })
   if (!conv) return res.status(404).json({ error: 'conversation not found' })
   broadcast({ type: 'conversation', conversation: conv })
@@ -1624,7 +1685,7 @@ app.get('/api/ai/analyze/:id', authRequired, async (req, res) => {
 // Leads dashboard list — REAL enriched columns seedhe app.leads se (intent_score, temperature,
 // purchase_probability, estimated_value, primary_product, business_potential). /api/leads (crud)
 // sirf static extra doc deta tha (score:50), isliye qualification/temperature static dikhte the.
-app.get('/api/leads-list', authRequired, async (req, res) => {
+app.get('/api/leads-list', authRequired, requirePerm('page:leads'), async (req, res) => {
   try {
     // Naam/id do tarah se resolve karo: legacy_id se (c) AUR UUID FK se (cv/cu).
     // Kuch leads (Decoinks-sync/field-validate se bane) ka legacy_id NULL hota hai par

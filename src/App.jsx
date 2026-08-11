@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import RequireAuth from './components/RequireAuth.jsx'
-import { isAuthed, refreshMe } from './lib/auth.js'
+import { isAuthed, refreshMe, can } from './lib/auth.js'
 import Login from './pages/Login.jsx'
 import Roles from './pages/Roles.jsx'
 import CreateAccount from './pages/CreateAccount.jsx'
@@ -25,6 +25,9 @@ import Reports from './pages/Reports.jsx'
 import Settings from './pages/Settings.jsx'
 import Team from './pages/Team.jsx'
 
+// Page permission gate — role ke paas `perm` na ho to Inbox pe bhej do (agent ko Leads na dikhe).
+function Perm({ perm, children }) { return can(perm) ? children : <Navigate to="/dashboard" replace /> }
+
 export default function App() {
   // Purane session me permissions na hon to app dikhane se pehle /me refresh karo.
   const [ready, setReady] = useState(!isAuthed())
@@ -39,8 +42,8 @@ export default function App() {
       <Route path="/inbox" element={<Navigate to="/dashboard" replace />} />
       <Route path="/customers" element={<RequireAuth><Customers /></RequireAuth>} />
       <Route path="/customer-360" element={<RequireAuth><Customer360 /></RequireAuth>} />
-      <Route path="/leads" element={<RequireAuth><Leads /></RequireAuth>} />
-      <Route path="/leads/:id" element={<RequireAuth><LeadDetails /></RequireAuth>} />
+      <Route path="/leads" element={<RequireAuth><Perm perm="page:leads"><Leads /></Perm></RequireAuth>} />
+      <Route path="/leads/:id" element={<RequireAuth><Perm perm="page:leads"><LeadDetails /></Perm></RequireAuth>} />
       <Route path="/receipts" element={<RequireAuth><Receipts /></RequireAuth>} />
       <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
       <Route path="/follow-ups" element={<RequireAuth><FollowUps /></RequireAuth>} />
