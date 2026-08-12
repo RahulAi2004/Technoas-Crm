@@ -1358,6 +1358,11 @@ async function promoteInstagramFromShadow() {
       if (findById('messages', mid) || getAll('messages').find((x) => x.mid === mid && x.conversation_id === convId)) continue   // dedup
       let atts = []
       try { atts = Array.isArray(m.atts) ? m.atts : (m.atts ? JSON.parse(m.atts) : []) } catch { atts = [] }
+      // Har image ko ek stable `name` do (FB "image-<id>" jaisa) — isse chat + Files tab PG copy
+      // se serve karti hai (/api/artwork-file?name=), aur artwork-capture folder bhi banata hai.
+      atts = atts.map((a) => (a && (a.type === 'image' || String(a.type || '').startsWith('image')) && !a.name)
+        ? { ...a, type: 'image', name: `image-${a.id || Math.abs([...String(a.url || '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 7))}` }
+        : a)
       const ts = Date.parse(m.ts) || Date.now()
       const dir = m.dir === 'out' ? 'out' : 'in'
       const stored = saveMessage({ id: mid, mid, conversation_id: convId, dir, text: m.text || '', attachments: atts, time: fmtTimeFromISO(m.ts), ts, via: 'chatwoot' })
