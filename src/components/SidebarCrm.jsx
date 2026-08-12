@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useToast } from './ToastContext.jsx'
 import MobileNav, { closeNav } from './MobileNav.jsx'
 import { can } from '../lib/auth.js'
+import { api } from '../lib/api.js'
 
 export default function SidebarCrm({ active }) {
   const toast = useToast()
@@ -12,6 +13,13 @@ export default function SidebarCrm({ active }) {
   // Desktop sidebar collapse — shared preference key with the Dashboard's own sidebar.
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebarCollapsed') === '1')
   const toggle = () => setCollapsed((v) => { const n = !v; localStorage.setItem('sidebarCollapsed', n ? '1' : '0'); return n })
+  // CRM 360 badge — kitne converted customers ne naya (unread) message bheja
+  const [crm360, setCrm360] = useState(0)
+  useEffect(() => {
+    let on = true
+    const load = () => api.get('/api/inbox/stats').then((s) => { if (on) setCrm360(s?.convertedUnread || 0) }).catch(() => {})
+    load(); const t = setInterval(load, 30000); return () => { on = false; clearInterval(t) }
+  }, [])
 
   const itemCls = (key) =>
     active === key
@@ -134,24 +142,17 @@ export default function SidebarCrm({ active }) {
           </li>
         </ul>
 
-        {/* CRM 360 — shown again per request. To hide, change true → false */}
-        {true && (<>
+        {/* CRM 360 — converted customers (Inbox se hate); red badge = naye message wale */}
         <p className="sb-txt mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">CRM 360</p>
         <ul className="space-y-1">
-          <li><Link to="/customers" className={itemCls('customers')}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span className="sb-txt">Customers</span>
-          </Link></li>
-          <li><Link to="/customer-360" className={itemCls('customer-360')}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
-            <span className="sb-txt">Customer 360</span>
-          </Link></li>
-          <li><Link to="/orders" className={itemCls('orders')}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-            <span className="sb-txt">Orders</span>
+          <li><Link to="/dashboard?view=converted" title="CRM 360 — converted customers" className={itemCls('crm360') + ' justify-between'}>
+            <span className="flex items-center gap-3">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+              <span className="sb-txt">CRM 360</span>
+            </span>
+            {crm360 > 0 && <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">{crm360}</span>}
           </Link></li>
         </ul>
-        </>)}
 
         <p className="sb-txt mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Settings</p>
         <ul className="space-y-1">

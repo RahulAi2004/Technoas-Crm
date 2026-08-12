@@ -418,19 +418,20 @@ app.get('/api/inbox/stats', authRequired, (req, res) => {
   if (!seeAll) convs = convs.filter((c) => asIds(assignments[String(c.id)]).includes(uid))
   const n = (v) => Number(v) || 0
   const tagsOf = (c) => Array.isArray(c.tags) ? c.tags : []
-  let unread = 0, spam = 0, done = 0, followup = 0, unassigned = 0, bookmarked = 0
+  let unread = 0, spam = 0, done = 0, followup = 0, unassigned = 0, bookmarked = 0, convertedUnread = 0
   const byTag = {}
   for (const c of convs) {
     if (n(c.unread) > 0) unread++
     const tg = tagsOf(c)
     if (tg.includes('spam')) spam++
     if (tg.includes('converted')) done++
+    if (tg.includes('converted') && n(c.unread) > 0) convertedUnread++   // CRM 360 badge
     if (n(c.last_in_ts) > n(c.last_out_ts)) followup++        // customer ka last message unanswered
     if (!c.assigned_to && !asIds(assignments[String(c.id)]).length) unassigned++
     if (c.bookmarked) bookmarked++
     for (const t of tg) byTag[t] = (byTag[t] || 0) + 1
   }
-  res.json({ total: convs.length, unread, spam, done, followup, unassigned, bookmarked, byTag, scoped: !seeAll })
+  res.json({ total: convs.length, unread, spam, done, followup, unassigned, bookmarked, convertedUnread, byTag, scoped: !seeAll })
 })
 
 // Admin: kis conversation ka kaunse users ko assignment — { [cid]: userId } map.
