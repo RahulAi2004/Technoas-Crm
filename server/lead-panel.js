@@ -139,6 +139,21 @@ export const FIELD_MAP = {
   quote_tax:        { t: 'leads', j: 'quote_tax', num: true },
   quote_rush_services: { t: 'leads', j: 'quote_rush_services', num: true },
   customer_requirement_summary: { t: 'leads', j: 'customer_requirement_summary' },
+  // PAYMENT (Invoice ke baad) — customer payment record ke agent-validatable fields (leads.extra).
+  pay_date:          { t: 'leads', j: 'pay_date', date: true },
+  pay_amount:        { t: 'leads', j: 'pay_amount', num: true },
+  pay_fee:           { t: 'leads', j: 'pay_fee', num: true },
+  pay_method:        { t: 'leads', j: 'pay_method' },
+  pay_status:        { t: 'leads', j: 'pay_status' },
+  pay_txn_id:        { t: 'leads', j: 'pay_txn_id' },
+  pay_reference:     { t: 'leads', j: 'pay_reference' },
+  pay_sender_bank:   { t: 'leads', j: 'pay_sender_bank' },
+  pay_account_name:  { t: 'leads', j: 'pay_account_name' },
+  pay_account_last4: { t: 'leads', j: 'pay_account_last4' },
+  pay_sender_ref:    { t: 'leads', j: 'pay_sender_ref' },
+  pay_received_from: { t: 'leads', j: 'pay_received_from' },
+  pay_received_into: { t: 'leads', j: 'pay_received_into' },
+  pay_notes:         { t: 'leads', j: 'pay_notes' },
 }
 
 // Allowed values for select fields — validate par galat value reject hoti hai.
@@ -171,6 +186,9 @@ const FIELD_OPTS = {
   lead_source: ['Facebook Messenger', 'WhatsApp', 'Instagram', 'Email', 'Walk-in', 'Phone', 'Referral', 'Other'],
   customer_source: ['Facebook Messenger', 'WhatsApp', 'Instagram', 'Email', 'Walk-in', 'Phone', 'Referral', 'Other'],
   production_time: ['1 - 2 Business Days', '2 - 3 Business Days', '3 - 5 Business Days', '1 Week', '2 Weeks'],
+  pay_method: ['Bank Transfer', 'Cash', 'Card', 'PayPal', 'Zelle', 'Cheque', 'Other'],
+  pay_status: ['Completed', 'Pending', 'Failed', 'Refunded'],
+  pay_received_into: ['Bank of America — Decoinks LLC', 'PayPal — info@decoinks.com', 'Zelle — DECOINKS, LLC'],
 }
 
 // field key -> Lead Panel section (validate-permission ke liye). Frontend TAB_KEYS ke mutabik.
@@ -181,6 +199,7 @@ export const FIELD_SECTION = Object.fromEntries([
   ['shipping', ['shipping_method','is_rush_order','production_time','required_delivery_date','event_date','estimated_delivery','carrier','tracking_number','estimated_shipping_cost','package_weight_lbs','delivery_instructions','shipping_postcode','shipping_city','shipping_state','shipping_country']],
   ['quote', ['line_items','quote_notes','quote_status','quote_date','valid_until','currency','estimated_value','discount','subtotal','quote_rush_services','shipping_charges','quote_tax_pct','quote_tax','grand_total','customer_requirement_summary']],
   ['invoice', ['invoice_number','invoice_status','invoice_date','invoice_due_date','payment_terms','payment_method','invoice_currency','invoice_subtotal','invoice_discount','invoice_tax','invoice_shipping','invoice_total','amount_paid','balance_due','invoice_notes','invoice_lines']],
+  ['payment', ['pay_date','pay_amount','pay_fee','pay_method','pay_status','pay_txn_id','pay_reference','pay_sender_bank','pay_account_name','pay_account_last4','pay_sender_ref','pay_received_from','pay_received_into','pay_notes']],
   ['order', ['order_products','order_items_count','order_total','order_currency','order_status','payment_status','order_deadline','production_partner','order_summary','order_instructions','order_lines']],
 ].flatMap(([section, keys]) => keys.map((k) => [k, section])))
 
@@ -361,6 +380,9 @@ export async function saveField({ conversationId, field, value, convName }) {
       if (ln.unit_price != null && ln.unit_price !== '' && (isNaN(Number(ln.unit_price)) || Number(ln.unit_price) < 0)) bad('Line unit price must be ≥ 0')
     }
   }
+  // 7) Account (last 4) — sirf 1–4 digits (poora account number kabhi store nahi hota)
+  if (field === 'pay_account_last4' && sval && !/^\d{1,4}$/.test(sval)) bad('Account (last 4) must be 1–4 digits')
+
   // VALIDATION DB mode: validated value ko alag database me store karo — production app.* ko
   // bilkul chhue bina (na naya row, na koi write). Panel isi DB se overlay karke dikhata hai.
   if (VALIDATION_MODE && valConfigured()) {
@@ -414,8 +436,8 @@ const dstr = (d) => { try { return d ? new Date(d).toISOString().slice(0, 10) : 
 // Panel kholte hi: DB me jo pehle se saved hai wo values (agent ko dikhane ko).
 export async function getLeadBundle(conversationId) {
   const out = {
-    lead: {}, customer: {}, product: {}, shipping: {}, quote: {}, invoice: {}, order: {},
-    has: { lead: false, customer: false, product: false, shipping: false, quote: false, invoice: false, order: false },
+    lead: {}, customer: {}, product: {}, shipping: {}, quote: {}, invoice: {}, payment: {}, order: {},
+    has: { lead: false, customer: false, product: false, shipping: false, quote: false, invoice: false, payment: false, order: false },
     field_audit: {}, customerName: '',
   }
   const co = await resolveIds(conversationId)
@@ -475,6 +497,10 @@ export async function getLeadBundle(conversationId) {
       invoice_notes: ix.invoice_notes || '',
       invoice_lines: Array.isArray(ix.invoice_lines) ? ix.invoice_lines : [],
     }
+    // PAYMENT — lead.extra ke pay_* keys (customer payment record, Invoice ke baad).
+    const payKeys = ['pay_date', 'pay_amount', 'pay_fee', 'pay_method', 'pay_status', 'pay_txn_id', 'pay_reference', 'pay_sender_bank', 'pay_account_name', 'pay_account_last4', 'pay_sender_ref', 'pay_received_from', 'pay_received_into', 'pay_notes']
+    out.has.payment = payKeys.some((k) => ix[k] != null && ix[k] !== '')
+    out.payment = Object.fromEntries(payKeys.map((k) => [k, ix[k] ?? '']))
   }
   if (co.customer_id) {
     const cr = await dbQuery(`SELECT * FROM app.customers WHERE customer_id = $1`, [co.customer_id])

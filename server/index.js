@@ -236,7 +236,7 @@ app.delete('/api/users/:id', authRequired, requirePerm('cap:manage_users'), asyn
 // ============================================================
 const PERM_PAGES = ['leads','inbox','tasks','orders','receipts','reports','campaigns','follow-ups','artwork-vault','ai-assistant','after-session','team','settings','connect-meta','integrations','roles']
 const PERM_CAPS = ['manage_users','manage_roles','delete_leads','send_messages','view_all_chats','assign_chats']
-const VALIDATE_SECTIONS = ['lead','customer','product','shipping','quote','invoice','order']
+const VALIDATE_SECTIONS = ['lead','customer','product','shipping','quote','invoice','payment','order']
 
 const DEFAULT_ROLES = [
   { id: 'admin', name: 'Admin', builtin: true, permissions: ['*'] },

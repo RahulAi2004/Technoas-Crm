@@ -47,6 +47,9 @@ const OPT = {
   lead_source: ['Facebook Messenger', 'WhatsApp', 'Instagram', 'Email', 'Walk-in', 'Phone', 'Referral', 'Other'],
   customer_source: ['Facebook Messenger', 'WhatsApp', 'Instagram', 'Email', 'Walk-in', 'Phone', 'Referral', 'Other'],
   production_time: ['1 - 2 Business Days', '2 - 3 Business Days', '3 - 5 Business Days', '1 Week', '2 Weeks'],
+  pay_method: ['Bank Transfer', 'Cash', 'Card', 'PayPal', 'Zelle', 'Cheque', 'Other'],
+  pay_status: ['Completed', 'Pending', 'Failed', 'Refunded'],
+  pay_received_into: ['Bank of America — Decoinks LLC', 'PayPal — info@decoinks.com', 'Zelle — DECOINKS, LLC'],
   sheet_size: ['22" x 60"', '22" x 120"', '24" x 60"', '30" x 60"'],   // combo
   carrier: ['UPS', 'FedEx', 'USPS', 'DHL'],                            // combo
   // combo (dropdown + custom typeable) — variable values, isliye strict select nahi.
@@ -121,6 +124,16 @@ const INVOICE_FIELDS = [
   ['invoice_total', 'Grand Total', 'number'],
   ['amount_paid', 'Amount Paid', 'number'], ['balance_due', 'Balance Due', 'number'],
 ]
+// PAYMENT (Invoice ke baad) — customer payment record ke agent-validatable fields.
+const PAY_FIELDS = [
+  ['pay_date', 'Payment Date', 'date'], ['pay_amount', 'Amount', 'number'],
+  ['pay_fee', 'Processor Fee', 'number'], ['pay_method', 'Payment Method', 'select'],
+  ['pay_status', 'Payment Status', 'select'], ['pay_txn_id', 'Transaction ID', 'text'],
+  ['pay_reference', 'Reference No', 'text'], ['pay_received_from', 'Received From', 'text'],
+  ['pay_received_into', 'Received Into (our account)', 'select'],
+  ['pay_sender_bank', 'Sender Bank', 'text'], ['pay_account_name', 'Sender Account Name', 'text'],
+  ['pay_account_last4', 'Account (last 4)', 'text'], ['pay_sender_ref', 'Sender Reference', 'text'],
+]
 const ORDER_FIELDS = [
   ['order_status', 'Order Status', 'select'], ['payment_status', 'Payment Status', 'select'],
   ['order_currency', 'Currency', 'select'], ['order_items_count', 'Items Count', 'number'],
@@ -137,17 +150,18 @@ const TAB_KEYS = {
   shipping: [...SHIP_FIELDS.map((f) => f[0])],
   quote: [...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes'],
   invoice: [...INVOICE_FIELDS.map((f) => f[0]), 'invoice_lines', 'invoice_notes'],
+  payment: [...PAY_FIELDS.map((f) => f[0]), 'pay_notes'],
   order: [...ORDER_FIELDS.map((f) => f[0]), 'order_lines'],
 }
 
-const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}), ...(b?.invoice || {}), ...(b?.order || {}) })
+const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}), ...(b?.invoice || {}), ...(b?.payment || {}), ...(b?.order || {}) })
 
 // Saare field keys (Pending list ke liye — har tab ke).
 const ALL_FIELD_KEYS = [...new Set(Object.values(TAB_KEYS).flat())]
 
 // field key -> human label + kis tab me hai (Submit error me batane ke liye).
-const FIELD_LABELS = Object.fromEntries([...LEAD_FIELDS, ...CUST_FIELDS, ...PROD_FIELDS, ...ART_FIELDS, ...SHIP_FIELDS, ...QUOTE_FIELDS, ...INVOICE_FIELDS, ...ORDER_FIELDS].map((f) => [f[0], f[1]]))
-Object.assign(FIELD_LABELS, { lost_reason: 'Lost Reason', shipping_address: 'Shipping Address', billing_address: 'Billing Address', size_breakdown: 'Size Breakdown', print_locations: 'Print Locations', special_instructions: 'Special Instructions', line_items: 'Quote Items', quote_notes: 'Quote Notes', invoice_lines: 'Invoice Items', invoice_notes: 'Invoice Notes', order_lines: 'Order Line Items' })
+const FIELD_LABELS = Object.fromEntries([...LEAD_FIELDS, ...CUST_FIELDS, ...PROD_FIELDS, ...ART_FIELDS, ...SHIP_FIELDS, ...QUOTE_FIELDS, ...INVOICE_FIELDS, ...PAY_FIELDS, ...ORDER_FIELDS].map((f) => [f[0], f[1]]))
+Object.assign(FIELD_LABELS, { lost_reason: 'Lost Reason', shipping_address: 'Shipping Address', billing_address: 'Billing Address', size_breakdown: 'Size Breakdown', print_locations: 'Print Locations', special_instructions: 'Special Instructions', line_items: 'Quote Items', quote_notes: 'Quote Notes', invoice_lines: 'Invoice Items', invoice_notes: 'Invoice Notes', pay_notes: 'Payment Notes', order_lines: 'Order Line Items' })
 const labelOf = (k) => FIELD_LABELS[k] || k
 const tabOfKey = (k) => Object.keys(TAB_KEYS).find((t) => TAB_KEYS[t].includes(k)) || null
 const hasVal = (v) =>
@@ -670,7 +684,7 @@ export default function LeadPanel({ conv, onClose }) {
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
   }
 
-  const TABS = [['pending', 'Pending'], ['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Delivery'], ['quote', 'Quote'], ['invoice', 'Invoice'], ['order', 'Sales Order']]
+  const TABS = [['pending', 'Pending'], ['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Delivery'], ['quote', 'Quote'], ['invoice', 'Invoice'], ['payment', 'Payment'], ['order', 'Sales Order']]
   // Readable columns: panel ki chaudai ke hisaab se (chhote panel me 1-2, wide me 3). Cramped nahi.
   const grid = wide
     ? 'grid gap-3 grid-cols-2 lg:grid-cols-3'
@@ -835,6 +849,15 @@ export default function LeadPanel({ conv, onClose }) {
           <div className={grid}>{renderFields(INVOICE_FIELDS)}</div>
           <div className={grid}><Field k="invoice_notes" label="Invoice Notes" type="textarea" val={vals.invoice_notes} filled={filled.invoice_notes} state={fs.invoice_notes} onChange={(v) => setVal('invoice_notes', v)} onValidate={validate('invoice_notes')} locked={!canValidate('invoice')} auditInfo={audit['invoice_notes']} /></div>
           <p className="text-[10px] text-slate-400">Capture billing before the Sales Order is created. Each field saves with the lead as soon as you validate it.</p>
+        </div>)}
+
+        {tab === 'payment' && (<div className="space-y-3">
+          <div className={grid}>{renderFields(PAY_FIELDS)}</div>
+          {Number(vals.pay_fee) > 0 && (
+            <div className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px]"><span className="text-slate-500">Net received (after fee):</span> <span className="font-bold text-emerald-700">${Math.max(0, (Number(vals.pay_amount) || 0) - (Number(vals.pay_fee) || 0)).toFixed(2)}</span></div>
+          )}
+          <div className={grid}><Field k="pay_notes" label="Payment Notes" type="textarea" val={vals.pay_notes} filled={filled.pay_notes} state={fs.pay_notes} onChange={(v) => setVal('pay_notes', v)} onValidate={validate('pay_notes')} locked={!canValidate('payment')} auditInfo={audit['pay_notes']} /></div>
+          <p className="text-[10px] text-slate-400">Customer payment record — AI pre-fills from the data, the agent validates each field. Only the last 4 account digits are stored (sensitive data).</p>
         </div>)}
 
         {tab === 'order' && (<div className="space-y-3">
