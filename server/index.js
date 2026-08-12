@@ -1622,7 +1622,8 @@ function knownOutgoing(convId, mid, text, ts, hasAtt) {
 // Existing flag ids: 'unsubcribe' (Unsubscribe), 'blocked', 'spam'.
 const AUTO_TAG_RULES = [
   { id: 'unsubcribe', re: /\bunsubscribe(d)?\b|opt[\s-]?out|remove me from/i },
-  { id: 'spam', re: /\bscam\b|\bspam\b|\bfraud(ulent)?\b/i },
+  // 'spam' auto-tag HATA diya — "are you scamming me?" jaise complaints/questions real customers
+  // ko galti se spam bana dete the. Spam tag ab sirf agent manually laga sakta hai.
   { id: 'blocked', re: /blocked me|you(?:'re| are)\s+blocked|i(?:'ll| will|'m going to)\s+block (?:you|this|your)/i },
 ]
 function autoTagConv(convId) {
