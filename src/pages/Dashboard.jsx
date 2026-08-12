@@ -618,6 +618,10 @@ export default function Dashboard() {
               </span>
               <span className="sb-badge rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold">{conversations.length}</span>
             </button></li>
+            {can('page:tasks') && <li><Link to="/tasks" className="sb-item group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5" data-tip="Tasks">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6"/><path d="M9 12l2 2 4-4"/><path d="M16 3l5 5-5 5"/></svg>
+              <span className="sb-label">Tasks</span>
+            </Link></li>}
             <li><button onClick={() => setView('mentions')} className={`sb-item group flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium ${view === 'mentions' ? 'bg-brand-600 text-white' : 'hover:bg-white/5'}`} data-tip="Mentions">
               <span className="flex items-center gap-3">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>
@@ -655,6 +659,10 @@ export default function Dashboard() {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
               <span className="sb-label">After Session</span>
             </Link></li>}
+            <li><Link to="/ai-training" className="sb-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-violet-300 hover:bg-white/5" data-tip="AI Training">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+              <span className="sb-label">AI Training</span>
+            </Link></li>
           </ul>
 
           {/* CRM 360 section — hidden from the Dashboard sidebar for now. To show again, change false → true */}
