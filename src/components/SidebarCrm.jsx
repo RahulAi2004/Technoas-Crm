@@ -134,8 +134,8 @@ export default function SidebarCrm({ active }) {
           </li>
         </ul>
 
-        {/* CRM 360 — hidden for now. To show again, change false → true */}
-        {false && (<>
+        {/* CRM 360 — shown again per request. To hide, change true → false */}
+        {true && (<>
         <p className="sb-txt mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">CRM 360</p>
         <ul className="space-y-1">
           <li><Link to="/customers" className={itemCls('customers')}>
