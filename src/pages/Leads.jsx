@@ -9,7 +9,9 @@ import { can } from '../lib/auth.js'
 
 // --- helpers ---
 const fmt$ = (n) => (n == null || n === '' || Number(n) === 0) ? '—' : `$${Number(n).toLocaleString()}`
-const fmtDateTime = (ts) => ts ? new Date(Number(ts)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
+// UTC me dikhta hai — periodRange bhi UTC din par filter karta hai, warna 2 AM (UTC+5) wala lead
+// row me "Aug 12" dikhta aur Today ke count se bahar reh jata.
+const fmtDateTime = (ts) => ts ? new Date(Number(ts)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }) : '—'
 // "kitni der pehle" — pending/elapsed duration since a timestamp (ms)
 const agoStr = (ts) => {
   if (!ts) return '—'
@@ -31,14 +33,18 @@ const scoreCls = (s) => s >= 70 ? 'bg-emerald-500' : s >= 40 ? 'bg-amber-500' : 
 const FSEL = 'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-700 outline-none focus:border-brand-400'
 
 // Time-period → {from,to} ms. Rolling/calendar windows over the lead's start date.
+// Din ki seema UTC me — DB UTC par chalta hai aur Printshop dashboard bhi UTC din ginta hai,
+// isliye "Today"/"This Month" dono apps me bilkul ek hi lead set dete hain. Pehle browser ka
+// local midnight use hota tha, to UTC+5 se dekhne par raat 12–5 baje wale leads aaj me aa jate
+// the (Today 26 vs Printshop 12) aur har timezone ke viewer ko alag count dikhta tha.
 function periodRange(period, customFrom, customTo) {
-  const d = new Date(); const sod = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const d = new Date(); const sod = (x) => Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate())
   if (period === 'today') return { from: sod(d), to: Infinity }
-  if (period === 'week') { const m = new Date(d); m.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return { from: sod(m), to: Infinity } }
-  if (period === 'month') return { from: new Date(d.getFullYear(), d.getMonth(), 1).getTime(), to: Infinity }
-  if (period === 'quarter') return { from: new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1).getTime(), to: Infinity }
-  if (period === 'year') return { from: new Date(d.getFullYear(), 0, 1).getTime(), to: Infinity }
-  if (period === 'custom') return { from: customFrom ? Date.parse(customFrom + 'T00:00:00') : 0, to: customTo ? Date.parse(customTo + 'T23:59:59') : Infinity }
+  if (period === 'week') { const m = new Date(d); m.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return { from: sod(m), to: Infinity } }
+  if (period === 'month') return { from: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1), to: Infinity }
+  if (period === 'quarter') return { from: Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1), to: Infinity }
+  if (period === 'year') return { from: Date.UTC(d.getUTCFullYear(), 0, 1), to: Infinity }
+  if (period === 'custom') return { from: customFrom ? Date.parse(customFrom + 'T00:00:00Z') : 0, to: customTo ? Date.parse(customTo + 'T23:59:59.999Z') : Infinity }
   return { from: 0, to: Infinity }
 }
 const PERIODS = [['today', 'Today'], ['week', 'This Week'], ['month', 'This Month'], ['quarter', 'This Quarter'], ['year', 'This Year'], ['custom', 'Custom'], ['all', 'All Time']]
@@ -283,7 +289,7 @@ export default function Leads() {
   useEffect(() => {
     if (period === 'custom') return
     const r = periodRange(period)
-    const s = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+    const s = (ms) => new Date(ms).toISOString().slice(0, 10)   // UTC — periodRange ki seema ke sath match kare
     setFrom(r.from ? s(r.from) : '')                          // 'all' -> khaali
     setTo(period === 'all' ? '' : s(Date.now()))             // rolling periods -> aaj tak
   }, [period])
