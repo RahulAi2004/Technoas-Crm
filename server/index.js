@@ -13,7 +13,7 @@ import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, em
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
-import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile, cwInstagramConversations } from './chatwoot.js'
+import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile, cwInstagramConversations, cwContactAvatars } from './chatwoot.js'
 import { tmConfigured, tmBaseUrl, tmHealth, tmStats, tmListTasks, tmCreateTask, tmUsers, tmTask, tmTransition, tmComment, tmRemind, tmNotifications } from './taskmgmt.js'
 import { randomUUID, createHash } from 'node:crypto'
 import { nextcloudWebhook } from './nextcloud-webhook.js'
@@ -388,7 +388,7 @@ crud('conversations', 'conversations', { searchFields: ['name','company','list_p
 app.get('/api/inbox', authRequired, (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase()
   const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 6000)
-  const LIST = ['id','name','company','phone','channel','channel_bg','avatar','avatar_bg','initials',
+  const LIST = ['id','name','company','phone','channel','channel_bg','avatar','avatar_bg','avatar_url','initials',
     'list_preview','list_time','last_ts','last_dir','last_out_ts','last_in_ts','first_ts','unread','tags',
     'status','status_bg','status_icon','assigned_to','bookmarked','created_at','meta_recipient_id','customer_id','lead_id','stage']
   const cts = (c) => Number(c.last_ts) || (c.created_at ? Date.parse(c.created_at) : 0) || 0
@@ -1381,14 +1381,38 @@ async function promoteInstagramFromShadow() {
   if (promoted || newMsgs) console.log(`📸 Instagram promote: +${promoted} convs, +${newMsgs} messages`)
   return { promoted, newMsgs }
 }
+// Customer DP (profile pic) — Chatwoot ke avatars (sender.thumbnail) ko CRM conv.avatar_url par
+// set karo (fb:/ig:<psid>). CRM ka Meta app DP fetch nahi kar sakta, Chatwoot kar leta hai.
+async function syncAvatarsFromShadow() {
+  if (!cwEnabled()) return { set: 0 }
+  let rows
+  try { rows = await cwContactAvatars() } catch (e) { console.warn('[avatars]', e.message); return { set: 0 } }
+  let set = 0
+  for (const { psid, avatar } of rows) {
+    if (!psid || !avatar) continue
+    for (const prefix of ['fb', 'ig']) {
+      const convId = `${prefix}:${psid}`
+      const conv = findById('conversations', convId)
+      if (conv && conv.avatar_url !== avatar) {
+        const updated = update('conversations', convId, { avatar_url: avatar })
+        if (updated) { broadcast({ type: 'conversation', conversation: updated }); set++ }
+      }
+    }
+  }
+  if (set) console.log(`🖼️  customer DPs set: ${set}`)
+  return { set }
+}
 let igPromoteOn = false
 function startInstagramPromote(intervalMs = 2 * 60 * 1000) {
   if (igPromoteOn || !cwEnabled()) return
   igPromoteOn = true
-  const tick = () => promoteInstagramFromShadow().catch((e) => console.warn('[ig promote]', e.message))
+  const tick = () => {
+    promoteInstagramFromShadow().catch((e) => console.warn('[ig promote]', e.message))
+    syncAvatarsFromShadow().catch((e) => console.warn('[avatars]', e.message))
+  }
   setTimeout(tick, 20000)          // boot ke ~20s baad (data load hone ke baad)
-  setInterval(tick, intervalMs)    // phir har 2 min (reconcile shadow bharता hai, ye promote karta hai)
-  console.log('📸 Instagram promote worker started')
+  setInterval(tick, intervalMs)    // phir har 2 min (reconcile shadow bharता hai, ye promote + DP karta hai)
+  console.log('📸 Instagram promote + DP worker started')
 }
 
 let metaPollTimer = null

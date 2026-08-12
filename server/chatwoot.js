@@ -225,6 +225,24 @@ export async function cwInstagramConversations({ limit = 500 } = {}) {
   return r.rows
 }
 
+// ---- Customer DP (profile pic): Chatwoot ke paas avatars hain (sender.thumbnail) ----
+// CRM ka Meta app DP fetch nahi kar sakta (permission); Chatwoot ke paas access hai. Har psid
+// ka latest avatar do — CRM conv (fb:/ig:<psid>) par avatar_url set karne ke liye.
+export async function cwContactAvatars({ limit = 3000 } = {}) {
+  if (!cwEnabled()) return []
+  await cwEnsureTable()
+  const r = await pool.query(
+    `SELECT DISTINCT ON (cc.psid) cc.psid AS psid,
+            s.raw_payload->'sender'->>'thumbnail' AS avatar
+       FROM public.chatwoot_shadow_messages s
+       JOIN public.chatwoot_conv_contact cc ON cc.chatwoot_conversation_id = s.chatwoot_conversation_id
+      WHERE s.raw_payload->'sender'->>'thumbnail' IS NOT NULL
+        AND s.raw_payload->'sender'->>'thumbnail' <> ''
+      ORDER BY cc.psid, s.chatwoot_created_at DESC
+      LIMIT $1`, [limit])
+  return r.rows
+}
+
 // ---- Phase 5 (pilot ke liye tayyar, CHATWOOT_SEND_ENABLED=true hone par hi chalta hai) ----
 // POST /api/v1/accounts/{ACCOUNT}/conversations/{convId}/messages
 export async function cwSendMessage(conversationId, content) {
