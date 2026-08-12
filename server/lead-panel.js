@@ -640,6 +640,33 @@ export async function getLeadBundle(conversationId) {
       if (Object.keys(audit).length) out.field_audit = { ...out.field_audit, ...audit }
     } catch (e) { console.warn('[validation overlay]', e.message) }
   }
+
+  // ── Cross-section CASCADE — downstream ke KHAALI fields ko upstream se pre-fill karo.
+  // Flow: Lead → Customer(name) → Quote → Invoice → Payment → Sales Order. Value aate hi
+  // panel me "Validate" button dikh jaata hai; agent use validate karega. Sirf empty fields
+  // fill hote hain — jo pehle se validate/set hai wo NAHI badalta.
+  const setDefault = (sec, key, v) => {
+    if (v == null || v === '') return
+    const cur = out[sec] && out[sec][key]
+    if (cur == null || cur === '') { (out[sec] || (out[sec] = {}))[key] = v; if (out.has && sec in out.has) out.has[sec] = true }
+  }
+  const custName = out.customerName || [out.customer.first_name, out.customer.last_name].filter(Boolean).join(' ') || out.customer.business_name || ''
+  // Quote → Invoice
+  setDefault('invoice', 'invoice_subtotal', out.quote.subtotal)
+  setDefault('invoice', 'invoice_discount', out.quote.discount)
+  setDefault('invoice', 'invoice_tax', out.quote.quote_tax)
+  setDefault('invoice', 'invoice_shipping', out.quote.shipping_charges)
+  setDefault('invoice', 'invoice_total', out.quote.grand_total)
+  setDefault('invoice', 'invoice_currency', out.quote.currency)
+  // Invoice → Payment
+  setDefault('payment', 'pay_amount', out.invoice.invoice_total)
+  setDefault('payment', 'pay_method', out.invoice.payment_method)
+  setDefault('payment', 'pay_received_from', custName)
+  // Payment → Sales Order
+  setDefault('order', 'order_total', out.payment.pay_amount)
+  setDefault('order', 'order_currency', out.invoice.invoice_currency || out.quote.currency)
+  if (out.payment.pay_status === 'Completed') setDefault('order', 'payment_status', 'paid')
+
   return out
 }
 
