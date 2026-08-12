@@ -13,7 +13,7 @@ import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, em
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
-import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
+import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile, cwInstagramConversations } from './chatwoot.js'
 import { tmConfigured, tmBaseUrl, tmHealth, tmStats, tmListTasks, tmCreateTask, tmUsers, tmTask, tmTransition, tmComment, tmRemind, tmNotifications } from './taskmgmt.js'
 import { randomUUID, createHash } from 'node:crypto'
 import { nextcloudWebhook } from './nextcloud-webhook.js'
@@ -1000,7 +1000,9 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
 
   // Transport routing: 'chatwoot' -> Chatwoot API (Meta app dev-mode ki pabandi se azad),
   // fail ho to Meta par fallback. 'meta' (default) -> seedha Meta. Flip karna reversible hai.
-  const transport = String(getSetting('messaging_transport') || 'meta').toLowerCase()
+  // Instagram HAMESHA Chatwoot se — CRM ka Meta app IG DM send nahi kar sakta.
+  const isIg = String(conv?.channel || channel || '').toLowerCase().includes('insta') || String(conv?.id || conversationId || '').startsWith('ig:')
+  const transport = isIg ? 'chatwoot' : String(getSetting('messaging_transport') || 'meta').toLowerCase()
   let result, via = 'meta'
   try {
     if (transport === 'chatwoot' && cwEnabled()) {
@@ -1056,7 +1058,8 @@ app.post('/api/meta/send-file', authRequired, async (req, res) => {
   const buffer = Buffer.from(b64, 'base64')
   const isImg = String(fileType || '').startsWith('image/')
 
-  const transport = String(getSetting('messaging_transport') || 'meta').toLowerCase()
+  const isIg = String(conv?.channel || '').toLowerCase().includes('insta') || String(conversationId || '').startsWith('ig:')
+  const transport = isIg ? 'chatwoot' : String(getSetting('messaging_transport') || 'meta').toLowerCase()
   try {
     let result, via = 'meta'
     if (transport === 'chatwoot' && cwEnabled()) {
@@ -1329,6 +1332,58 @@ async function syncMetaConversations() {
     }
   } finally { metaSyncRunning = false }
   return { newMessages }
+}
+
+// ── Instagram promotion: Chatwoot shadow ke IG messages → CRM conversations (ig:) ──────────
+// IG sirf Chatwoot pe connected hai (CRM ka Meta app IG DM nahi pull kar pata). Reconcile IG ko
+// shadow me laata hai; ye function unhe inbox me dikhne wali ig: convs me badalta hai. Reply
+// Chatwoot ke through jaata hai (send route transport='chatwoot' → cwSendToPsid(igsid)).
+async function promoteInstagramFromShadow() {
+  if (!cwEnabled()) return { promoted: 0, newMsgs: 0 }
+  let convs
+  try { convs = await cwInstagramConversations() } catch (e) { console.warn('[ig promote] fetch:', e.message); return { promoted: 0, newMsgs: 0 } }
+  const deleted = new Set(getSetting('deleted_conversations') || [])
+  let promoted = 0, newMsgs = 0
+  for (const c of convs) {
+    if (!c.igsid) continue                                  // reply routing ke liye igsid zaroori
+    const convId = `ig:${c.igsid}`
+    if (deleted.has(convId)) continue
+    let conv = findById('conversations', convId)
+    if (!conv) { conv = await upsertMetaConversation('Instagram', c.igsid, { name: c.name }); promoted++; broadcast({ type: 'conversation', conversation: conv }) }
+    ensureLeadForConversation(conv); ensureCustomerForConversation(conv)
+    let lastText = conv.list_preview, lastTime = conv.list_time, lastDir = conv.last_dir, added = false
+    let lastOutTs = conv.last_out_ts || 0, lastInTs = conv.last_in_ts || 0, lastTs = conv.last_ts || 0
+    for (const m of (c.messages || [])) {
+      const mid = String(m.mid)
+      if (findById('messages', mid) || getAll('messages').find((x) => x.mid === mid && x.conversation_id === convId)) continue   // dedup
+      let atts = []
+      try { atts = Array.isArray(m.atts) ? m.atts : (m.atts ? JSON.parse(m.atts) : []) } catch { atts = [] }
+      const ts = Date.parse(m.ts) || Date.now()
+      const dir = m.dir === 'out' ? 'out' : 'in'
+      const stored = saveMessage({ id: mid, mid, conversation_id: convId, dir, text: m.text || '', attachments: atts, time: fmtTimeFromISO(m.ts), ts, via: 'chatwoot' })
+      added = true; newMsgs++
+      if (dir === 'out' && ts > lastOutTs) lastOutTs = ts
+      else if (dir === 'in' && ts > lastInTs) lastInTs = ts
+      if (ts > lastTs) lastTs = ts
+      lastText = stored.text || attachPreview(atts); lastTime = stored.time; lastDir = dir
+      broadcast({ type: 'message', conversationId: convId, message: stored })
+    }
+    if (added) {
+      const updated = update('conversations', convId, { last_ts: lastTs, last_out_ts: lastOutTs, last_in_ts: lastInTs, list_preview: lastText, list_time: lastTime, last_dir: lastDir })
+      if (updated) broadcast({ type: 'conversation', conversation: updated })
+    }
+  }
+  if (promoted || newMsgs) console.log(`📸 Instagram promote: +${promoted} convs, +${newMsgs} messages`)
+  return { promoted, newMsgs }
+}
+let igPromoteOn = false
+function startInstagramPromote(intervalMs = 2 * 60 * 1000) {
+  if (igPromoteOn || !cwEnabled()) return
+  igPromoteOn = true
+  const tick = () => promoteInstagramFromShadow().catch((e) => console.warn('[ig promote]', e.message))
+  setTimeout(tick, 20000)          // boot ke ~20s baad (data load hone ke baad)
+  setInterval(tick, intervalMs)    // phir har 2 min (reconcile shadow bharता hai, ye promote karta hai)
+  console.log('📸 Instagram promote worker started')
 }
 
 let metaPollTimer = null
@@ -3095,6 +3150,7 @@ app.listen(PORT, () => {
   startShareWorker()           // NextCloud share-links (slow, rate-limit-safe)
   startBackfillWorker()        // missing image bytes ko source_url se dobara download (broken images fix)
   startChatwootReconcile()     // Chatwoot: webhook ke gaps API se bharo (server-down safety)
+  startInstagramPromote()      // Chatwoot IG messages ko CRM inbox conversations (ig:) me laao
   setTimeout(backfillDirTs, 15000)   // data load hone ke baad last_out_ts/last_in_ts bhar do
 })
 

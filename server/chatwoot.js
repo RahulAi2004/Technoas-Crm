@@ -203,6 +203,28 @@ export function startChatwootReconcile(intervalMin = 15) {
   console.log(`🔁 Chatwoot reconcile worker started (har ${intervalMin} min)`)
 }
 
+// ---- Instagram: shadow ke IG conversations (CRM inhe ig: convs me promote karta hai) ----
+// IG Chatwoot pe connected hai (CRM ka Meta app IG DM nahi pull kar pata). Reconcile IG messages
+// shadow me daalta hai; IG message ids base64 me 'aWdf...' se shuru hote hain (IGMessage), jabki
+// FB 'm_...'. Har chatwoot conversation ka igsid (reply routing) conv_contact.psid se milta hai.
+export async function cwInstagramConversations({ limit = 500 } = {}) {
+  if (!cwEnabled()) return []
+  await cwEnsureTable()
+  const r = await pool.query(
+    `SELECT s.chatwoot_conversation_id AS cwid, cc.psid AS igsid,
+            max(s.customer_name) FILTER (WHERE s.customer_name IS NOT NULL) AS name,
+            json_agg(json_build_object(
+              'mid', s.chatwoot_message_id, 'dir', s.direction,
+              'text', s.content, 'atts', s.attachments, 'ts', s.chatwoot_created_at
+            ) ORDER BY s.chatwoot_created_at) AS messages
+       FROM public.chatwoot_shadow_messages s
+       LEFT JOIN public.chatwoot_conv_contact cc ON cc.chatwoot_conversation_id = s.chatwoot_conversation_id
+      WHERE s.source_id LIKE 'aWdf%'
+      GROUP BY s.chatwoot_conversation_id, cc.psid
+      LIMIT $1`, [limit])
+  return r.rows
+}
+
 // ---- Phase 5 (pilot ke liye tayyar, CHATWOOT_SEND_ENABLED=true hone par hi chalta hai) ----
 // POST /api/v1/accounts/{ACCOUNT}/conversations/{convId}/messages
 export async function cwSendMessage(conversationId, content) {
