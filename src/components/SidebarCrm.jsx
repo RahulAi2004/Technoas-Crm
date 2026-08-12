@@ -74,6 +74,18 @@ export default function SidebarCrm({ active }) {
               </span>
             </Link>
           </li>
+          {can('page:tasks') && (
+          <li>
+            <Link to="/tasks" title="Tasks" className={active === 'tasks'
+              ? 'flex items-center justify-between rounded-lg bg-brand-600 px-3 py-2.5 text-white'
+              : 'flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-white/5'}>
+              <span className="flex items-center gap-3 text-sm font-medium">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6"/><path d="M9 12l2 2 4-4"/><path d="M16 3l5 5-5 5"/></svg>
+                <span className="sb-txt">Tasks</span>
+              </span>
+            </Link>
+          </li>
+          )}
           <li>
             <Link to="/dashboard?view=mentions" title="Mentions" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium hover:bg-white/5">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>

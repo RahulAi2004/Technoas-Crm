@@ -64,3 +64,9 @@ export const tmStats = () => tm('/tasks/stats')
 export const tmListTasks = (params = {}) => { const q = new URLSearchParams(params).toString(); return tm(`/tasks${q ? '?' + q : ''}`) }
 export const tmCreateTask = (task) => tm('/tasks', { method: 'POST', body: task })
 export const tmUsers = () => tm('/users')
+export const tmTask = (id) => tm(`/tasks/${id}`)
+// State-machine transition — event: 'start' | 'submit' | 'approve' | 'accept' | 'reject' | 'hold' ...
+export const tmTransition = (id, body) => tm(`/tasks/${id}/transition`, { method: 'POST', body })
+export const tmComment = (id, body) => tm(`/tasks/${id}/comments`, { method: 'POST', body })
+export const tmRemind = (id) => tm(`/tasks/${id}/remind`, { method: 'POST', body: {} })
+export const tmNotifications = () => tm('/notifications')

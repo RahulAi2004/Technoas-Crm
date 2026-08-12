@@ -14,7 +14,7 @@ import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile } from './chatwoot.js'
-import { tmConfigured, tmBaseUrl, tmHealth, tmStats, tmListTasks, tmCreateTask, tmUsers } from './taskmgmt.js'
+import { tmConfigured, tmBaseUrl, tmHealth, tmStats, tmListTasks, tmCreateTask, tmUsers, tmTask, tmTransition, tmComment, tmRemind, tmNotifications } from './taskmgmt.js'
 import { randomUUID, createHash } from 'node:crypto'
 import { nextcloudWebhook } from './nextcloud-webhook.js'
 
@@ -234,7 +234,7 @@ app.delete('/api/users/:id', authRequired, requirePerm('cap:manage_users'), asyn
 // Roles settings (meta_kv) me store — koi nayi table nahi (restricted DB role safe).
 // Permission strings:  page:<key> · cap:<key> · validate:<section>   ('*' = sab, Admin)
 // ============================================================
-const PERM_PAGES = ['leads','inbox','orders','receipts','reports','campaigns','follow-ups','artwork-vault','ai-assistant','after-session','team','settings','connect-meta','integrations','roles']
+const PERM_PAGES = ['leads','inbox','tasks','orders','receipts','reports','campaigns','follow-ups','artwork-vault','ai-assistant','after-session','team','settings','connect-meta','integrations','roles']
 const PERM_CAPS = ['manage_users','manage_roles','delete_leads','send_messages','view_all_chats','assign_chats']
 const VALIDATE_SECTIONS = ['lead','customer','product','shipping','quote','invoice','order']
 
@@ -3016,10 +3016,32 @@ app.get('/api/taskmgmt/ping', authRequired, async (req, res) => {
     res.status(502).json({ ok: false, configured: true, url: tmBaseUrl, error: e.message, detail: e.detail || e.data })
   }
 })
-// Read-only passthrough — lists Task Management tasks (useful when wiring flows later).
+// ---- Task Management portal (CRM ke andar) — sab TM admin service account ke through ----
+const tmErr = (res, e) => res.status(e.status || 502).json({ error: e.message, data: e.data })
 app.get('/api/taskmgmt/tasks', authRequired, async (req, res) => {
-  try { res.json(await tmListTasks(req.query)) }
-  catch (e) { res.status(e.status || 502).json({ error: e.message, data: e.data }) }
+  try { res.json(await tmListTasks(req.query)) } catch (e) { tmErr(res, e) }
+})
+app.get('/api/taskmgmt/stats', authRequired, async (req, res) => {
+  try { res.json(await tmStats()) } catch (e) { tmErr(res, e) }
+})
+app.get('/api/taskmgmt/users', authRequired, async (req, res) => {
+  try { res.json(await tmUsers()) } catch (e) { tmErr(res, e) }
+})
+app.get('/api/taskmgmt/task/:id', authRequired, async (req, res) => {
+  try { res.json(await tmTask(req.params.id)) } catch (e) { tmErr(res, e) }
+})
+// Writes — CRM me admin/manager hi (page:tasks). Actual TM RBAC bhi apply hota hai.
+app.post('/api/taskmgmt/tasks', authRequired, requirePerm('page:tasks'), async (req, res) => {
+  try { res.json(await tmCreateTask(req.body)) } catch (e) { tmErr(res, e) }
+})
+app.post('/api/taskmgmt/task/:id/transition', authRequired, requirePerm('page:tasks'), async (req, res) => {
+  try { res.json(await tmTransition(req.params.id, req.body || {})) } catch (e) { tmErr(res, e) }
+})
+app.post('/api/taskmgmt/task/:id/comment', authRequired, requirePerm('page:tasks'), async (req, res) => {
+  try { res.json(await tmComment(req.params.id, req.body || {})) } catch (e) { tmErr(res, e) }
+})
+app.post('/api/taskmgmt/task/:id/remind', authRequired, requirePerm('page:tasks'), async (req, res) => {
+  try { res.json(await tmRemind(req.params.id)) } catch (e) { tmErr(res, e) }
 })
 
 app.use((req, res) => res.status(404).json({ error: 'Not found', path: req.path }))

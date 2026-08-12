@@ -12,6 +12,7 @@ import Inbox from './pages/Inbox.jsx'
 import Customers from './pages/Customers.jsx'
 import Customer360 from './pages/Customer360.jsx'
 import Leads from './pages/Leads.jsx'
+import Tasks from './pages/Tasks.jsx'
 import LeadDetails from './pages/LeadDetails.jsx'
 import AiTraining from './pages/AiTraining.jsx'
 import Receipts from './pages/Receipts.jsx'
@@ -42,6 +43,7 @@ export default function App() {
       <Route path="/inbox" element={<Navigate to="/dashboard" replace />} />
       <Route path="/customers" element={<RequireAuth><Customers /></RequireAuth>} />
       <Route path="/customer-360" element={<RequireAuth><Customer360 /></RequireAuth>} />
+      <Route path="/tasks" element={<RequireAuth><Perm perm="page:tasks"><Tasks /></Perm></RequireAuth>} />
       <Route path="/leads" element={<RequireAuth><Perm perm="page:leads"><Leads /></Perm></RequireAuth>} />
       <Route path="/leads/:id" element={<RequireAuth><Perm perm="page:leads"><LeadDetails /></Perm></RequireAuth>} />
       <Route path="/receipts" element={<RequireAuth><Receipts /></RequireAuth>} />
