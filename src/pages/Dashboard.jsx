@@ -263,6 +263,15 @@ export default function Dashboard() {
     return () => clearTimeout(t)
   }, [search])
   const [view, setView] = useState(() => searchParams.get('view') || 'all')   // ?view= se deep-link (dusre pages ke sidebar se)
+  // CRM 360 (?view=converted) kisi bhi page ke sidebar se aaye to view turant switch ho —
+  // same-route query change pe bhi (React Router remount nahi karta). Param consume kar do.
+  useEffect(() => {
+    const v = searchParams.get('view')
+    if (!v) return
+    setView(v)
+    const sp = new URLSearchParams(searchParams); sp.delete('view'); setSearchParams(sp, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   const [sortDir, setSortDir] = useState('latest') // 'latest' | 'oldest'
   const emptyFilters = { channel: '', agent: '', status: '', tag: '', from: '', to: '', fromTime: '', toTime: '', dateBasis: 'activity' }
   const [filters, setFilters] = useState(emptyFilters)
