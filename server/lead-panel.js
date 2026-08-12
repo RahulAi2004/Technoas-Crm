@@ -6,6 +6,7 @@
 // Row na ho to pehli validate par apne aap ban jaati hai.
 // ============================================================
 import { query as dbQuery, getClient, getAll, findById } from './db.js'
+import { VALIDATION_MODE, valConfigured, saveValidationField, setValidationAudit, getValidationFields, saveValidationComplete } from './validation-db.js'
 import { chatJSON } from './ai.js'
 import { createHash } from 'node:crypto'
 
@@ -360,6 +361,13 @@ export async function saveField({ conversationId, field, value, convName }) {
       if (ln.unit_price != null && ln.unit_price !== '' && (isNaN(Number(ln.unit_price)) || Number(ln.unit_price) < 0)) bad('Line unit price must be ≥ 0')
     }
   }
+  // VALIDATION DB mode: validated value ko alag database me store karo — production app.* ko
+  // bilkul chhue bina (na naya row, na koi write). Panel isi DB se overlay karke dikhata hai.
+  if (VALIDATION_MODE && valConfigured()) {
+    await saveValidationField(conversationId, field, coerce(map, value), null)
+    return { ok: true, saved: true, field }
+  }
+
   const co = await resolveIds(conversationId)
   if (!co) { const e = new Error('Conversation not found in DB'); e.status = 404; throw e }
 
@@ -383,6 +391,8 @@ export async function saveField({ conversationId, field, value, convName }) {
 // Field-level audit: kis USER ne kaunsa field KAB validate/update kiya.
 // leads.extra.field_audit[<field>] = { by, byId, at } — no new table (restricted DB role safe).
 export async function saveFieldAudit(conversationId, field, by, byId) {
+  // Validation DB mode: audit bhi wahi (alag DB) me — production app.leads ko chhue bina.
+  if (VALIDATION_MODE && valConfigured()) { await setValidationAudit(conversationId, field, by); return }
   try {
     const co = await resolveIds(conversationId)
     if (!co || !field) return
@@ -589,6 +599,20 @@ export async function getLeadBundle(conversationId) {
       quote_tax: lx.quote_tax ?? '', quote_rush_services: lx.quote_rush_services ?? '',
       customer_requirement_summary: lx.customer_requirement_summary || '',
     })
+  }
+  // VALIDATION DB overlay — alag database me jo validate hua wo production values ke UPAR dikhao.
+  // (Isi se panel me validated fields dikhte hain, jabki production app.* untouched rehta hai.)
+  if (VALIDATION_MODE && valConfigured()) {
+    try {
+      const { fields, audit } = await getValidationFields(conversationId)
+      for (const [f, v] of Object.entries(fields)) {
+        const sec = FIELD_SECTION[f]
+        if (!sec) continue
+        ;(out[sec] || (out[sec] = {}))[f] = v
+        if (out.has && sec in out.has && v != null && v !== '') out.has[sec] = true
+      }
+      if (Object.keys(audit).length) out.field_audit = { ...out.field_audit, ...audit }
+    } catch (e) { console.warn('[validation overlay]', e.message) }
   }
   return out
 }
@@ -808,6 +832,13 @@ export async function completeLead(conversationId) {
 
   const bundle = await getLeadBundle(conversationId)
   const score = computeQualification(conversationId, bundle)
+  // VALIDATION DB mode: Submit/Complete bhi production sync na kare — snapshot alag DB me.
+  if (VALIDATION_MODE && valConfigured()) {
+    await saveValidationComplete(conversationId, bundle, score, null)
+    const iScore = Math.max(0, Math.min(100, Number(bundle.ai?.intent_score ?? score.score) || 0))
+    return { ok: true, completed: true, validation: true, lead_id: null, qualification: score,
+             intent_score: iScore, temperature: bundle.ai?.temperature || deriveTemperature(iScore, bundle.lead?.purchase_intent || '') }
+  }
   const lead = bundle.lead || {}
   const customer = bundle.customer || {}
   const product = bundle.product || {}
