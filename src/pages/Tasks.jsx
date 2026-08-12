@@ -38,6 +38,10 @@ function StatCard({ label, value, tint, active, onClick }) {
   )
 }
 
+// NOTE: module level pe — NewTaskModal ke ANDAR define karne se har keystroke pe naya component
+// banta tha aur input remount ho ke focus kho deta tha (ek word ke baad cursor hat jaata tha).
+const Fld = ({ label, children }) => (<label className="block"><div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>{children}</label>)
+
 function NewTaskModal({ users, onClose, onCreated }) {
   const toast = useToast()
   const [f, setF] = useState({ title: '', description: '', assignedUserId: users[0]?.id || '', priority: 'Medium', taskType: 'General', entityType: 'Lead', entityId: '', dueAt: '' })
@@ -58,7 +62,6 @@ function NewTaskModal({ users, onClose, onCreated }) {
       toast('Task created & assigned', 'success'); onCreated(); onClose()
     } catch (e) { toast(e.message || 'Create failed', 'error') } finally { setBusy(false) }
   }
-  const Fld = ({ label, children }) => (<label className="block"><div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>{children}</label>)
   const inp = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-400 focus:outline-none'
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={onClose}>
