@@ -70,6 +70,7 @@ export const FIELD_MAP = {
   delivery_instructions:  { t: 'lead_shipping_details', c: 'delivery_instructions' },
   estimated_shipping_cost:{ t: 'lead_shipping_details', c: 'estimated_shipping_cost', num: true },
   // QUOTE -> app.quotes (lead ka latest quote; na ho to ban jaata hai)
+  quote_number:     { t: 'quotes', c: 'quote_number' },   // documents.js generate karta hai (QT-YYYY-NNNN)
   line_items:       { t: 'quotes', jsonCol: 'line_items' },
   quote_notes:      { t: 'quotes', c: 'quote_notes' },
   quote_status:     { t: 'quotes', c: 'status' },
@@ -81,6 +82,7 @@ export const FIELD_MAP = {
   grand_total:      { t: 'quotes', c: 'total_amount', num: true },
   // SALES ORDER -> app.orders (1 order per lead/conversation). Keys prefixed to avoid
   // collisions (currency/status/special_instructions already used above).
+  order_number:        { t: 'orders', c: 'order_number' },   // documents.js generate karta hai (ORD-YYYY-NNNN)
   order_products:      { t: 'orders', c: 'products' },
   order_items_count:   { t: 'orders', c: 'items_count', num: true },
   order_total:         { t: 'orders', c: 'total_amount', num: true },
@@ -197,10 +199,10 @@ export const FIELD_SECTION = Object.fromEntries([
   ['customer', ['first_name','last_name','business_name','email','company_phone','mobile_number','phone','whatsapp','preferred_language','preferred_channel','segment','loyalty_tier','cust_status','customer_source','website','facebook_id','instagram_id','wechat','tax_exempt','tax_number','customer_notes','shipping_address','billing_address']],
   ['product', ['product_type','garment_source','brand_style','garment_color','total_quantity','print_method','front_print_size','back_print_size','artwork_count','sheet_size','size_breakdown','print_locations','special_instructions','designer_notes','artwork_required','artwork_status','artwork_instructions']],
   ['shipping', ['shipping_method','is_rush_order','production_time','required_delivery_date','event_date','estimated_delivery','carrier','tracking_number','estimated_shipping_cost','package_weight_lbs','delivery_instructions','shipping_postcode','shipping_city','shipping_state','shipping_country']],
-  ['quote', ['line_items','quote_notes','quote_status','quote_date','valid_until','currency','estimated_value','discount','subtotal','quote_rush_services','shipping_charges','quote_tax_pct','quote_tax','grand_total','customer_requirement_summary']],
+  ['quote', ['quote_number','line_items','quote_notes','quote_status','quote_date','valid_until','currency','estimated_value','discount','subtotal','quote_rush_services','shipping_charges','quote_tax_pct','quote_tax','grand_total','customer_requirement_summary']],
   ['invoice', ['invoice_number','invoice_status','invoice_date','invoice_due_date','payment_terms','payment_method','invoice_currency','invoice_subtotal','invoice_discount','invoice_tax','invoice_shipping','invoice_total','amount_paid','balance_due','invoice_notes','invoice_lines']],
   ['payment', ['pay_date','pay_amount','pay_fee','pay_method','pay_status','pay_txn_id','pay_reference','pay_sender_bank','pay_account_name','pay_account_last4','pay_sender_ref','pay_received_from','pay_received_into','pay_notes']],
-  ['order', ['order_products','order_items_count','order_total','order_currency','order_status','payment_status','order_deadline','production_partner','order_summary','order_instructions','order_lines']],
+  ['order', ['order_number','order_products','order_items_count','order_total','order_currency','order_status','payment_status','order_deadline','production_partner','order_summary','order_instructions','order_lines']],
 ].flatMap(([section, keys]) => keys.map((k) => [k, section])))
 
 // conversation (in-memory id / DB uuid / legacy_id) -> DB conversation row
@@ -574,6 +576,7 @@ export async function getLeadBundle(conversationId) {
     if (q) {
       out.has.quote = true
       out.quote = {
+        quote_number: q.quote_number || '',
         line_items: Array.isArray(q.line_items) ? q.line_items : [],
         quote_notes: q.quote_notes || '', quote_status: q.status || '',
         valid_until: dstr(q.valid_until), currency: q.currency || 'USD',

@@ -310,6 +310,125 @@ function PrintLocations({ value, filled, state, onChange, onValidate, auditInfo 
   )
 }
 
+// ── BlankTex Product Master picker (Decoinks parity) ─────────────────────────
+// Wahi source jo Decoinks New Quotation/Invoice use karta hai — /api/catalog/styles ->
+// integration.blanktex_decoinks_styles. Style select karte hi brand, style code, image,
+// colors, sizes aur SKU row me apne aap aa jaate hain.
+function CatalogStyleSearch({ onSelect }) {
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [busyId, setBusyId] = useState('')
+  const [error, setError] = useState('')
+  const box = useRef(null)
+
+  useEffect(() => {
+    let dead = false
+    setLoading(true)
+    const t = setTimeout(() => {
+      api.get(`/api/catalog/styles?limit=50${q ? `&search=${encodeURIComponent(q)}` : ''}`)
+        .then((d) => { if (!dead) { setRows(Array.isArray(d) ? d : []); setError('') } })
+        .catch((e) => { if (!dead) setError(e?.message || 'Catalog unavailable') })
+        .finally(() => { if (!dead) setLoading(false) })
+    }, 250)
+    return () => { dead = true; clearTimeout(t) }
+  }, [q])
+
+  useEffect(() => {
+    const close = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+
+  const choose = async (style) => {
+    setBusyId(style.id)
+    try {
+      onSelect(await api.get(`/api/catalog/styles/${encodeURIComponent(style.id)}`))
+      setQ(''); setOpen(false)
+    } catch (e) { setError(e?.message || 'Could not load style colors and sizes') }
+    finally { setBusyId('') }
+  }
+
+  return (
+    <div ref={box} className="relative mb-1.5">
+      <input value={q} onFocus={() => setOpen(true)} onChange={(e) => { setQ(e.target.value); setOpen(true) }}
+        placeholder="🔍 Search style by name, brand, style code or SKU…" className={QI} />
+      {open && (
+        <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-pop">
+          <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-slate-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+            <span>Available product styles ({rows.length})</span>{loading && <span className="normal-case text-slate-400">loading…</span>}
+          </div>
+          {error && <div className="px-2 py-2 text-[11px] text-rose-600">{error}</div>}
+          {!error && !loading && !rows.length && <div className="px-2 py-3 text-center text-[11px] text-slate-400">No styles found</div>}
+          {rows.map((s) => (
+            <button key={s.id} type="button" disabled={!!busyId} onClick={() => choose(s)}
+              className="flex w-full items-center gap-2 border-b border-slate-50 px-2 py-1.5 text-left hover:bg-slate-50 disabled:opacity-60">
+              <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded bg-slate-100 text-[12px]">
+                {s.image_url ? <img src={s.image_url} alt="" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} /> : '📦'}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[11px] font-bold text-slate-800">{s.name}</span>
+                <span className="block truncate text-[9px] text-slate-500">{s.brand || '—'} · Style {s.sku}</span>
+              </span>
+              <span className="shrink-0 text-[9px] text-slate-400">
+                {busyId === s.id ? 'loading…' : `${s.total_colors || 0} colors · ${s.total_sizes || 0} sizes · ${s.total_skus || 0} SKUs`}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Row me sirf style_id/naam store hote hain (JSON halka rehta hai) — colors/sizes/SKU yahan cache hote hain.
+function useStyleDetails(ids) {
+  const key = [...new Set(ids.filter(Boolean))].sort().join(',')
+  const [map, setMap] = useState({})
+  useEffect(() => {
+    const missing = (key ? key.split(',') : []).filter((id) => !map[id])
+    if (!missing.length) return
+    let dead = false
+    Promise.all(missing.map((id) => api.get(`/api/catalog/styles/${encodeURIComponent(id)}`).then((d) => [id, d]).catch(() => null)))
+      .then((pairs) => { if (!dead) setMap((m) => ({ ...m, ...Object.fromEntries(pairs.filter(Boolean)) })) })
+    return () => { dead = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  return map
+}
+
+const skuOf = (style, colorId, sizeId) =>
+  style?.variants?.find((v) => String(v.color_id) === String(colorId) && String(v.size_id) === String(sizeId))?.sku || ''
+
+// Catalog se aayi row ka product cell — image + naam + brand/style (Decoinks jaisa).
+function QiProduct({ row, nameKey, onDetach }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-1">
+      <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded bg-white text-[12px]">
+        {row.product_image
+          ? <img src={row.product_image} alt="" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+          : '📦'}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[11px] font-bold text-slate-800">{row[nameKey] || 'Catalog style'}</span>
+        <span className="block truncate text-[9px] text-slate-500">{row.brand || '—'} · Style {row.style_code || '—'}</span>
+      </span>
+      <button onClick={onDetach} title="Detach from the catalog (type manually)" className="shrink-0 px-1 text-slate-400 hover:text-rose-600">✕</button>
+    </div>
+  )
+}
+
+// Catalog style -> nayi row ke common fields (quote aur invoice dono ke liye).
+const catalogRowFields = (style, nameKey) => ({
+  category: style.garment_category || 'T-Shirt',
+  [nameKey]: style.name || '',
+  brand_style: [style.brand, style.sku].filter(Boolean).join(' '),
+  style_id: style.id, style_code: style.sku || '', brand: style.brand || '',
+  product_image: style.image_url || '', style_description: style.description || '',
+  color_id: '', size_id: '', color: '', size: '', sku: '',
+})
+
 // ── Quote Items — Decoinks "New Quotation" parity ────────────────────────────
 // Pehle Quote Type chuno (Apparel / DTF Transfers / Gangsheet) — phir usi type ke apne
 // fields + dropdowns khulte hain. Sab kuch line_items JSON me hi jata hai: har row par
@@ -377,7 +496,9 @@ function QuoteItems({ items, filled, state, onChange, onValidate, auditInfo }) {
     return next
   }))
   const add = () => onChange([...list, blankItem(type)])
+  const addCatalogStyle = (style) => onChange([...list, { ...blankItem('apparel'), ...catalogRowFields(style, 'item_name') }])
   const del = (i) => onChange(list.filter((_, j) => j !== i))
+  const styles = useStyleDetails(list.map((r) => r.style_id))
   const amt = (r) => (Number(r.quantity) || 0) * (Number(r.unit_price) || 0)
   const totalQty = list.reduce((n, r) => n + (Number(r.quantity) || 0), 0)
   const totalAmt = list.reduce((n, r) => n + amt(r), 0)
@@ -416,8 +537,15 @@ function QuoteItems({ items, filled, state, onChange, onValidate, auditInfo }) {
 
       <div className={`mb-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${active.chip}`}>{active.icon} {active.label}</div>
 
+      {type === 'apparel' && (<>
+        <p className="mb-1 text-[9px] text-slate-400">Select a BlankTex Product Master style — colors, sizes and SKU fill automatically. Ya neeche row add karke manually likho.</p>
+        <CatalogStyleSearch onSelect={addCatalogStyle} />
+      </>)}
+
       <div className="space-y-1.5">
-        {list.map((r, i) => (
+        {list.map((r, i) => {
+          const style = r.style_id ? styles[r.style_id] : null
+          return (
           <div key={i} className="rounded-md border border-slate-200 p-1.5">
             <div className="mb-1 flex items-center justify-between">
               <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">#{i + 1}</span>
@@ -435,16 +563,39 @@ function QuoteItems({ items, filled, state, onChange, onValidate, auditInfo }) {
                   </select>
                 </QiCell>
                 <QiCell label="Product / Description" className="col-span-2">
-                  <input placeholder="e.g. 260G Crewneck Sweatshirt" value={r.item_name || ''} onChange={(e) => patch(i, { item_name: e.target.value })} className={QI} />
+                  {r.style_id
+                    ? <QiProduct row={r} nameKey="item_name" onDetach={() => patch(i, { style_id: '', style_code: '', product_image: '', color_id: '', size_id: '' })} />
+                    : <input placeholder="e.g. 260G Crewneck Sweatshirt" value={r.item_name || ''} onChange={(e) => patch(i, { item_name: e.target.value })} className={QI} />}
                 </QiCell>
                 <QiCell label="Brand / Style">
-                  <input list="dl-qi-brand" placeholder="Select or type…" value={r.brand_style || ''} onChange={(e) => patch(i, { brand_style: e.target.value })} className={QI} />
+                  <input list="dl-qi-brand" placeholder="Select or type…" value={r.brand_style || ''} disabled={!!r.style_id} onChange={(e) => patch(i, { brand_style: e.target.value })} className={r.style_id ? `${QI} bg-slate-50 text-slate-500` : QI} />
                 </QiCell>
                 <QiCell label="Color">
-                  <input list="dl-qi-color" placeholder="Select or type…" value={r.color || ''} onChange={(e) => patch(i, { color: e.target.value })} className={QI} />
+                  {style ? (
+                    <select value={r.color_id || ''} className={QI}
+                      onChange={(e) => { const c = style.colors.find((x) => String(x.id) === e.target.value); patch(i, { color_id: c?.id || '', color: c?.name || '', sku: skuOf(style, c?.id, r.size_id) }) }}>
+                      <option value="">Select color</option>
+                      {style.colors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  ) : (
+                    <input list="dl-qi-color" placeholder="Select or type…" value={r.color || ''} onChange={(e) => patch(i, { color: e.target.value })} className={QI} />
+                  )}
                 </QiCell>
                 <QiCell label="Size">
-                  <input list="dl-qi-size" placeholder="Select or type…" value={r.size || ''} onChange={(e) => patch(i, { size: e.target.value })} className={QI} />
+                  {style ? (
+                    <select value={r.size_id || ''} className={QI}
+                      onChange={(e) => { const s = style.sizes.find((x) => String(x.id) === e.target.value); patch(i, { size_id: s?.id || '', size: s?.name || '', sku: skuOf(style, r.color_id, s?.id) }) }}>
+                      <option value="">Select size</option>
+                      {style.sizes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  ) : (
+                    <input list="dl-qi-size" placeholder="Select or type…" value={r.size || ''} onChange={(e) => patch(i, { size: e.target.value })} className={QI} />
+                  )}
+                </QiCell>
+                <QiCell label="SKU">
+                  {r.style_id
+                    ? <div className="grid h-[30px] place-items-center overflow-hidden rounded-md bg-slate-50 px-1 text-[10px] font-semibold text-slate-600">{r.sku || (r.color_id && r.size_id ? 'No SKU' : 'Select color + size')}</div>
+                    : <input placeholder="SKU" value={r.sku || ''} onChange={(e) => patch(i, { sku: e.target.value })} className={QI} />}
                 </QiCell>
                 <QiCell label="Print Method">
                   <select value={r.print_method || ''} onChange={(e) => patch(i, { print_method: e.target.value })} className={QI}>
@@ -521,7 +672,8 @@ function QuoteItems({ items, filled, state, onChange, onValidate, auditInfo }) {
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
         {!list.length && <div className="rounded-md border border-dashed border-slate-200 py-3 text-center text-[11px] text-slate-400">No {active.label} rows yet — click "+ Add {type === 'apparel' ? 'Item' : type === 'dtf' ? 'Transfer' : 'Gangsheet'} Row" below.</div>}
       </div>
 
@@ -619,7 +771,9 @@ function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo })
     return next
   }))
   const add = () => onChange([...list, blankInvoiceLine(type)])
+  const addCatalogStyle = (style) => onChange([...list, { ...blankInvoiceLine('apparel'), ...catalogRowFields(style, 'description') }])
   const del = (i) => onChange(list.filter((_, j) => j !== i))
+  const styles = useStyleDetails(list.map((r) => r.style_id))
   const totalQty = list.reduce((n, r) => n + (Number(r.qty) || 0), 0)
   const artworks = type === 'gangsheet' ? list.reduce((n, r) => n + (Number(r.artwork_count) || 0), 0) : list.length
   const total = list.reduce((n, r) => n + amt(r), 0)
@@ -650,8 +804,15 @@ function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo })
       </div>
       {typeLocked && <p className="mb-1.5 text-[9px] text-slate-400">Remove all rows to switch the order type.</p>}
 
+      {type === 'apparel' && (<>
+        <p className="mb-1 text-[9px] text-slate-400">Select a BlankTex Product Master style — colors, sizes and SKU fill automatically. Ya neeche row add karke manually likho.</p>
+        <CatalogStyleSearch onSelect={addCatalogStyle} />
+      </>)}
+
       <div className="space-y-1.5">
-        {list.map((r, i) => (
+        {list.map((r, i) => {
+          const style = r.style_id ? styles[r.style_id] : null
+          return (
           <div key={i} className="rounded-md border border-slate-200 p-1.5">
             <div className="mb-1 flex items-center justify-between">
               <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">#{i + 1}</span>
@@ -669,19 +830,39 @@ function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo })
                   </select>
                 </QiCell>
                 <QiCell label="Product / Description" className="col-span-2">
-                  <input placeholder="e.g. 260G Crewneck Sweatshirt" value={r.description || ''} onChange={(e) => patch(i, { description: e.target.value })} className={QI} />
+                  {r.style_id
+                    ? <QiProduct row={r} nameKey="description" onDetach={() => patch(i, { style_id: '', style_code: '', product_image: '', color_id: '', size_id: '' })} />
+                    : <input placeholder="e.g. 260G Crewneck Sweatshirt" value={r.description || ''} onChange={(e) => patch(i, { description: e.target.value })} className={QI} />}
                 </QiCell>
                 <QiCell label="Brand / Style">
-                  <input list="dl-qi-brand" placeholder="Select or type…" value={r.brand_style || ''} onChange={(e) => patch(i, { brand_style: e.target.value })} className={QI} />
+                  <input list="dl-qi-brand" placeholder="Select or type…" value={r.brand_style || ''} disabled={!!r.style_id} onChange={(e) => patch(i, { brand_style: e.target.value })} className={r.style_id ? `${QI} bg-slate-50 text-slate-500` : QI} />
                 </QiCell>
                 <QiCell label="Color">
-                  <input list="dl-qi-color" placeholder="Select or type…" value={r.color || ''} onChange={(e) => patch(i, { color: e.target.value })} className={QI} />
+                  {style ? (
+                    <select value={r.color_id || ''} className={QI}
+                      onChange={(e) => { const c = style.colors.find((x) => String(x.id) === e.target.value); patch(i, { color_id: c?.id || '', color: c?.name || '', sku: skuOf(style, c?.id, r.size_id) }) }}>
+                      <option value="">Select color</option>
+                      {style.colors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  ) : (
+                    <input list="dl-qi-color" placeholder="Select or type…" value={r.color || ''} onChange={(e) => patch(i, { color: e.target.value })} className={QI} />
+                  )}
                 </QiCell>
                 <QiCell label="Size">
-                  <input list="dl-qi-size" placeholder="Select or type…" value={r.size || ''} onChange={(e) => patch(i, { size: e.target.value })} className={QI} />
+                  {style ? (
+                    <select value={r.size_id || ''} className={QI}
+                      onChange={(e) => { const s = style.sizes.find((x) => String(x.id) === e.target.value); patch(i, { size_id: s?.id || '', size: s?.name || '', sku: skuOf(style, r.color_id, s?.id) }) }}>
+                      <option value="">Select size</option>
+                      {style.sizes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  ) : (
+                    <input list="dl-qi-size" placeholder="Select or type…" value={r.size || ''} onChange={(e) => patch(i, { size: e.target.value })} className={QI} />
+                  )}
                 </QiCell>
                 <QiCell label="SKU">
-                  <input placeholder="SKU" value={r.sku || ''} onChange={(e) => patch(i, { sku: e.target.value })} className={QI} />
+                  {r.style_id
+                    ? <div className="grid h-[30px] place-items-center overflow-hidden rounded-md bg-slate-50 px-1 text-[10px] font-semibold text-slate-600">{r.sku || (r.color_id && r.size_id ? 'No SKU' : 'Select color + size')}</div>
+                    : <input placeholder="SKU" value={r.sku || ''} onChange={(e) => patch(i, { sku: e.target.value })} className={QI} />}
                 </QiCell>
                 <QiCell label="Qty (pcs)">
                   <input type="number" min={0} value={r.qty ?? ''} onChange={(e) => patch(i, { qty: e.target.value })} className={QI} />
@@ -757,7 +938,8 @@ function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo })
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
         {!list.length && <div className="rounded-md border border-dashed border-slate-200 py-3 text-center text-[11px] text-slate-400">No {active.label} rows yet — click "+ Add Item" below.</div>}
       </div>
 
@@ -852,6 +1034,31 @@ function AIInsights({ ai, grid }) {
   )
 }
 
+// ── Document generate bar (Quotation / Invoice / Sales Order) ────────────────
+// Number Decoinks ke SAME shared counter se aata hai (QT-YYYY-NNNN, ORD-YYYY-NNNN,
+// CUSTOMERNAME-NNNN), isliye Decoinks ke numbers se kabhi takrayega nahi. Record hamare
+// apne panel-store me hi save hota hai — Decoinks ki tables ko koi write nahi.
+function DocBar({ label, number, busy, msg, onGenerate }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label} No</div>
+          <div className="truncate text-[12px] font-extrabold text-slate-800">
+            {number || <span className="font-semibold text-slate-400">Not generated yet</span>}
+          </div>
+        </div>
+        <button onClick={onGenerate} disabled={busy}
+          className="shrink-0 rounded-md bg-brand-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-brand-700 disabled:opacity-60">
+          {busy ? 'Generating…' : number ? 'Refresh totals' : `⚡ Generate ${label}`}
+        </button>
+      </div>
+      {msg && <div className="mt-1 text-[10px] font-semibold text-emerald-700">{msg}</div>}
+      {!number && <div className="mt-1 text-[9px] text-slate-400">Items add karke Generate dabao — number, dates aur totals apne aap bhar jayenge (Decoinks jaisi numbering).</div>}
+    </div>
+  )
+}
+
 // derived "missing / blocking" for the bottom strip
 function computeMissing(vals, hasQuote) {
   const items = []
@@ -877,6 +1084,8 @@ export default function LeadPanel({ conv, onClose }) {
   const [err, setErr] = useState('')
   const [completed, setCompleted] = useState(false)
   const [sameBilling, setSameBilling] = useState(false)
+  const [genBusy, setGenBusy] = useState('')    // kaunsa document generate ho raha hai
+  const [genMsg, setGenMsg] = useState('')
   const [ai, setAi] = useState(null)            // AI-enriched read-only insights (Leads dashboard wale fields)
   const [audit, setAudit] = useState({})        // field -> { by, byId, at }  (kaun-kab validate)
 
@@ -978,6 +1187,27 @@ export default function LeadPanel({ conv, onClose }) {
     setSavingAll(false)
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
     return Object.keys(saveErrs.current)   // sirf real errors
+  }
+
+  // Quotation / Invoice / Sales Order generate — pehle jo unsaved hai wo save, phir backend
+  // number claim karke totals/dates bhar deta hai (idempotent: number ek hi baar banta hai).
+  const NUM_KEY = { quotation: 'quote_number', invoice: 'invoice_number', order: 'order_number' }
+  const generateDoc = async (kind) => {
+    if (!cid) return
+    setGenBusy(kind); setGenMsg(''); setErr('')
+    try {
+      await saveAll()
+      const r = await api.post(`/api/leads/documents/${encodeURIComponent(cid)}/${kind}`, {})
+      const patch = { ...(r.fields || {}) }
+      if (r.number) patch[NUM_KEY[kind]] = r.number
+      setVals((c) => ({ ...c, ...patch }))
+      setFs((s) => { const n = { ...s }; for (const k of Object.keys(patch)) n[k] = 'ok'; return n })
+      setFilled((a) => { const n = { ...a }; for (const k of Object.keys(patch)) n[k] = false; return n })
+      setGenMsg(`${r.label} ${r.number} ready`)
+      if (r.failed?.length) setErr(r.failed.join(' · '))
+    } catch (e) {
+      setErr(e?.message || 'Document could not be generated')
+    } finally { setGenBusy('') }
   }
 
   const submitComplete = async () => {
@@ -1212,6 +1442,7 @@ export default function LeadPanel({ conv, onClose }) {
         </div>)}
 
         {tab === 'quote' && (<div className="space-y-3">
+          <DocBar label="Quotation" number={vals.quote_number} busy={genBusy === 'quotation'} msg={genBusy === '' && genMsg.startsWith('Quotation') ? genMsg : ''} onGenerate={() => generateDoc('quotation')} />
           <div id="fld-line_items" className="scroll-mt-4"><QuoteItems items={vals.line_items} filled={filled.line_items} state={fs.line_items} auditInfo={audit['line_items']}
             onChange={(v) => setVal('line_items', v)} onValidate={validate('line_items')} /></div>
           <div className={grid}><Field k="quote_notes" label="Notes (to customer)" type="textarea" val={vals.quote_notes} filled={filled.quote_notes} state={fs.quote_notes} onChange={(v) => setVal('quote_notes', v)} onValidate={validate('quote_notes')} locked={!canValidate('quote')} auditInfo={audit['quote_notes']} /></div>
@@ -1219,6 +1450,7 @@ export default function LeadPanel({ conv, onClose }) {
         </div>)}
 
         {tab === 'invoice' && (<div className="space-y-3">
+          <DocBar label="Invoice" number={vals.invoice_number} busy={genBusy === 'invoice'} msg={genBusy === '' && genMsg.startsWith('Invoice') ? genMsg : ''} onGenerate={() => generateDoc('invoice')} />
           <div id="fld-invoice_lines" className="scroll-mt-4"><InvoiceLines items={vals.invoice_lines} filled={filled.invoice_lines} state={fs.invoice_lines} auditInfo={audit['invoice_lines']}
             onChange={(v) => setVal('invoice_lines', v)} onValidate={validate('invoice_lines')} /></div>
           <div className={grid}>{renderFields(INVOICE_FIELDS)}</div>
@@ -1236,7 +1468,7 @@ export default function LeadPanel({ conv, onClose }) {
         </div>)}
 
         {tab === 'order' && (<div className="space-y-3">
-          {vals.order_number && <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"><span className="text-slate-500">Order No:</span> <span className="font-bold text-slate-800">{vals.order_number}</span></div>}
+          <DocBar label="Sales Order" number={vals.order_number} busy={genBusy === 'order'} msg={genBusy === '' && genMsg.startsWith('Sales Order') ? genMsg : ''} onGenerate={() => generateDoc('order')} />
           {/* Order items ab Invoice se aate hain (read-only) — alag order-lines maintain nahi karte. */}
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
             <div className="mb-1.5 text-[11px] font-bold text-slate-700">Order Items <span className="font-normal text-slate-400">— from the Invoice</span></div>
@@ -1288,7 +1520,7 @@ const FIELD_KEYS = new Set([
   ...PROD_FIELDS.map((f) => f[0]), 'size_breakdown', 'print_locations', 'special_instructions',
   ...ART_FIELDS.map((f) => f[0]),
   ...SHIP_FIELDS.map((f) => f[0]),
-  ...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes',
+  ...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes', 'quote_number', 'order_number',
   ...INVOICE_FIELDS.map((f) => f[0]), 'invoice_lines', 'invoice_notes',
   ...ORDER_FIELDS.map((f) => f[0]), 'order_lines',
 ])

@@ -13,6 +13,8 @@ import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, em
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
+import { listStyles, getStyle } from './catalog.js'
+import { generateDocument, documentStatus } from './documents.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile, cwInstagramConversations, cwContactAvatars } from './chatwoot.js'
 import { tmConfigured, tmBaseUrl, tmHealth, tmStats, tmListTasks, tmCreateTask, tmUsers, tmTask, tmTransition, tmComment, tmRemind, tmNotifications } from './taskmgmt.js'
 import { randomUUID, createHash } from 'node:crypto'
@@ -1934,6 +1936,42 @@ app.post('/api/leads/field/:id', authRequired, async (req, res) => {
 app.post('/api/leads/complete/:id', authRequired, async (req, res) => {
   try { res.json(await completeLead(req.params.id)) }
   catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+
+// ---- BlankTex Product Master (read-only) — Lead Panel ka style picker ----
+// Decoinks ke /products jaisa hi source, taaki dono jagah wahi DIGI styles/colors/sizes/SKU dikhein.
+app.get('/api/catalog/styles', authRequired, async (req, res) => {
+  try { res.json(await listStyles({ search: req.query.search || '', limit: req.query.limit })) }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+app.get('/api/catalog/styles/:id', authRequired, async (req, res) => {
+  try { res.json(await getStyle(req.params.id)) }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+
+// ---- Quotation / Invoice / Sales Order generate (numbers Decoinks ke shared counter se) ----
+const DOC_SECTION = { quotation: 'quote', invoice: 'invoice', order: 'order' }
+app.get('/api/leads/documents/:id', authRequired, async (req, res) => {
+  try { res.json(await documentStatus(req.params.id)) }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+})
+app.post('/api/leads/documents/:id/:kind', authRequired, async (req, res) => {
+  const section = DOC_SECTION[req.params.kind]
+  if (!section) return res.status(400).json({ error: 'Unknown document type' })
+  if (!reqCan(req, 'validate:' + section)) {
+    return res.status(403).json({ error: `Aapke role ko "${section}" section ke documents generate karne ki permission nahi hai.` })
+  }
+  try {
+    const out = await generateDocument({
+      conversationId: req.params.id, kind: req.params.kind,
+      convName: findById('conversations', req.params.id)?.name,
+    })
+    // number/totals bhi normal fields hain — audit wahi tarah se.
+    for (const f of Object.keys(out.fields || {})) {
+      try { await saveFieldAudit(req.params.id, f, agentName(req), req.user?.id) } catch {}
+    }
+    res.json(out)
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
 
 // ---- Quick-send asset images (Zelle/CashApp/PayPal QR, brochure, etc.) ----
