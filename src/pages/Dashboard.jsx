@@ -147,6 +147,9 @@ const dayLabel = (ts) => {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// Phone/tablet (<1024px) — yahan panels ek waqt me ek dikhte hain (index.css ka mobile layer).
+const isPhone = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
+
 export default function Dashboard() {
   const toast = useToast()
   const navigate = useNavigate()
@@ -180,7 +183,10 @@ export default function Dashboard() {
   const searchRef = useRef('')                             // current search text — read by the 5s poller
   const firstSearchRun = useRef(true)
   // Remember the last opened conversation so a reload continues where you left off.
-  const [currentId, setCurrentId] = useState(() => localStorage.getItem('currentConvId') || null)
+  // Phone par ek waqt me ek hi panel dikhta hai (list → chat → panel), isliye wahan koi chat
+  // KHUD-BA-KHUD nahi khulti — warna app khulte hi chat aa jaati hai aur customers ki list
+  // kabhi dikhti hi nahi. Desktop par list aur chat saath dikhte hain, wahan purana behaviour.
+  const [currentId, setCurrentId] = useState(() => (isPhone() ? null : localStorage.getItem('currentConvId') || null))
   const [messages, setMessages] = useState([])
   // Optimistic sends jab tak server copy nahi aati: turant dikhein, poll inhe na giraye.
   const [pending, setPending] = useState([])
@@ -241,8 +247,9 @@ export default function Dashboard() {
       const rows = Array.isArray(r?.conversations) ? r.conversations : (Array.isArray(r) ? r : [])
       setConversationsRaw(rows)
       setConvTotal(r?.total ?? rows.length)
-      // Keep the open chat; on first load (nothing open) fall back to the most recent.
-      setCurrentId((cur) => cur || (rows[0]?.id ?? null))
+      // Keep the open chat; on first load (nothing open) fall back to the most recent —
+      // lekin phone par nahi, warna list ke bajaye seedha chat khul jaati hai.
+      setCurrentId((cur) => cur || (isPhone() ? null : (rows[0]?.id ?? null)))
     } catch { /* keep what we have */ }
     finally { setLoadingConvs(false) }
   }
@@ -393,7 +400,13 @@ export default function Dashboard() {
     api.patch(`/api/conversations/${encodeURIComponent(id)}`, patch).catch(() => {})
   }
   // Chat se pichhli screen pe wapas — agar Leads/kisi page se aaye to wahin, warna list par.
-  const goBack = () => { if (window.history.length > 1) navigate(-1); else setCurrentId(null) }
+  // Phone ka ‹ button: conversation list par wapas. (Pehle ye navigate(-1) karta tha jo browser
+  // ko app se hi bahar le jaata tha — list phir kabhi nahi dikhti thi.) Desktop par purana
+  // behaviour waisa hi hai, kyunki wahan list aur chat saath saath dikhte hain.
+  const goBack = () => {
+    if (isPhone()) { setCurrentId(null); return }
+    if (window.history.length > 1) navigate(-1); else setCurrentId(null)
+  }
   const toggleBookmark = () => currentConv && patchConv(currentConv.id, { bookmarked: !currentConv.bookmarked })
   const assignToMe = () => currentConv && patchConv(currentConv.id, { assigned_to: myName })
 
@@ -784,7 +797,9 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-4">
-            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+            {/* phone par ye search chhupa dete hain — list ke andar apni search pehle se hai,
+                aur do search box milkar customers ki list neeche dhakel dete the */}
+            <div className="relative min-w-0 flex-1 max-lg:hidden sm:max-w-xs">
               <span className="pointer-events-none absolute inset-y-0 left-0 grid place-items-center pl-3 text-slate-400">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               </span>
