@@ -13,7 +13,7 @@
 // wahin jaati hain jahan panel ka baaki data ja raha hai. Decoinks ki tables ko koi write nahi.
 // ============================================================
 import { getClient } from './db.js'
-import { getLeadBundle, saveField } from './lead-panel.js'
+import { getLeadBundle, saveField, quoteRowToInvoiceRow } from './lead-panel.js'
 
 const num = (v) => {
   if (v === '' || v == null) return 0
@@ -109,7 +109,7 @@ const KINDS = { quotation: 'Quotation', invoice: 'Invoice', order: 'Sales Order'
  * tarah save. Idempotent — number pehle se hai to wahi wapas (dobara claim nahi hota).
  * Sirf KHAALI fields bhare jaate hain; agent ne jo khud set kiya wo kabhi overwrite nahi hota.
  */
-export async function generateDocument({ conversationId, kind, convName }) {
+export async function generateDocument({ conversationId, kind, convName, actor = '' }) {
   if (!KINDS[kind]) { const e = new Error('Unknown document type: ' + kind); e.status = 400; throw e }
   const bundle = await getLeadBundle(conversationId)
   const Q = bundle.quote || {}, I = bundle.invoice || {}, O = bundle.order || {}, C = bundle.customer || {}
@@ -134,6 +134,7 @@ export async function generateDocument({ conversationId, kind, convName }) {
     put('currency', 'USD', Q.currency)
     put('subtotal', subtotal, Q.subtotal)
     put('grand_total', total, Q.grand_total)
+    put('sales_agent', actor, Q.sales_agent)          // Decoinks quote header ka SALES AGENT
   }
 
   if (kind === 'invoice') {
@@ -152,17 +153,25 @@ export async function generateDocument({ conversationId, kind, convName }) {
   }
 
   if (kind === 'order') {
-    const lines = Array.isArray(O.order_lines) ? O.order_lines : []
-    if (!lines.length) { const e = new Error('Add at least one Order Line Item before generating the sales order'); e.status = 400; throw e }
+    // Sales order apni alag items maintain nahi karta — Invoice ki rows (ya seedha Quote ki
+    // rows) hi order lines ban jaati hain, isliye kuch dobara type nahi karna padta.
+    const src = [O.order_lines, I.invoice_lines, Q.line_items].find((a) => Array.isArray(a) && a.length) || []
+    if (!src.length) { const e = new Error('Add Invoice (or Quote) items first — the sales order takes its lines from there'); e.status = 400; throw e }
+    const lines = src.map(quoteRowToInvoiceRow)
     const total = money(lines.reduce((s, r) => s + lineAmount(r), 0))
     const count = lines.reduce((s, r) => s + num(r.qty ?? r.quantity), 0)
+    const orderType = lines.find((r) => r.order_type)?.order_type || 'apparel'
+    const products = [...new Set(lines.map((r) => r.product || r.description).filter(Boolean))].join(', ').slice(0, 250)
     // ORD-XXXXXX (purana random format) ko bhi naye series number se replace karo.
     const proper = /^ORD-\d{4}-\d{4}$/.test(String(O.order_number || ''))
     number = proper ? O.order_number : await nextOrderNumber()
     if (!proper) fields.order_number = number
+    if (!(Array.isArray(O.order_lines) && O.order_lines.length)) fields.order_lines = lines
+    put('order_type', orderType, O.order_type)         // Decoinks orders.order_type (NOT NULL)
+    put('order_products', products, O.order_products)
     put('order_status', 'pending', O.order_status)
     put('payment_status', 'pending', O.payment_status)
-    put('order_currency', 'USD', O.order_currency)
+    put('order_currency', I.invoice_currency || Q.currency || 'USD', O.order_currency)
     put('order_items_count', count, O.order_items_count)
     put('order_total', total, O.order_total)
   }

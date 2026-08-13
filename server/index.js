@@ -1965,6 +1965,7 @@ app.post('/api/leads/documents/:id/:kind', authRequired, async (req, res) => {
     const out = await generateDocument({
       conversationId: req.params.id, kind: req.params.kind,
       convName: findById('conversations', req.params.id)?.name,
+      actor: agentName(req),
     })
     // number/totals bhi normal fields hain — audit wahi tarah se.
     for (const f of Object.keys(out.fields || {})) {

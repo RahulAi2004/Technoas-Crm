@@ -64,40 +64,49 @@ function itemsTable(rows, type, cur) {
  */
 export function buildDocHtml({ kind = 'quotation', vals = {}, customerName = '' }) {
   const isInv = kind === 'invoice'
-  const cur = (isInv ? vals.invoice_currency : vals.currency) || 'USD'
-  const rows = (Array.isArray(isInv ? vals.invoice_lines : vals.line_items) ? (isInv ? vals.invoice_lines : vals.line_items) : [])
+  const isOrd = kind === 'order'
+  const cur = (isInv ? vals.invoice_currency : isOrd ? (vals.order_currency || vals.invoice_currency) : vals.currency) || 'USD'
+  // Sales order apni rows nahi rakhta — Invoice (ya Quote) ki rows hi uski lines hain.
+  const pick = (a) => Array.isArray(a) && a.length ? a : null
+  const rows = (isOrd ? (pick(vals.order_lines) || pick(vals.invoice_lines) || pick(vals.line_items))
+    : isInv ? (pick(vals.invoice_lines) || pick(vals.line_items))
+    : pick(vals.line_items)) || []
   const type = rows.find((r) => r.quote_type || r.order_type)?.quote_type || rows.find((r) => r.order_type)?.order_type || 'apparel'
 
   const itemsTotal = rows.reduce((s, r) => s + rowAmount(r), 0)
-  const rush = isInv ? 0 : num(vals.quote_rush_services)
-  const shipping = num(isInv ? vals.invoice_shipping : vals.shipping_charges)
-  const tax = num(isInv ? vals.invoice_tax : vals.quote_tax)
-  const discount = num(isInv ? vals.invoice_discount : vals.discount)
-  const subtotal = num(isInv ? vals.invoice_subtotal : vals.subtotal) || itemsTotal
-  const stored = num(isInv ? vals.invoice_total : vals.grand_total)
+  const rush = (isInv || isOrd) ? 0 : num(vals.quote_rush_services)
+  const shipping = num(isInv ? vals.invoice_shipping : isOrd ? 0 : vals.shipping_charges)
+  const tax = num(isInv ? vals.invoice_tax : isOrd ? 0 : vals.quote_tax)
+  const discount = num(isInv ? vals.invoice_discount : isOrd ? 0 : vals.discount)
+  const subtotal = num(isInv ? vals.invoice_subtotal : isOrd ? vals.order_total : vals.subtotal) || itemsTotal
+  const stored = num(isInv ? vals.invoice_total : isOrd ? vals.order_total : vals.grand_total)
   const total = stored || Math.max(subtotal + rush + shipping + tax - discount, 0)
   const paid = num(vals.amount_paid)
   const balance = num(vals.balance_due) || Math.max(total - paid, 0)
 
-  const number = (isInv ? vals.invoice_number : vals.quote_number) || ''
-  const title = isInv ? 'INVOICE' : 'QUOTATION'
+  const number = (isInv ? vals.invoice_number : isOrd ? vals.order_number : vals.quote_number) || ''
+  const title = isInv ? 'INVOICE' : isOrd ? 'SALES ORDER' : 'QUOTATION'
   const custName = [vals.first_name, vals.last_name].filter(Boolean).join(' ') || vals.business_name || customerName || '—'
   const phone = vals.mobile_number || vals.company_phone || vals.whatsapp || ''
   const ship = addrLines(vals.shipping_address)
   const bill = addrLines(vals.billing_address)
   const terms = vals.payment_terms || 'Due on Receipt'
   const method = vals.payment_method || 'Bank Transfer'
-  const notes = isInv ? vals.invoice_notes : vals.quote_notes
-  const summary = isInv ? '' : vals.customer_requirement_summary
+  const notes = isInv ? vals.invoice_notes : isOrd ? (vals.order_instructions || vals.order_summary) : vals.quote_notes
+  const summary = isInv || isOrd ? '' : vals.customer_requirement_summary
+  const agent = vals.sales_agent || ''
 
   const totalQty = rows.reduce((s, r) => s + num(r.qty ?? r.quantity), 0)
   const artworks = type === 'gangsheet' ? rows.reduce((s, r) => s + num(r.artwork_count), 0) : rows.length
 
   const metaRows = isInv
     ? [['Invoice No', number || 'Not generated'], ['Invoice Date', fmtDate(vals.invoice_date)], ['Due Date', fmtDate(vals.invoice_due_date)]]
-    : [['Quote No', number || 'Not generated'], ['Quote Date', fmtDate(vals.quote_date)], ['Valid Until', fmtDate(vals.valid_until)]]
+    : isOrd
+      ? [['Order No', number || 'Not generated'], ['Order Date', fmtDate(vals.invoice_date || vals.quote_date)], ['Deadline', fmtDate(vals.order_deadline || vals.required_delivery_date)]]
+      : [['Quote No', number || 'Not generated'], ['Quote Date', fmtDate(vals.quote_date)], ['Valid Until', fmtDate(vals.valid_until)]]
+  if (agent) metaRows.push(['Sales Agent', agent])
 
-  const statusChip = isInv ? (vals.invoice_status || 'Draft') : (vals.quote_status || 'Draft')
+  const statusChip = isInv ? (vals.invoice_status || 'Draft') : isOrd ? (vals.order_status || 'pending') : (vals.quote_status || 'Draft')
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${title} ${esc(number)}</title><style>
   *{box-sizing:border-box;margin:0;padding:0}
@@ -148,14 +157,14 @@ export function buildDocHtml({ kind = 'quotation', vals = {}, customerName = '' 
       <div class="hdr-title">${title}</div>
       <div class="hdr-meta">
         <table><tbody>${metaRows.map(([l, v]) => `<tr><td class="hm-lbl">${l}</td><td class="hm-sep">:</td><td class="hm-val">${esc(v)}</td></tr>`).join('')}</tbody></table>
-        <div class="validity">${isInv ? `Status: ${esc(statusChip)}` : '( 7 days validity )'}</div>
+        <div class="validity">${isInv || isOrd ? `Status: ${esc(statusChip)}` : '( 7 days validity )'}</div>
       </div>
     </div>
 
     <div class="co-info">📍 ${esc(CO.address)}, ${esc(CO.city)}<br>✉️ ${esc(CO.email)} &nbsp;&nbsp; 📞 ${esc(CO.phone)}</div>
 
     <div class="cards">
-      <div class="card"><div class="lbl">${isInv ? 'Invoice' : 'Quote'} No</div><div class="big">${esc(number || '—')}</div><div class="sub">${number ? 'Auto generated' : 'Not generated yet'}</div></div>
+      <div class="card"><div class="lbl">${isInv ? 'Invoice' : isOrd ? 'Order' : 'Quote'} No</div><div class="big">${esc(number || '—')}</div><div class="sub">${number ? 'Auto generated' : 'Not generated yet'}</div></div>
       <div class="card"><div class="lbl">Customer</div><div class="name">${esc(custName)}</div><div class="sub">${[vals.email, phone, vals.business_name].filter(Boolean).map(esc).join('<br>')}</div></div>
       <div class="card"><div class="lbl">Shipping Address</div><div class="sub">${ship.length ? ship.map(esc).join('<br>') : '—'}</div></div>
       <div class="card"><div class="lbl">Payment Terms</div><div class="name">${esc(terms)}</div><div class="sub" style="margin-top:6px"><b>Method:</b> ${esc(method)}</div></div>
@@ -192,6 +201,6 @@ export function buildDocHtml({ kind = 'quotation', vals = {}, customerName = '' 
     </div>
 
     <div class="foot">${esc(CO.name)} · ${esc(CO.email)} · ${esc(CO.phone)}<br>
-      ${isInv ? 'Thank you for your business.' : 'This quotation is valid until the date shown above. Prices may change after that.'}</div>
+      ${isInv ? 'Thank you for your business.' : isOrd ? 'Production starts once artwork is approved and payment terms are met.' : 'This quotation is valid until the date shown above. Prices may change after that.'}</div>
   </div></body></html>`
 }

@@ -105,6 +105,7 @@ const SHIP_FIELDS = [
   ['delivery_instructions', 'Delivery Instructions', 'textarea'],
 ]
 const QUOTE_FIELDS = [
+  ['sales_agent', 'Sales Agent', 'text'],
   ['quote_status', 'Quote Status', 'select'], ['quote_date', 'Quote Date', 'date'],
   ['valid_until', 'Valid Until', 'date'], ['currency', 'Currency', 'select'],
   ['estimated_value', 'Estimated Value', 'number'], ['discount', 'Discount', 'number'],
@@ -698,55 +699,21 @@ function QuoteItems({ items, filled, state, onChange, onValidate, auditInfo }) {
   )
 }
 
-// Sales Order line items -> app.order_lines (SKU, Product, Qty, Unit Price, Total).
-function OrderLines({ items, filled, state, onChange, onValidate, auditInfo }) {
-  const list = Array.isArray(items) ? items : []
-  const set = (i, kk, v) => onChange(list.map((r, j) => (j === i ? { ...r, [kk]: v } : r)))
-  const add = () => onChange([...list, { sku: '', product: '', qty: 1, unit_price: 0 }])
-  const del = (i) => onChange(list.filter((_, j) => j !== i))
-  const amt = (r) => (Number(r.qty) || 0) * (Number(r.unit_price) || 0)
-  return (
-    <div className="rounded-lg border border-slate-200 p-2.5">
-      <div className="mb-1.5 flex items-center justify-between">
-        <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Order Line Items{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
-        <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={list} filled={filled} onClick={onValidate} /></span>
-      </div>
-      <div className="space-y-1.5">
-        {list.map((r, i) => (
-          <div key={i} className="rounded-md border border-slate-200 p-1.5">
-            <div className="flex items-center gap-1.5">
-              <input placeholder="SKU" value={r.sku || ''} onChange={(e) => set(i, 'sku', e.target.value)} className={`${INPUT} w-24`} />
-              <input placeholder="Product" value={r.product || ''} onChange={(e) => set(i, 'product', e.target.value)} className={`${INPUT} flex-1`} />
-              <button onClick={() => del(i)} className="text-rose-400 hover:text-rose-600">✕</button>
-            </div>
-            <div className="mt-1 grid grid-cols-3 gap-1">
-              <input type="number" placeholder="Qty" value={r.qty ?? ''} onChange={(e) => set(i, 'qty', e.target.value)} className={INPUT} />
-              <input type="number" placeholder="Unit $" value={r.unit_price ?? ''} onChange={(e) => set(i, 'unit_price', e.target.value)} className={INPUT} />
-              <div className="grid place-items-center rounded-lg bg-slate-50 text-[11px] font-semibold text-slate-600">${amt(r).toFixed(2)}</div>
-            </div>
-          </div>
-        ))}
-        {!list.length && <div className="rounded-md border border-dashed border-slate-200 py-2 text-center text-[11px] text-slate-400">No line items yet</div>}
-      </div>
-      <button onClick={add} className="mt-1.5 w-full rounded-md border border-dashed border-slate-300 py-1 text-[11px] font-semibold text-brand-600 hover:bg-slate-50">+ Add Line</button>
-    </div>
-  )
-}
-
-// ── Invoice Items — Decoinks "New Invoice" parity ────────────────────────────
+// ── Invoice / Sales Order items — Decoinks "New Invoice" parity ──────────────
 // Order Type (Apparel / DTF Gangsheet / DTF Transfers) chuno — phir usi type ki rows.
-// Storage wahi lead.extra.invoice_lines hai: har row par order_type + type-specific keys,
-// aur description/qty/unit_price/amount hamesha bhare rehte hain (purana shape safe).
-// Apparel rows par line-level Discount bhi hai (Decoinks jaisa) — tax invoice-level hi rehta hai.
+// EK hi component dono sections chalata hai (nameKey se): Invoice -> description,
+// Sales Order -> product (app.order_lines wahi column padhta hai). Har row par order_type +
+// type-specific keys, aur qty/unit_price/amount hamesha bhare rehte hain (purana shape safe).
+// Apparel rows par line-level Discount sirf Invoice me (Decoinks jaisa) — tax invoice-level.
 const INVOICE_TYPES = [
   { key: 'apparel', icon: '👕', label: 'Custom Printed Apparel', on: 'border-sky-400 bg-sky-50 text-sky-800' },
   { key: 'gangsheet', icon: '📐', label: 'DTF Gangsheet', on: 'border-violet-400 bg-violet-50 text-violet-800' },
   { key: 'dtf', icon: '🖨️', label: 'DTF Transfers', on: 'border-orange-400 bg-orange-50 text-orange-800' },
 ]
-const blankInvoiceLine = (type) =>
-  type === 'dtf' ? { order_type: 'dtf', artwork_name: '', artwork_no: '', width: '', height: '', description: '', qty: 1, unit_price: 0, amount: 0 }
-  : type === 'gangsheet' ? { order_type: 'gangsheet', sheet_size: GANGSHEET_SIZES[0], artwork_count: 1, description: '', qty: 1, unit_price: 0, amount: 0 }
-  : { order_type: 'apparel', category: 'T-Shirt', description: '', brand_style: '', color: '', size: '', sku: '', qty: 1, unit_price: 0, discount: 0, amount: 0 }
+const blankInvoiceLine = (type, nameKey = 'description') =>
+  type === 'dtf' ? { order_type: 'dtf', artwork_name: '', artwork_no: '', width: '', height: '', [nameKey]: '', qty: 1, unit_price: 0, amount: 0 }
+  : type === 'gangsheet' ? { order_type: 'gangsheet', sheet_size: GANGSHEET_SIZES[0], artwork_count: 1, [nameKey]: '', qty: 1, unit_price: 0, amount: 0 }
+  : { order_type: 'apparel', category: 'T-Shirt', [nameKey]: '', brand_style: '', color: '', size: '', sku: '', qty: 1, unit_price: 0, discount: 0, amount: 0 }
 
 const sizeLabel = (w, h) => (w && h ? `${w}" x ${h}"` : '—')
 // Gangsheet/DTF rows me alag naam field nahi — invoice PDF ke liye description khud banate hain.
@@ -755,24 +722,24 @@ const autoLineDesc = (r) =>
     ? [r.artwork_name || 'DTF Transfer', r.artwork_no, (r.width && r.height) ? sizeLabel(r.width, r.height) : ''].filter(Boolean).join(' · ')
     : ['Gangsheet', r.sheet_size, Number(r.artwork_count) ? `${r.artwork_count} artwork${Number(r.artwork_count) > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')
 
-function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo }) {
+function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo, title = 'Invoice Items', nameKey = 'description', showDiscount = true }) {
   const list = Array.isArray(items) ? items : []
   const detected = list.find((r) => r.order_type)?.order_type || null
   const [pick, setPick] = useState('apparel')
   useEffect(() => { if (detected && detected !== pick) setPick(detected) }, [detected])  // eslint-disable-line react-hooks/exhaustive-deps
   const type = detected || pick
-  const typeLocked = list.length > 0   // ek invoice = ek order type (PDF layout usi hisaab se banta hai)
+  const typeLocked = list.length > 0   // ek invoice/order = ek order type (PDF layout usi hisaab se banta hai)
 
-  const amt = (r) => Math.max((Number(r.qty) || 0) * (Number(r.unit_price) || 0) - (Number(r.discount) || 0), 0)
+  const amt = (r) => Math.max((Number(r.qty) || 0) * (Number(r.unit_price) || 0) - (showDiscount ? (Number(r.discount) || 0) : 0), 0)
   const patch = (i, p) => onChange(list.map((r, j) => {
     if (j !== i) return r
     const next = { ...r, ...p, order_type: r.order_type || type }
-    if (next.order_type !== 'apparel') next.description = autoLineDesc(next)
+    if (next.order_type !== 'apparel') next[nameKey] = autoLineDesc(next)
     next.amount = +(amt(next).toFixed(2))
     return next
   }))
-  const add = () => onChange([...list, blankInvoiceLine(type)])
-  const addCatalogStyle = (style) => onChange([...list, { ...blankInvoiceLine('apparel'), ...catalogRowFields(style, 'description') }])
+  const add = () => onChange([...list, blankInvoiceLine(type, nameKey)])
+  const addCatalogStyle = (style) => onChange([...list, { ...blankInvoiceLine('apparel', nameKey), ...catalogRowFields(style, nameKey) }])
   const del = (i) => onChange(list.filter((_, j) => j !== i))
   const styles = useStyleDetails(list.map((r) => r.style_id))
   const totalQty = list.reduce((n, r) => n + (Number(r.qty) || 0), 0)
@@ -783,7 +750,7 @@ function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo })
   return (
     <div className="rounded-lg border border-slate-200 p-2.5">
       <div className="mb-1.5 flex items-center justify-between">
-        <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Invoice Items{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
+        <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">{title}{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
         <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={list} filled={filled} onClick={onValidate} /></span>
       </div>
 
@@ -832,8 +799,8 @@ function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo })
                 </QiCell>
                 <QiCell label="Product / Description" className="col-span-2">
                   {r.style_id
-                    ? <QiProduct row={r} nameKey="description" onDetach={() => patch(i, { style_id: '', style_code: '', product_image: '', color_id: '', size_id: '' })} />
-                    : <input placeholder="e.g. 260G Crewneck Sweatshirt" value={r.description || ''} onChange={(e) => patch(i, { description: e.target.value })} className={QI} />}
+                    ? <QiProduct row={r} nameKey={nameKey} onDetach={() => patch(i, { style_id: '', style_code: '', product_image: '', color_id: '', size_id: '' })} />
+                    : <input placeholder="e.g. 260G Crewneck Sweatshirt" value={r[nameKey] || ''} onChange={(e) => patch(i, { [nameKey]: e.target.value })} className={QI} />}
                 </QiCell>
                 <QiCell label="Brand / Style">
                   <input list="dl-qi-brand" placeholder="Select or type…" value={r.brand_style || ''} disabled={!!r.style_id} onChange={(e) => patch(i, { brand_style: e.target.value })} className={r.style_id ? `${QI} bg-slate-50 text-slate-500` : QI} />
@@ -871,9 +838,11 @@ function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo })
                 <QiCell label="Unit Price ($)">
                   <input type="number" min={0} step="any" value={r.unit_price ?? ''} onChange={(e) => patch(i, { unit_price: e.target.value })} className={QI} />
                 </QiCell>
-                <QiCell label="Line Discount ($)">
-                  <input type="number" min={0} step="any" value={r.discount ?? ''} onChange={(e) => patch(i, { discount: e.target.value })} className={QI} />
-                </QiCell>
+                {showDiscount && (
+                  <QiCell label="Line Discount ($)">
+                    <input type="number" min={0} step="any" value={r.discount ?? ''} onChange={(e) => patch(i, { discount: e.target.value })} className={QI} />
+                  </QiCell>
+                )}
                 <QiCell label="Amount ($)">
                   <div className="grid h-[30px] place-items-center rounded-md bg-slate-50 text-[11px] font-semibold text-slate-600">${amt(r).toFixed(2)}</div>
                 </QiCell>
@@ -1227,9 +1196,11 @@ export default function LeadPanel({ conv, onClose }) {
 
   // Preview — abhi panel me jo values hain (saved + unsaved) unse hi document banta hai,
   // isliye generate se pehle bhi dekha ja sakta hai.
+  const DOC_LABEL = { quotation: 'Quotation', invoice: 'Invoice', order: 'Sales Order' }
+  const docNumber = (kind) => kind === 'invoice' ? vals.invoice_number : kind === 'order' ? vals.order_number : vals.quote_number
   const openPreview = (kind) => setPreview({
     kind,
-    title: `${kind === 'invoice' ? 'Invoice' : 'Quotation'} preview${(kind === 'invoice' ? vals.invoice_number : vals.quote_number) ? ` — ${kind === 'invoice' ? vals.invoice_number : vals.quote_number}` : ' (draft)'}`,
+    title: `${DOC_LABEL[kind]} preview${docNumber(kind) ? ` — ${docNumber(kind)}` : ' (draft)'}`,
     html: buildDocHtml({ kind, vals, customerName: conv?.name || '' }),
   })
 
@@ -1512,7 +1483,7 @@ export default function LeadPanel({ conv, onClose }) {
         </div>)}
 
         {tab === 'order' && (<div className="space-y-3">
-          <DocBar label="Sales Order" number={vals.order_number} busy={genBusy === 'order'} msg={genBusy === '' && genMsg.startsWith('Sales Order') ? genMsg : ''} onGenerate={() => generateDoc('order')} />
+          <DocBar label="Sales Order" number={vals.order_number} busy={genBusy === 'order'} msg={genBusy === '' && genMsg.startsWith('Sales Order') ? genMsg : ''} onGenerate={() => generateDoc('order')} onPreview={() => openPreview('order')} />
           {/* Order items ab Invoice se aate hain (read-only) — alag order-lines maintain nahi karte. */}
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
             <div className="mb-1.5 text-[11px] font-bold text-slate-700">Order Items <span className="font-normal text-slate-400">— from the Invoice</span></div>

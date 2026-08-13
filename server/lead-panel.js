@@ -71,6 +71,7 @@ export const FIELD_MAP = {
   estimated_shipping_cost:{ t: 'lead_shipping_details', c: 'estimated_shipping_cost', num: true },
   // QUOTE -> app.quotes (lead ka latest quote; na ho to ban jaata hai)
   quote_number:     { t: 'quotes', c: 'quote_number' },   // documents.js generate karta hai (QT-YYYY-NNNN)
+  sales_agent:      { t: 'leads', j: 'sales_agent' },     // Decoinks quotation.sales_agent — document par dikhta hai
   line_items:       { t: 'quotes', jsonCol: 'line_items' },
   quote_notes:      { t: 'quotes', c: 'quote_notes' },
   quote_status:     { t: 'quotes', c: 'status' },
@@ -83,6 +84,8 @@ export const FIELD_MAP = {
   // SALES ORDER -> app.orders (1 order per lead/conversation). Keys prefixed to avoid
   // collisions (currency/status/special_instructions already used above).
   order_number:        { t: 'orders', c: 'order_number' },   // documents.js generate karta hai (ORD-YYYY-NNNN)
+  // Decoinks orders.order_type NOT NULL hai — items ke rows se derive hota hai (generate par set).
+  order_type:          { t: 'orders', j: 'order_type' },
   order_products:      { t: 'orders', c: 'products' },
   order_items_count:   { t: 'orders', c: 'items_count', num: true },
   order_total:         { t: 'orders', c: 'total_amount', num: true },
@@ -199,10 +202,10 @@ export const FIELD_SECTION = Object.fromEntries([
   ['customer', ['first_name','last_name','business_name','email','company_phone','mobile_number','phone','whatsapp','preferred_language','preferred_channel','segment','loyalty_tier','cust_status','customer_source','website','facebook_id','instagram_id','wechat','tax_exempt','tax_number','customer_notes','shipping_address','billing_address']],
   ['product', ['product_type','garment_source','brand_style','garment_color','total_quantity','print_method','front_print_size','back_print_size','artwork_count','sheet_size','size_breakdown','print_locations','special_instructions','designer_notes','artwork_required','artwork_status','artwork_instructions']],
   ['shipping', ['shipping_method','is_rush_order','production_time','required_delivery_date','event_date','estimated_delivery','carrier','tracking_number','estimated_shipping_cost','package_weight_lbs','delivery_instructions','shipping_postcode','shipping_city','shipping_state','shipping_country']],
-  ['quote', ['quote_number','line_items','quote_notes','quote_status','quote_date','valid_until','currency','estimated_value','discount','subtotal','quote_rush_services','shipping_charges','quote_tax_pct','quote_tax','grand_total','customer_requirement_summary']],
+  ['quote', ['quote_number','sales_agent','line_items','quote_notes','quote_status','quote_date','valid_until','currency','estimated_value','discount','subtotal','quote_rush_services','shipping_charges','quote_tax_pct','quote_tax','grand_total','customer_requirement_summary']],
   ['invoice', ['invoice_number','invoice_status','invoice_date','invoice_due_date','payment_terms','payment_method','invoice_currency','invoice_subtotal','invoice_discount','invoice_tax','invoice_shipping','invoice_total','amount_paid','balance_due','invoice_notes','invoice_lines']],
   ['payment', ['pay_date','pay_amount','pay_fee','pay_method','pay_status','pay_txn_id','pay_reference','pay_sender_bank','pay_account_name','pay_account_last4','pay_sender_ref','pay_received_from','pay_received_into','pay_notes']],
-  ['order', ['order_number','order_products','order_items_count','order_total','order_currency','order_status','payment_status','order_deadline','production_partner','order_summary','order_instructions','order_lines']],
+  ['order', ['order_number','order_type','order_products','order_items_count','order_total','order_currency','order_status','payment_status','order_deadline','production_partner','order_summary','order_instructions','order_lines']],
 ].flatMap(([section, keys]) => keys.map((k) => [k, section])))
 
 // conversation (in-memory id / DB uuid / legacy_id) -> DB conversation row
@@ -593,6 +596,7 @@ export async function getLeadBundle(conversationId) {
       const lr = await dbQuery(`SELECT sku, product, qty, unit_price, total FROM app.order_lines WHERE order_id = $1 ORDER BY line_id`, [or.order_id])
       out.order = {
         order_number: or.order_number || '',
+        order_type: (or.extra || {}).order_type || '',
         order_products: or.products || '',
         order_items_count: or.items_count ?? '',
         order_total: or.total_amount ?? '',
@@ -627,6 +631,7 @@ export async function getLeadBundle(conversationId) {
       quote_date: lx.quote_date || '', quote_tax_pct: lx.quote_tax_pct ?? '',
       quote_tax: lx.quote_tax ?? '', quote_rush_services: lx.quote_rush_services ?? '',
       customer_requirement_summary: lx.customer_requirement_summary || '',
+      sales_agent: lx.sales_agent || '',
     })
   }
   // VALIDATION DB overlay — alag database me jo validate hua wo production values ke UPAR dikhao.
@@ -654,7 +659,15 @@ export async function getLeadBundle(conversationId) {
     if (cur == null || cur === '') { (out[sec] || (out[sec] = {}))[key] = v; if (out.has && sec in out.has) out.has[sec] = true }
   }
   const custName = out.customerName || [out.customer.first_name, out.customer.last_name].filter(Boolean).join(' ') || out.customer.business_name || ''
-  // Quote → Invoice
+  // Quote items → Invoice items. Rows dobara type karne ki zaroorat nahi — quote ki har row
+  // wahi ki wahi invoice shape me aa jaati hai (quote_type→order_type, item_name→description,
+  // quantity→qty) aur catalog fields (style/color/size/SKU) saath chalte hain. Sirf tab jab
+  // invoice ki apni rows khaali hon; agent phir bhi Validate dabata hai.
+  if (!(Array.isArray(out.invoice.invoice_lines) && out.invoice.invoice_lines.length)
+      && Array.isArray(out.quote.line_items) && out.quote.line_items.length) {
+    out.invoice.invoice_lines = out.quote.line_items.map(quoteRowToInvoiceRow)
+    out.has.invoice = true
+  }
   setDefault('invoice', 'invoice_subtotal', out.quote.subtotal)
   setDefault('invoice', 'invoice_discount', out.quote.discount)
   setDefault('invoice', 'invoice_tax', out.quote.quote_tax)
@@ -671,6 +684,21 @@ export async function getLeadBundle(conversationId) {
   if (out.payment.pay_status === 'Completed') setDefault('order', 'payment_status', 'paid')
 
   return out
+}
+
+// Quote row -> Invoice/Order row. Legacy keys dono taraf bharte hain (quote: item_name/quantity,
+// invoice+order: description/product/qty) taake har section ka apna storage shape sahi rahe.
+export function quoteRowToInvoiceRow(r) {
+  const qty = r.qty ?? r.quantity ?? 0
+  const name = r.description || r.item_name || r.product || ''
+  return {
+    ...r,
+    order_type: r.order_type || r.quote_type || 'apparel',
+    description: name, product: name, item_name: name,
+    qty, quantity: qty,
+    unit_price: r.unit_price ?? 0,
+    amount: r.amount ?? (Number(qty) || 0) * (Number(r.unit_price) || 0),
+  }
 }
 
 // ---- AI extraction: chat padh kar 5 sections ke fields suggest karta hai (save NAHI karta) ----
