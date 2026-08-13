@@ -1037,10 +1037,25 @@ export default function LeadPanel({ conv, onClose }) {
 
   // Is tab me kitne fields bhare hain par save nahi hue + ek click me sab confirm.
   const unsavedKeys = (TAB_KEYS[tab] || []).filter((k) => hasVal(vals[k]) && fs[k] !== 'ok')
+  // Confirm ke baad panel dobara laao aur AAGE ke sections ke KHAALI fields cascade se bhar do
+  // (user ke bhare/edit kiye fields ko haath nahi lagata) — "ek section fill karo, aage update ho jaye".
+  const refreshCascade = async () => {
+    try {
+      const b = await api.get(`/api/leads/panel/${encodeURIComponent(cid)}`)
+      const flat = flatten(b)
+      setVals((cur) => {
+        const next = { ...cur }
+        for (const [k, v] of Object.entries(flat)) if (!hasVal(cur[k]) && hasVal(v)) next[k] = v
+        return next
+      })
+      setAudit(b?.field_audit || {})
+    } catch { /* keep current */ }
+  }
   const confirmTab = async () => {
     setSavingAll(true)
     for (const k of unsavedKeys) await saveOne(k)
     setSavingAll(false)
+    await refreshCascade()   // section save hote hi aage ke sections (Invoice→Payment→Sales Order) update
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
   }
 
@@ -1111,7 +1126,7 @@ export default function LeadPanel({ conv, onClose }) {
           </span>
           <button onClick={confirmTab} disabled={savingAll}
             className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
-            {savingAll ? 'Saving…' : `✓ Confirm all (${unsavedKeys.length})`}
+            {savingAll ? 'Saving…' : `✓ Confirm & Submit (${unsavedKeys.length})`}
           </button>
         </div>
       )}
