@@ -151,7 +151,7 @@ const TAB_KEYS = {
   quote: [...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes'],
   invoice: [...INVOICE_FIELDS.map((f) => f[0]), 'invoice_lines', 'invoice_notes'],
   payment: [...PAY_FIELDS.map((f) => f[0]), 'pay_notes'],
-  order: [...ORDER_FIELDS.map((f) => f[0]), 'order_lines'],
+  order: [...ORDER_FIELDS.map((f) => f[0])],   // order_lines UI hata diya — items ab Invoice se
 }
 
 const flatten = (b) => ({ ...(b?.lead || {}), ...(b?.customer || {}), ...(b?.product || {}), ...(b?.shipping || {}), ...(b?.quote || {}), ...(b?.invoice || {}), ...(b?.payment || {}), ...(b?.order || {}) })
@@ -1222,10 +1222,22 @@ export default function LeadPanel({ conv, onClose }) {
 
         {tab === 'order' && (<div className="space-y-3">
           {vals.order_number && <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"><span className="text-slate-500">Order No:</span> <span className="font-bold text-slate-800">{vals.order_number}</span></div>}
-          <div id="fld-order_lines" className="scroll-mt-4"><OrderLines items={vals.order_lines} filled={filled.order_lines} state={fs.order_lines} auditInfo={audit['order_lines']}
-            onChange={(v) => setVal('order_lines', v)} onValidate={validate('order_lines')} /></div>
+          {/* Order items ab Invoice se aate hain (read-only) — alag order-lines maintain nahi karte. */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+            <div className="mb-1.5 text-[11px] font-bold text-slate-700">Order Items <span className="font-normal text-slate-400">— from the Invoice</span></div>
+            {(Array.isArray(vals.invoice_lines) && vals.invoice_lines.length) ? (
+              <div className="space-y-1">
+                {vals.invoice_lines.map((it, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1 text-[11px] ring-1 ring-slate-100">
+                    <span className="min-w-0 truncate text-slate-700">{it.description || it.item_name || it.product || `Item ${i + 1}`}</span>
+                    <span className="whitespace-nowrap text-slate-500">{it.qty ?? it.quantity ?? ''} × ${it.unit_price ?? ''} = <b className="text-slate-700">${it.amount ?? ''}</b></span>
+                  </div>
+                ))}
+              </div>
+            ) : <div className="text-[11px] text-slate-400">No invoice items yet — fill the <b>Invoice</b> tab and they'll show here.</div>}
+          </div>
           <div className={grid}>{renderFields(ORDER_FIELDS)}</div>
-          <p className="text-[10px] text-slate-400">Saved to <b>app.orders / app.order_lines</b> as soon as you validate — the Decoinks POS auto-populates from here.</p>
+          <p className="text-[10px] text-slate-400">Order details flow in from the Invoice / Payment — each field saves as soon as you validate it.</p>
         </div>)}
       </div>
 
