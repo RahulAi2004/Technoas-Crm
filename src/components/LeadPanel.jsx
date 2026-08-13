@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api.js'
 import { can, currentUser } from '../lib/auth.js'
+import { buildDocHtml } from '../lib/quoteDoc.js'
 
 // Field audit tag — kis user ne KAB validate/update kiya.
 const fmtAudit = (at) => { try { return new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) } catch { return '' } }
@@ -1038,7 +1039,7 @@ function AIInsights({ ai, grid }) {
 // Number Decoinks ke SAME shared counter se aata hai (QT-YYYY-NNNN, ORD-YYYY-NNNN,
 // CUSTOMERNAME-NNNN), isliye Decoinks ke numbers se kabhi takrayega nahi. Record hamare
 // apne panel-store me hi save hota hai — Decoinks ki tables ko koi write nahi.
-function DocBar({ label, number, busy, msg, onGenerate }) {
+function DocBar({ label, number, busy, msg, onGenerate, onPreview }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
       <div className="flex items-center justify-between gap-2">
@@ -1048,13 +1049,47 @@ function DocBar({ label, number, busy, msg, onGenerate }) {
             {number || <span className="font-semibold text-slate-400">Not generated yet</span>}
           </div>
         </div>
-        <button onClick={onGenerate} disabled={busy}
-          className="shrink-0 rounded-md bg-brand-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-brand-700 disabled:opacity-60">
-          {busy ? 'Generating…' : number ? 'Refresh totals' : `⚡ Generate ${label}`}
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {onPreview && (
+            <button onClick={onPreview} title="Preview the document and print / save as PDF"
+              className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50">
+              👁 Preview
+            </button>
+          )}
+          <button onClick={onGenerate} disabled={busy}
+            className="rounded-md bg-brand-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-brand-700 disabled:opacity-60">
+            {busy ? 'Generating…' : number ? 'Refresh totals' : `⚡ Generate ${label}`}
+          </button>
+        </div>
       </div>
       {msg && <div className="mt-1 text-[10px] font-semibold text-emerald-700">{msg}</div>}
-      {!number && <div className="mt-1 text-[9px] text-slate-400">Items add karke Generate dabao — number, dates aur totals apne aap bhar jayenge (Decoinks jaisi numbering).</div>}
+      {!number && <div className="mt-1 text-[9px] text-slate-400">Items add karke Generate dabao — number, dates aur totals apne aap bhar jayenge (Decoinks jaisi numbering). Preview bina generate kiye bhi dekh sakte hain.</div>}
+    </div>
+  )
+}
+
+// Preview modal — document ek iframe me render hota hai (popup blocker se bacha rehta hai);
+// "Print / Save PDF" browser ke print dialog se A4 PDF bana deta hai.
+function DocPreview({ html, title, onClose }) {
+  const frame = useRef(null)
+  const print = () => { const w = frame.current?.contentWindow; if (w) { w.focus(); w.print() } }
+  useEffect(() => {
+    const esc = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', esc)
+    return () => document.removeEventListener('keydown', esc)
+  }, [onClose])
+  return (
+    <div className="fixed inset-0 z-[60] bg-slate-900/60 p-3" onClick={onClose}>
+      <div className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-pop" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2">
+          <h3 className="truncate text-[12px] font-bold text-slate-800">{title}</h3>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button onClick={print} className="rounded-md bg-brand-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-brand-700">🖨 Print / Save PDF</button>
+            <button onClick={onClose} className="rounded-md border border-slate-200 px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50">Close</button>
+          </div>
+        </div>
+        <iframe ref={frame} title={title} srcDoc={html} className="w-full flex-1 bg-slate-100" />
+      </div>
     </div>
   )
 }
@@ -1086,6 +1121,7 @@ export default function LeadPanel({ conv, onClose }) {
   const [sameBilling, setSameBilling] = useState(false)
   const [genBusy, setGenBusy] = useState('')    // kaunsa document generate ho raha hai
   const [genMsg, setGenMsg] = useState('')
+  const [preview, setPreview] = useState(null)  // { kind, title, html } — quote/invoice preview modal
   const [ai, setAi] = useState(null)            // AI-enriched read-only insights (Leads dashboard wale fields)
   const [audit, setAudit] = useState({})        // field -> { by, byId, at }  (kaun-kab validate)
 
@@ -1188,6 +1224,14 @@ export default function LeadPanel({ conv, onClose }) {
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
     return Object.keys(saveErrs.current)   // sirf real errors
   }
+
+  // Preview — abhi panel me jo values hain (saved + unsaved) unse hi document banta hai,
+  // isliye generate se pehle bhi dekha ja sakta hai.
+  const openPreview = (kind) => setPreview({
+    kind,
+    title: `${kind === 'invoice' ? 'Invoice' : 'Quotation'} preview${(kind === 'invoice' ? vals.invoice_number : vals.quote_number) ? ` — ${kind === 'invoice' ? vals.invoice_number : vals.quote_number}` : ' (draft)'}`,
+    html: buildDocHtml({ kind, vals, customerName: conv?.name || '' }),
+  })
 
   // Quotation / Invoice / Sales Order generate — pehle jo unsaved hai wo save, phir backend
   // number claim karke totals/dates bhar deta hai (idempotent: number ek hi baar banta hai).
@@ -1442,7 +1486,7 @@ export default function LeadPanel({ conv, onClose }) {
         </div>)}
 
         {tab === 'quote' && (<div className="space-y-3">
-          <DocBar label="Quotation" number={vals.quote_number} busy={genBusy === 'quotation'} msg={genBusy === '' && genMsg.startsWith('Quotation') ? genMsg : ''} onGenerate={() => generateDoc('quotation')} />
+          <DocBar label="Quotation" number={vals.quote_number} busy={genBusy === 'quotation'} msg={genBusy === '' && genMsg.startsWith('Quotation') ? genMsg : ''} onGenerate={() => generateDoc('quotation')} onPreview={() => openPreview('quotation')} />
           <div id="fld-line_items" className="scroll-mt-4"><QuoteItems items={vals.line_items} filled={filled.line_items} state={fs.line_items} auditInfo={audit['line_items']}
             onChange={(v) => setVal('line_items', v)} onValidate={validate('line_items')} /></div>
           <div className={grid}><Field k="quote_notes" label="Notes (to customer)" type="textarea" val={vals.quote_notes} filled={filled.quote_notes} state={fs.quote_notes} onChange={(v) => setVal('quote_notes', v)} onValidate={validate('quote_notes')} locked={!canValidate('quote')} auditInfo={audit['quote_notes']} /></div>
@@ -1450,7 +1494,7 @@ export default function LeadPanel({ conv, onClose }) {
         </div>)}
 
         {tab === 'invoice' && (<div className="space-y-3">
-          <DocBar label="Invoice" number={vals.invoice_number} busy={genBusy === 'invoice'} msg={genBusy === '' && genMsg.startsWith('Invoice') ? genMsg : ''} onGenerate={() => generateDoc('invoice')} />
+          <DocBar label="Invoice" number={vals.invoice_number} busy={genBusy === 'invoice'} msg={genBusy === '' && genMsg.startsWith('Invoice') ? genMsg : ''} onGenerate={() => generateDoc('invoice')} onPreview={() => openPreview('invoice')} />
           <div id="fld-invoice_lines" className="scroll-mt-4"><InvoiceLines items={vals.invoice_lines} filled={filled.invoice_lines} state={fs.invoice_lines} auditInfo={audit['invoice_lines']}
             onChange={(v) => setVal('invoice_lines', v)} onValidate={validate('invoice_lines')} /></div>
           <div className={grid}>{renderFields(INVOICE_FIELDS)}</div>
@@ -1510,6 +1554,8 @@ export default function LeadPanel({ conv, onClose }) {
           {savingAll ? 'Saving…' : '✓ Submit / Complete'}
         </button>
       </div>
+
+      {preview && <DocPreview html={preview.html} title={preview.title} onClose={() => setPreview(null)} />}
     </aside>
   )
 }
