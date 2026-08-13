@@ -310,38 +310,227 @@ function PrintLocations({ value, filled, state, onChange, onValidate, auditInfo 
   )
 }
 
+// ── Quote Items — Decoinks "New Quotation" parity ────────────────────────────
+// Pehle Quote Type chuno (Apparel / DTF Transfers / Gangsheet) — phir usi type ke apne
+// fields + dropdowns khulte hain. Sab kuch line_items JSON me hi jata hai: har row par
+// quote_type + type-specific keys, aur item_type/item_name/quantity/unit_price/amount
+// hamesha bharte hain taake backend + AI extraction ka purana shape na toote.
+const QUOTE_TYPES = [
+  { key: 'apparel', icon: '👕', label: 'Custom Printed Apparel', desc: 'T-Shirts, Hoodies, Caps with DTF / screen prints', on: 'border-sky-400 bg-sky-50 ring-1 ring-sky-200', chip: 'bg-sky-100 text-sky-700' },
+  { key: 'dtf', icon: '🖨️', label: 'DTF Transfers', desc: 'Gang-sheet cut heat transfers quoted by size & qty', on: 'border-orange-400 bg-orange-50 ring-1 ring-orange-200', chip: 'bg-orange-100 text-orange-700' },
+  { key: 'gangsheet', icon: '📐', label: 'Gangsheet', desc: 'Full gang sheets with multiple artwork designs', on: 'border-violet-400 bg-violet-50 ring-1 ring-violet-200', chip: 'bg-violet-100 text-violet-700' },
+]
+const APPAREL_CATEGORIES = ['T-Shirt', 'Hoodie', 'Sweatshirt', 'Polo Shirt', 'Tank Top', 'Long Sleeve', 'Jacket', 'Cap / Hat', 'Kids Apparel', 'Other']
+const APPAREL_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'Youth S', 'Youth M', 'Youth L']
+const GANGSHEET_SIZES = ['22" x 60"', '22" x 120"', '24" x 60"', '30" x 60"']
+const ITEM_TYPE_OF = { apparel: 'garment', dtf: 'printing', gangsheet: 'printing' }
+// row cards ke andar chhote inputs (INPUT se thoda dense).
+const QI = 'w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-800 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100'
+
+const blankItem = (type) =>
+  type === 'dtf' ? { quote_type: 'dtf', item_type: 'printing', artwork_no: '', width: '', height: '', quantity: 1, unit_price: 0, amount: 0 }
+  : type === 'gangsheet' ? { quote_type: 'gangsheet', item_type: 'printing', sheet_size: GANGSHEET_SIZES[0], artwork_count: 1, quantity: 1, unit_price: 0, amount: 0 }
+  : { quote_type: 'apparel', item_type: 'garment', category: 'T-Shirt', item_name: '', brand_style: '', color: '', size: '', print_method: 'DTF', print_location: '', quantity: 1, unit_price: 0, amount: 0 }
+
+// DTF/Gangsheet rows me naam ka field nahi hota — PDF/AI ke liye item_name khud bana dete hain.
+const autoItemName = (r) =>
+  r.quote_type === 'dtf'
+    ? ['DTF Transfer', r.artwork_no, (r.width && r.height) ? `${r.width}" x ${r.height}"` : ''].filter(Boolean).join(' · ')
+    : ['Gangsheet', r.sheet_size, Number(r.artwork_count) ? `${r.artwork_count} artwork${Number(r.artwork_count) > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')
+
+function QiCell({ label, className = '', children }) {
+  return (
+    <label className={`min-w-0 ${className}`}>
+      <span className="mb-0.5 block truncate text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      {children}
+    </label>
+  )
+}
+
 function QuoteItems({ items, filled, state, onChange, onValidate, auditInfo }) {
   const list = Array.isArray(items) ? items : []
-  const set = (i, kk, v) => onChange(list.map((r, j) => (j === i ? { ...r, [kk]: v } : r)))
-  const add = () => onChange([...list, { item_type: 'garment', item_name: '', quantity: 1, unit_price: 0 }])
+  const detected = list.find((r) => r.quote_type)?.quote_type || null
+  const [pick, setPick] = useState('apparel')
+  useEffect(() => { if (detected && detected !== pick) setPick(detected) }, [detected])  // eslint-disable-line react-hooks/exhaustive-deps
+  const type = detected || pick
+  const typeLocked = list.length > 0   // Decoinks jaisa — ek quote = ek type. Switch karne ke liye pehle rows hatao.
+
+  const patch = (i, p) => onChange(list.map((r, j) => {
+    if (j !== i) return r
+    const next = { ...r, ...p, quote_type: r.quote_type || type }
+    // purani (AI-extracted) rows ka apna item_type chhedte nahi — sirf naye/typed rows par derive.
+    next.item_type = r.quote_type ? ITEM_TYPE_OF[next.quote_type] : (r.item_type || ITEM_TYPE_OF[next.quote_type])
+    if (next.quote_type !== 'apparel') next.item_name = autoItemName(next)
+    next.amount = +(((Number(next.quantity) || 0) * (Number(next.unit_price) || 0)).toFixed(2))
+    return next
+  }))
+  const add = () => onChange([...list, blankItem(type)])
   const del = (i) => onChange(list.filter((_, j) => j !== i))
   const amt = (r) => (Number(r.quantity) || 0) * (Number(r.unit_price) || 0)
+  const totalQty = list.reduce((n, r) => n + (Number(r.quantity) || 0), 0)
+  const totalAmt = list.reduce((n, r) => n + amt(r), 0)
+  const artworks = type === 'gangsheet' ? list.reduce((n, r) => n + (Number(r.artwork_count) || 0), 0) : list.length
+  const active = QUOTE_TYPES.find((t) => t.key === type) || QUOTE_TYPES[0]
+
   return (
     <div className="rounded-lg border border-slate-200 p-2.5">
       <div className="mb-1.5 flex items-center justify-between">
         <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">Quote Items{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
         <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={list} filled={filled} onClick={onValidate} /></span>
       </div>
+
+      {/* Quote Type — ek hi type select hota hai, uske hisaab se neeche ke fields badalte hain */}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Quote Type</span>
+        <span className="truncate text-[9px] text-slate-400">{typeLocked ? 'Remove all rows to switch type' : 'Select ONE — each type has its own fields'}</span>
+      </div>
+      <div className="mb-2 grid grid-cols-3 gap-1.5">
+        {QUOTE_TYPES.map((t) => {
+          const on = t.key === type
+          return (
+            <button key={t.key} type="button" disabled={typeLocked && !on} onClick={() => setPick(t.key)}
+              title={typeLocked && !on ? 'Remove the existing rows first to change the quote type' : t.desc}
+              className={`rounded-lg border p-1.5 text-left transition ${on ? t.on : 'border-slate-200 bg-white hover:border-slate-300'} ${typeLocked && !on ? 'cursor-not-allowed opacity-50' : ''}`}>
+              <div className="flex items-center gap-1">
+                <span className="text-[13px] leading-none">{t.icon}</span>
+                <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-slate-800">{t.label}</span>
+                {on && <span className="shrink-0 text-[9px] font-bold text-emerald-600">✓</span>}
+              </div>
+              <p className="mt-0.5 line-clamp-2 text-[9px] leading-tight text-slate-500">{t.desc}</p>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className={`mb-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${active.chip}`}>{active.icon} {active.label}</div>
+
       <div className="space-y-1.5">
         {list.map((r, i) => (
           <div key={i} className="rounded-md border border-slate-200 p-1.5">
-            <div className="flex items-center gap-1.5">
-              <select value={r.item_type || 'garment'} onChange={(e) => set(i, 'item_type', e.target.value)} className={`${INPUT} w-24`}>
-                <option value="garment">garment</option><option value="printing">printing</option><option value="shipping">shipping</option>
-              </select>
-              <input placeholder="Item name" value={r.item_name || ''} onChange={(e) => set(i, 'item_name', e.target.value)} className={`${INPUT} flex-1`} />
-              <button onClick={() => del(i)} className="text-rose-400 hover:text-rose-600">✕</button>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">#{i + 1}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-700">${amt(r).toFixed(2)}</span>
+                <button onClick={() => del(i)} title="Remove row" className="text-rose-400 hover:text-rose-600">✕</button>
+              </div>
             </div>
-            <div className="mt-1 grid grid-cols-3 gap-1">
-              <input type="number" placeholder="Qty" value={r.quantity ?? ''} onChange={(e) => set(i, 'quantity', e.target.value)} className={INPUT} />
-              <input type="number" placeholder="Unit $" value={r.unit_price ?? ''} onChange={(e) => set(i, 'unit_price', e.target.value)} className={INPUT} />
-              <div className="grid place-items-center rounded-lg bg-slate-50 text-[11px] font-semibold text-slate-600">${amt(r).toFixed(2)}</div>
-            </div>
+
+            {type === 'apparel' && (
+              <div className="grid grid-cols-2 gap-1 md:grid-cols-3">
+                <QiCell label="Category">
+                  <select value={r.category || ''} onChange={(e) => patch(i, { category: e.target.value })} className={QI}>
+                    <option value="">—</option>{APPAREL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </QiCell>
+                <QiCell label="Product / Description" className="col-span-2">
+                  <input placeholder="e.g. 260G Crewneck Sweatshirt" value={r.item_name || ''} onChange={(e) => patch(i, { item_name: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Brand / Style">
+                  <input list="dl-qi-brand" placeholder="Select or type…" value={r.brand_style || ''} onChange={(e) => patch(i, { brand_style: e.target.value })} className={QI} />
+                  <datalist id="dl-qi-brand">{OPT.brand_style.map((o) => <option key={o} value={o} />)}</datalist>
+                </QiCell>
+                <QiCell label="Color">
+                  <input list="dl-qi-color" placeholder="Select or type…" value={r.color || ''} onChange={(e) => patch(i, { color: e.target.value })} className={QI} />
+                  <datalist id="dl-qi-color">{OPT.garment_color.map((o) => <option key={o} value={o} />)}</datalist>
+                </QiCell>
+                <QiCell label="Size">
+                  <input list="dl-qi-size" placeholder="Select or type…" value={r.size || ''} onChange={(e) => patch(i, { size: e.target.value })} className={QI} />
+                  <datalist id="dl-qi-size">{APPAREL_SIZES.map((o) => <option key={o} value={o} />)}</datalist>
+                </QiCell>
+                <QiCell label="Print Method">
+                  <select value={r.print_method || ''} onChange={(e) => patch(i, { print_method: e.target.value })} className={QI}>
+                    <option value="">—</option>{OPT.print_method.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </QiCell>
+                <QiCell label="Print Location">
+                  <select value={r.print_location || ''} onChange={(e) => patch(i, { print_location: e.target.value })} className={QI}>
+                    <option value="">—</option>{PRINT_LOCATIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </QiCell>
+                <QiCell label="Qty (pcs)">
+                  <input type="number" min={0} value={r.quantity ?? ''} onChange={(e) => patch(i, { quantity: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Unit Price ($)">
+                  <input type="number" min={0} step="any" value={r.unit_price ?? ''} onChange={(e) => patch(i, { unit_price: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Amount ($)">
+                  <div className="grid h-[30px] place-items-center rounded-md bg-slate-50 text-[11px] font-semibold text-slate-600">${amt(r).toFixed(2)}</div>
+                </QiCell>
+              </div>
+            )}
+
+            {type === 'dtf' && (
+              <div className="grid grid-cols-2 gap-1 md:grid-cols-3">
+                <QiCell label="Artwork No" className="col-span-2 md:col-span-1">
+                  <input placeholder={`AW-${String(i + 1).padStart(4, '0')}`} value={r.artwork_no || ''} onChange={(e) => patch(i, { artwork_no: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Width (in)">
+                  <input type="number" min={0} step="any" placeholder="Width" value={r.width ?? ''} onChange={(e) => patch(i, { width: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Height (in)">
+                  <input type="number" min={0} step="any" placeholder="Height" value={r.height ?? ''} onChange={(e) => patch(i, { height: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Qty (pcs)">
+                  <input type="number" min={0} value={r.quantity ?? ''} onChange={(e) => patch(i, { quantity: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Rate ($)">
+                  <input type="number" min={0} step="any" value={r.unit_price ?? ''} onChange={(e) => patch(i, { unit_price: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Amount ($)">
+                  <div className="grid h-[30px] place-items-center rounded-md bg-slate-50 text-[11px] font-semibold text-slate-600">${amt(r).toFixed(2)}</div>
+                </QiCell>
+              </div>
+            )}
+
+            {type === 'gangsheet' && (
+              <div className="grid grid-cols-2 gap-1 md:grid-cols-3">
+                <QiCell label="Gangsheet Size" className="col-span-2 md:col-span-1">
+                  {GANGSHEET_SIZES.includes(r.sheet_size) || !r.sheet_size ? (
+                    <select value={r.sheet_size || ''} onChange={(e) => patch(i, { sheet_size: e.target.value === '__custom__' ? '' : e.target.value })} className={QI}>
+                      <option value="">—</option>{GANGSHEET_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      <option value="__custom__">Custom…</option>
+                    </select>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <input placeholder='e.g. 36" x 60"' value={r.sheet_size} onChange={(e) => patch(i, { sheet_size: e.target.value })} className={QI} />
+                      <button onClick={() => patch(i, { sheet_size: GANGSHEET_SIZES[0] })} title="Back to list" className="shrink-0 text-slate-400 hover:text-slate-600">✕</button>
+                    </div>
+                  )}
+                </QiCell>
+                <QiCell label="No. of Artworks">
+                  <input type="number" min={0} value={r.artwork_count ?? ''} onChange={(e) => patch(i, { artwork_count: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Qty Sheets">
+                  <input type="number" min={0} value={r.quantity ?? ''} onChange={(e) => patch(i, { quantity: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Unit Price ($)">
+                  <input type="number" min={0} step="any" value={r.unit_price ?? ''} onChange={(e) => patch(i, { unit_price: e.target.value })} className={QI} />
+                </QiCell>
+                <QiCell label="Amount ($)">
+                  <div className="grid h-[30px] place-items-center rounded-md bg-slate-50 text-[11px] font-semibold text-slate-600">${amt(r).toFixed(2)}</div>
+                </QiCell>
+              </div>
+            )}
           </div>
         ))}
-        {!list.length && <div className="rounded-md border border-dashed border-slate-200 py-2 text-center text-[11px] text-slate-400">No items yet</div>}
+        {!list.length && <div className="rounded-md border border-dashed border-slate-200 py-3 text-center text-[11px] text-slate-400">No {active.label} rows yet — click "+ Add {type === 'apparel' ? 'Item' : type === 'dtf' ? 'Transfer' : 'Gangsheet'} Row" below.</div>}
       </div>
-      <button onClick={add} className="mt-1.5 w-full rounded-md border border-dashed border-slate-300 py-1 text-[11px] font-semibold text-brand-600 hover:bg-slate-50">+ Add Item</button>
+
+      {/* Live summary — Decoinks ke section footer jaisa */}
+      {list.length > 0 && (
+        <div className="mt-1.5 flex items-center justify-between rounded-md bg-slate-50 px-2 py-1.5 text-[10px]">
+          <span className="font-bold uppercase tracking-wide text-slate-500">{active.label} Summary</span>
+          <span className="flex items-center gap-3">
+            <span className="text-slate-500">{type === 'gangsheet' ? 'Sheets' : 'Total Qty'} <b className="text-slate-700">{totalQty}</b></span>
+            <span className="text-slate-500">{type === 'apparel' ? 'Rows' : 'Artworks'} <b className="text-slate-700">{artworks}</b></span>
+            <span className="text-slate-500">Section Total <b className="text-emerald-700">${totalAmt.toFixed(2)}</b></span>
+          </span>
+        </div>
+      )}
+
+      <button onClick={add} className="mt-1.5 w-full rounded-md border border-dashed border-slate-300 py-1 text-[11px] font-semibold text-brand-600 hover:bg-slate-50">
+        + Add {type === 'apparel' ? 'Item' : type === 'dtf' ? 'Transfer' : 'Gangsheet'} Row
+      </button>
     </div>
   )
 }
