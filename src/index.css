@@ -68,6 +68,32 @@ input:focus, select:focus, textarea:focus { outline: none; }
   .crm-mobile-header, .crm-nav-overlay { display: none !important; }
 }
 
+/* ===================== Mobile polish (phones + tablets) =====================
+   SIRF <1024px par lagta hai — desktop layout bilkul waisa ka waisa rehta hai.
+   Yahan wahi cheezein hain jo har screen par common hain; page-specific tweaks
+   JSX me `max-lg:` classes se hain (wo bhi sirf mobile par). */
+@media (max-width: 1023px) {
+  /* iOS 16px se chhote font wale input par focus karte hi page zoom kar deta hai —
+     form bharte waqt layout uchhal jaata hai. 16px rakhne se wo zoom nahi hota. */
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+
+  /* horizontal scrollers (tables, tab strips) — finger se smooth chalein, scrollbar na dikhe */
+  .overflow-x-auto { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .overflow-x-auto::-webkit-scrollbar { height: 0; }
+
+  /* dialogs kabhi screen se lambe na hon — andar scroll ho jaye */
+  .fixed.inset-0 > [class*="max-w-"] { max-height: 90vh; overflow-y: auto; }
+
+  /* sticky table headers phone par bhi kaam ke — scroll me column naam dikhte rahen */
+  .nice-scroll table thead th { position: sticky; top: 0; z-index: 1; }
+
+  /* har page ka header: title + action buttons ek hi line me squeeze ho kar 3-3 line ke
+     button ban jaate the. Phone par wrap kar do, buttons ek line me rahen. */
+  header.flex.items-center.justify-between { flex-wrap: wrap; gap: .5rem .75rem; }
+  header.flex.items-center.justify-between > * { min-width: 0; }
+  header.flex.items-center.justify-between button { white-space: nowrap; }
+}
+
 /* Collapsible sidebar.
    NOTE: no transition on grid-template-columns — Chrome freezes the animation
    mid-flight (column kept its old width forever), so collapse/expand did nothing. */

@@ -519,7 +519,8 @@ function QuoteItems({ items, filled, state, onChange, onValidate, auditInfo }) {
         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Quote Type</span>
         <span className="truncate text-[9px] text-slate-400">{typeLocked ? 'Remove all rows to switch type' : 'Select ONE — each type has its own fields'}</span>
       </div>
-      <div className="mb-2 grid grid-cols-3 gap-1.5">
+      {/* phone par teen cards ek row me squeeze ho kar labels kaat deti thi — wahan stack */}
+      <div className="mb-2 grid grid-cols-3 gap-1.5 max-lg:grid-cols-1">
         {QUOTE_TYPES.map((t) => {
           const on = t.key === type
           return (
@@ -755,9 +756,9 @@ function InvoiceLines({ items, filled, state, onChange, onValidate, auditInfo, t
       </div>
 
       {/* Order Type pills — Decoinks New Invoice jaisa */}
-      <div className="mb-2 flex items-center gap-1.5">
+      <div className="mb-2 flex items-center gap-1.5 max-lg:flex-wrap">
         <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">Order Type</span>
-        <div className="flex min-w-0 flex-1 gap-1">
+        <div className="flex min-w-0 flex-1 gap-1 max-lg:flex-wrap">
           {INVOICE_TYPES.map((t) => {
             const on = t.key === type
             return (
@@ -1011,22 +1012,22 @@ function AIInsights({ ai, grid }) {
 function DocBar({ label, number, busy, msg, onGenerate, onPreview }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
+      <div className="flex items-center justify-between gap-2 max-lg:flex-wrap">
+        <div className="min-w-0 max-lg:w-full">
           <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label} No</div>
           <div className="truncate text-[12px] font-extrabold text-slate-800">
             {number || <span className="font-semibold text-slate-400">Not generated yet</span>}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5 max-lg:w-full">
           {onPreview && (
             <button onClick={onPreview} title="Preview the document and print / save as PDF"
-              className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50">
+              className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50 max-lg:flex-1">
               👁 Preview
             </button>
           )}
           <button onClick={onGenerate} disabled={busy}
-            className="rounded-md bg-brand-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-brand-700 disabled:opacity-60">
+            className="rounded-md bg-brand-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-brand-700 disabled:opacity-60 max-lg:flex-1">
             {busy ? 'Generating…' : number ? 'Refresh totals' : `⚡ Generate ${label}`}
           </button>
         </div>

@@ -157,8 +157,13 @@ export default function Dashboard() {
   const [aiOpen, setAiOpen] = useState(() => localStorage.getItem('aiOpen') !== '0')
   // Lead Details panel — AI Supervisor ke saath ek waqt me EK hi khulta hai (toggle).
   const [leadOpen, setLeadOpen] = useState(false)
-  const openAiPanel = () => { setAiOpen(true); setLeadOpen(false) }
+  // Phone par ek waqt me ek hi panel dikhta hai (list → chat → panel). `aiOnPhone` batata hai
+  // ki AI panel user ne KHUD khola hai — warna aiOpen localStorage se hamesha true hota hai aur
+  // phone par app khulte hi AI panel chat ke upar aa jaata. (Desktop par iska koi asar nahi.)
+  const [aiOnPhone, setAiOnPhone] = useState(false)
+  const openAiPanel = () => { setAiOpen(true); setLeadOpen(false); setAiOnPhone(true) }
   const openLeadPanel = () => { setLeadOpen(true); setAiOpen(false) }
+  useEffect(() => { if (!aiOpen) setAiOnPhone(false) }, [aiOpen])
   // Filter FORM (date/category/etc.) is independent from the conversation list.
   // Hidden by default so the list gets full height and shows many at once.
   const [showFilterForm, setShowFilterForm] = useState(() => localStorage.getItem('showFilterForm') === '1')
@@ -795,7 +800,7 @@ export default function Dashboard() {
         </header>
 
         {/* data-mobile drives the one-panel-at-a-time layout on phones (see index.css) */}
-        <section ref={panelsRef} id="panels" className="grid flex-1 overflow-hidden" data-filters={filtersCollapsed ? 'collapsed' : 'expanded'} data-ai={(aiOpen || leadOpen) ? 'open' : 'closed'} data-mobile={currentId ? 'chat' : 'list'}>
+        <section ref={panelsRef} id="panels" className="grid flex-1 overflow-hidden" data-filters={filtersCollapsed ? 'collapsed' : 'expanded'} data-ai={(aiOpen || leadOpen) ? 'open' : 'closed'} data-mobile={(leadOpen || (aiOpen && aiOnPhone)) ? 'ai' : currentId ? 'chat' : 'list'}>
           {/* ===== Filters / List ===== */}
           <div id="panel-list" className="flex flex-col overflow-hidden border-r border-slate-200 bg-white">
             <div id="filters-header" className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
@@ -983,8 +988,10 @@ export default function Dashboard() {
               </div>
             )}
             {conv && (<>
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-3 py-2.5 sm:px-5">
-              <div className="flex min-w-0 items-start gap-3">
+            {/* phone par action buttons apni alag row me chale jaate hain, warna naam ke liye
+                jagah hi nahi bachti (naam badges ke peeche chhup jaata tha). */}
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-3 py-2.5 max-lg:flex-wrap max-lg:gap-y-2 sm:px-5">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
                 {/* back to the conversation list — phones only */}
                 <button type="button" onClick={goBack} aria-label="Back" title="Back"
                   className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100">
@@ -1016,7 +1023,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2 max-lg:w-full max-lg:flex-wrap max-lg:justify-end">
                 <button onClick={toggleBookmark} title={conv.bookmarked ? 'Remove bookmark' : 'Bookmark'} className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border ${conv.bookmarked ? 'border-amber-300 bg-amber-50 text-amber-600' : 'border-slate-200 hover:bg-slate-50 text-slate-500'}`}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill={conv.bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                 </button>
@@ -1042,6 +1049,14 @@ export default function Dashboard() {
                     AI Supervisor
                   </button>
                 )}
+                {/* phone-only: AI panel "open" hai lekin screen par chat dikh rahi hai — usi button
+                    se AI panel par jaate hain. Desktop par ye button chhupa rehta hai. */}
+                {aiOpen && !aiOnPhone && (
+                  <button onClick={openAiPanel} title="Open AI Supervisor" className="hidden shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 max-lg:inline-flex">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                    AI Supervisor
+                  </button>
+                )}
                 <div className="relative">
                   <button onClick={() => setConvMenuOpen((o) => !o)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 hover:bg-slate-50" aria-label="More"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
                   {convMenuOpen && (
@@ -1059,7 +1074,8 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <nav className="flex items-center gap-8 border-b border-slate-200 px-5">
+            {/* phone par tabs scroll hote hain — pehle "Notes"/"Files" screen se bahar kat jaate the */}
+            <nav className="nice-scroll flex items-center gap-8 overflow-x-auto border-b border-slate-200 px-5 max-lg:gap-5 max-lg:px-3">
               {[['conversation','Conversation'],['customer','Customer Info'],['history','History'],['notes','Notes'],['files','Files']].map(([id, lbl]) => (
                 <button key={id} onClick={() => setMidTab(id)} className={`whitespace-nowrap border-b-2 py-2.5 text-sm ${midTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
               ))}

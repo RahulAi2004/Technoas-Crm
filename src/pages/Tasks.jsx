@@ -136,7 +136,7 @@ export default function Tasks() {
   const isOverdue = (t) => t.dueAt && new Date(t.dueAt) < new Date() && !['Completed', 'Cancelled', 'Submitted'].includes(t.status)
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="crm-shell flex min-h-screen bg-slate-50">
       <SidebarCrm active="tasks" />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">

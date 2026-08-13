@@ -122,7 +122,7 @@ export default function AiAssistant() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="crm-shell flex h-screen overflow-hidden bg-slate-50">
       {/* History sidebar */}
       {showHistory && (
         <>

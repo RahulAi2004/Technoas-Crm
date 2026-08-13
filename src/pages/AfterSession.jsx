@@ -85,7 +85,7 @@ export default function AfterSession() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="crm-shell flex h-screen overflow-hidden bg-slate-50">
       {/* Clients sidebar — on phones this is the full-screen list; picking a client shows the detail */}
       <aside className={`${sel ? 'hidden lg:flex' : 'flex'} w-full shrink-0 flex-col border-r border-slate-200 bg-white lg:w-72`}>
         <div className="border-b border-slate-200 px-3 py-3">
