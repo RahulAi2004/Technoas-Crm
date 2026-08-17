@@ -120,6 +120,38 @@ function MsgAttachments({ items }) {
   )
 }
 
+// Quick emoji (Messenger jaise) — message par react karne ke liye.
+const QUICK_EMOJI = ['👍', '❤️', '😆', '😮', '😢', '🔥']
+
+// Reaction chips (emoji + count) — bubble ke neeche, Messenger jaisa.
+function ReactionChips({ reactions }) {
+  if (!Array.isArray(reactions) || !reactions.length) return null
+  const byEmoji = {}
+  reactions.forEach((r) => { if (r?.emoji) byEmoji[r.emoji] = (byEmoji[r.emoji] || 0) + 1 })
+  const entries = Object.entries(byEmoji)
+  if (!entries.length) return null
+  return (
+    <div className="mt-0.5 flex flex-wrap gap-1">
+      {entries.map(([e, n]) => (
+        <span key={e} className="inline-flex items-center gap-0.5 rounded-full bg-white px-1.5 py-0.5 text-[11px] shadow-sm ring-1 ring-slate-200">
+          <span>{e}</span>{n > 1 && <span className="font-semibold text-slate-500">{n}</span>}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// Reply-to quote (bubble ke andar, upar) — kis message ka reply hai.
+function ReplyQuote({ q, tone }) {
+  if (!q) return null
+  return (
+    <div className={`mb-1 rounded-md border-l-2 px-2 py-1 text-[11px] ${tone === 'out' ? 'border-white/50 bg-white/15 text-white/85' : 'border-slate-300 bg-slate-50 text-slate-500'}`}>
+      {q.name && <div className="font-semibold opacity-80">{q.name}</div>}
+      <div className="line-clamp-2">{q.hasImage ? '📷 ' : ''}{q.text || 'Photo'}</div>
+    </div>
+  )
+}
+
 const nowTime = () => {
   const d = new Date()
   let h = d.getHours(); const m = d.getMinutes(); const ampm = h >= 12 ? 'PM' : 'AM'
@@ -268,10 +300,11 @@ export default function Dashboard() {
       .then((rows) => {
         if (cancelled) return
         // Only update if something actually changed — avoids the scroll jumping
-        // back every few seconds when nothing new has arrived.
-        setMessages((prev) =>
-          (prev.length === rows.length && prev[prev.length - 1]?.id === rows[rows.length - 1]?.id)
-            ? prev : rows)
+        // back every few seconds when nothing new has arrived. Signature me reactions +
+        // reply_to bhi shaamil — warna reaction-only change (same count/last-id) miss ho jata.
+        const sig = (arr) => arr.length + '|' + (arr[arr.length - 1]?.id ?? '') +
+          '|' + arr.reduce((n, m) => n + (m.reactions?.length || 0) + (m.reply_to ? 1 : 0), 0)
+        setMessages((prev) => sig(prev) === sig(rows) ? prev : rows)
         // Optimistic message ki server copy aate hi use hata do — UNIQUE id se match (bulletproof).
         // Server pending ka clientId hi message id banata hai, isliye id === id = wahi message.
         setPending((p) => p.filter((pm) => !rows.some((r) => String(r.id) === String(pm.id))))
@@ -413,6 +446,8 @@ export default function Dashboard() {
   // Composer
   const [mode, setMode] = useState('reply')
   const [draft, setDraft] = useState('')
+  const [replyTo, setReplyTo] = useState(null)          // jis message ka reply likha ja raha hai
+  const [reactPickerFor, setReactPickerFor] = useState(null)  // kis message par emoji-picker khula hai
   const chatRef = useRef(null)
   // Lambi message par textarea khud badhta hai (max ~6 lines); send/clear par wapas chhota.
   const draftRef = useRef(null)
@@ -444,8 +479,15 @@ export default function Dashboard() {
     const clientTs = Date.now()
     const clientId = `cid-${clientTs}-${Math.random().toString(36).slice(2, 8)}`
     const pid = clientId
-    setPending((p) => [...p, { id: pid, dir: 'out', text: text.trim(), time, agent: currentUser()?.name, _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString() }])
-    setDraft('')
+    // Reply snapshot (agar reply mode me kisi message ka reply hai) — CRM me quoted dikhega.
+    const rt = (kind === 'reply' && replyTo) ? {
+      id: replyTo.id,
+      text: replyTo.text || '',
+      name: replyTo.dir === 'in' ? (currentConv?.name || 'Customer') : (replyTo.agent || 'You'),
+      hasImage: !!replyTo.hasImage,
+    } : null
+    setPending((p) => [...p, { id: pid, dir: 'out', text: text.trim(), time, agent: currentUser()?.name, _status: 'sending', ts: clientTs, created_at: new Date(clientTs).toISOString(), reply_to: rt || undefined }])
+    setDraft(''); setReplyTo(null)
 
     const mark = (status, error) => setPending((p) => p.map((x) => x.id === pid ? { ...x, _status: status, _error: error } : x))
     const isMeta = currentId.startsWith('fb:') || currentId.startsWith('ig:') || currentConv?.source === 'meta'
@@ -453,7 +495,7 @@ export default function Dashboard() {
       if (currentId.startsWith('mc:')) {
         await api.post('/api/manychat/send', { subscriberId: currentId.slice(3), text: text.trim() })
       } else if (isMeta) {
-        await api.post('/api/meta/send', { conversationId: currentId, text: text.trim(), clientTs, clientId })   // backend Chatwoot/Meta route karta hai
+        await api.post('/api/meta/send', { conversationId: currentId, text: text.trim(), clientTs, clientId, replyTo: rt })   // backend Chatwoot/Meta route karta hai
       } else {
         await api.post(`/api/conversations/${encodeURIComponent(currentId)}/messages`, { dir: 'out', text: text.trim(), time })
       }
@@ -464,6 +506,86 @@ export default function Dashboard() {
   }
 
   const retrySend = (pm) => { setPending((p) => p.filter((x) => x.id !== pm.id)); sendMessage(pm.text, 'reply') }
+
+  // ---- Per-message actions: react (CRM-internal) · reply · download image ----
+  // React: optimistic toggle, phir API. NOTE: Meta pe nahi jaata (Meta API allow nahi karta) —
+  // sirf CRM me agents ko dikhta. Customer ki Meta reactions webhook se aati hain.
+  const toggleReact = async (m, emoji) => {
+    setReactPickerFor(null)
+    if (!m?.id) return
+    const me = currentUser()?.name || 'Agent'
+    setMessages((list) => list.map((x) => {
+      if (String(x.id) !== String(m.id)) return x
+      const rx = Array.isArray(x.reactions) ? [...x.reactions] : []
+      const i = rx.findIndex((r) => r.actor === 'agent' && r.by === me && r.emoji === emoji)
+      if (i >= 0) rx.splice(i, 1); else rx.push({ emoji, actor: 'agent', by: me })
+      return { ...x, reactions: rx }
+    }))
+    try { await api.post(`/api/messages/${encodeURIComponent(m.id)}/react`, { emoji }) }
+    catch (ex) { toast(`Reaction failed: ${ex.message}`, 'error') }
+  }
+  // Reply: composer me quoted bar dikhao + focus.
+  const startReply = (m) => {
+    setMode('reply')
+    setReplyTo({ id: m.id, dir: m.dir, agent: m.agent, hasImage: !!(m.attachments || []).length,
+      text: m.text || ((m.attachments || []).length ? '📷 Photo' : '') })
+    setTimeout(() => draftRef.current?.focus(), 30)
+  }
+  // Download: image ki apni PG copy (blob) laa kar browser download trigger.
+  const downloadImage = async (att) => {
+    if (!att) return
+    try {
+      let href = att.url, revoke = null
+      if (att.name) {
+        const res = await fetch(`/api/artwork-file?name=${encodeURIComponent(att.name)}`, { headers: { Authorization: `Bearer ${getToken() || ''}` } })
+        if (!res.ok) throw new Error('http ' + res.status)
+        href = URL.createObjectURL(await res.blob()); revoke = href
+      }
+      if (!href) throw new Error('image not available')
+      const a = document.createElement('a'); a.href = href
+      a.download = att.name || `image-${Date.now()}.jpg`
+      document.body.appendChild(a); a.click(); a.remove()
+      if (revoke) setTimeout(() => URL.revokeObjectURL(revoke), 5000)
+    } catch (ex) { toast(`Download failed: ${ex.message}`, 'error') }
+  }
+  // Emoji-picker: bahar click par band.
+  useEffect(() => {
+    if (!reactPickerFor) return
+    const h = (e) => { if (!e.target.closest?.('.react-pop')) setReactPickerFor(null) }
+    window.addEventListener('mousedown', h)
+    return () => window.removeEventListener('mousedown', h)
+  }, [reactPickerFor])
+
+  // Per-message hover toolbar (Meta jaisa): react · reply · (image par) download.
+  const msgTools = (m) => {
+    const img = (m.attachments || []).find((a) => a?.type === 'image')
+    const open = reactPickerFor === m.id
+    const btn = 'grid h-6 w-6 place-items-center rounded-full text-slate-500 hover:bg-slate-100'
+    return (
+      <div className="react-pop relative flex shrink-0 items-center self-center">
+        <div className={`flex items-center gap-0.5 rounded-full bg-white px-1 py-0.5 shadow-sm ring-1 ring-slate-200 transition ${open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+          <button title="React" onClick={() => setReactPickerFor(open ? null : m.id)} className={btn}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </button>
+          <button title="Reply" onClick={() => startReply(m)} className={btn}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+          </button>
+          {img && (
+            <button title="Download image" onClick={() => downloadImage(img)} className={btn}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+          )}
+        </div>
+        {open && (
+          <div className="absolute -top-10 left-1/2 z-20 flex -translate-x-1/2 gap-0.5 rounded-full bg-white px-1.5 py-1 shadow-lg ring-1 ring-slate-200">
+            {QUICK_EMOJI.map((e) => (
+              <button key={e} onClick={() => toggleReact(m, e)} className="grid h-7 w-7 place-items-center rounded-full text-lg leading-none hover:bg-slate-100">{e}</button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   // ---- File/image attach + send (Chatwoot ke raste) ----
   const fileInputRef = useRef(null)
@@ -1116,9 +1238,16 @@ export default function Dashboard() {
                     const _bubble = (() => {
                     if (m.dir === 'sys') return <div key={m.id || i} className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500"><span>{m.time}</span>·<span>{m.text}</span></div>
                     if (m.dir === 'in') return (
-                      <div key={m.id || i} className="mt-4 flex items-start gap-2">
+                      <div key={m.id || i} className="group mt-4 flex items-start gap-2">
                         <ConvAvatar url={conv.avatarUrl} bg={conv.avatarBg} initials={conv.initials} className="mt-1 h-8 w-8 text-xs" />
-                        <div className="max-w-[min(90%,42rem)] rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100"><MsgAttachments items={m.attachments} />{m.text}<div className="mt-1 text-[10px] text-slate-400">{fmtClock(m.ts, m.time)}</div></div>
+                        <div className="flex max-w-[min(90%,42rem)] flex-col items-start">
+                          <div className="rounded-2xl rounded-tl-md bg-white px-4 py-2.5 text-sm shadow-sm ring-1 ring-slate-100">
+                            <ReplyQuote q={m.reply_to} tone="in" /><MsgAttachments items={m.attachments} />{m.text}
+                            <div className="mt-1 text-[10px] text-slate-400">{fmtClock(m.ts, m.time)}</div>
+                          </div>
+                          <ReactionChips reactions={m.reactions} />
+                        </div>
+                        {msgTools(m)}
                       </div>
                     )
                     if (m.dir === 'note') return (
@@ -1133,11 +1262,12 @@ export default function Dashboard() {
                     const failed = m._status === 'failed'
                     const sending = m._status === 'sending'
                     return (
-                      <div key={m.id || i} className="mt-4 flex flex-col items-end">
+                      <div key={m.id || i} className="group mt-4 flex flex-col items-end">
                         {m.agent && <div className="mb-0.5 mr-10 text-[10px] font-semibold text-slate-500">{m.agent}</div>}
                         <div className="flex items-start justify-end gap-2">
+                          {msgTools(m)}
                           <div className={`max-w-[min(90%,42rem)] rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ${failed ? 'bg-rose-50 text-rose-900 ring-1 ring-rose-200' : 'bg-brand-600 text-white'}`}>
-                            <MsgAttachments items={m.attachments} />{m.text}
+                            <ReplyQuote q={m.reply_to} tone="out" /><MsgAttachments items={m.attachments} />{m.text}
                             <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${failed ? 'text-rose-500' : 'text-white/70'}`}>
                               {fmtClock(m.ts, m.time)}
                               {sending
@@ -1151,6 +1281,7 @@ export default function Dashboard() {
                             {m.agent ? m.agent.split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase() : 'M'}
                           </span>
                         </div>
+                        <ReactionChips reactions={m.reactions} />
                         {failed && (
                           <div className="mr-10 mt-0.5 flex items-center gap-2 text-[10px] font-semibold text-rose-600">
                             <span>Failed to send{m._error ? ` — ${m._error}` : ''}</span>
@@ -1166,6 +1297,16 @@ export default function Dashboard() {
                 </div>
 
                 <div className="border-t border-slate-200 bg-white px-4 py-2">
+                  {replyTo && mode === 'reply' && (
+                    <div className="mb-2 flex items-start gap-2 rounded-lg border-l-2 border-brand-400 bg-brand-50 px-3 py-1.5 text-xs">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-brand-500"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-brand-700">Replying to {replyTo.dir === 'in' ? (currentConv?.name || 'Customer') : 'yourself'}</div>
+                        <div className="truncate text-slate-500">{replyTo.hasImage ? '📷 ' : ''}{replyTo.text || 'Photo'}</div>
+                      </div>
+                      <button onClick={() => setReplyTo(null)} title="Cancel reply" className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 hover:bg-white hover:text-rose-600">×</button>
+                    </div>
+                  )}
                   {attachQueue.length > 0 && (
                     <div className="mb-2 flex flex-wrap gap-2">
                       {attachQueue.map((it) => (

@@ -1030,6 +1030,13 @@ app.post('/api/meta/send', authRequired, async (req, res) => {
       ts: Number(req.body?.clientTs) || Date.now(),   // client ke send-click ka waqt = asli order
       via,
       agent: agentName(req),
+      // Reply-to snapshot (CRM me quoted dikhega). Text to Meta normal message ke roop me jaata hai.
+      reply_to: req.body?.replyTo && req.body.replyTo.id ? {
+        id: String(req.body.replyTo.id),
+        text: String(req.body.replyTo.text || '').slice(0, 160),
+        name: String(req.body.replyTo.name || '').slice(0, 60),
+        hasImage: !!req.body.replyTo.hasImage,
+      } : undefined,
     })
     if (conv) update('conversations', conv.id, { list_preview: text, list_time: nowTime(), last_ts: Date.now(), last_dir: 'out', last_out_ts: Date.now() })
     broadcast({ type: 'message', conversationId: msg.conversation_id, message: msg })
@@ -1093,6 +1100,25 @@ app.post('/api/meta/send-file', authRequired, async (req, res) => {
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message })
   }
+})
+
+// Agent ne CRM me kisi message par emoji reaction lagayi/hataayi (toggle).
+// NOTE: Meta ka public API Page->customer reaction support nahi karta, isliye ye
+// CRM-internal hai (sirf agents ko dikhta). Customer ki Meta reactions webhook se aati hain.
+app.post('/api/messages/:id/react', authRequired, (req, res) => {
+  const { emoji } = req.body || {}
+  if (!emoji) return res.status(400).json({ error: 'emoji required' })
+  const m = findById('messages', req.params.id)
+  if (!m) return res.status(404).json({ error: 'message not found' })
+  if (!requireConvAccess(m.conversation_id, req, res)) return
+  const me = agentName(req) || 'Agent'
+  let rx = Array.isArray(m.reactions) ? [...m.reactions] : []
+  const i = rx.findIndex((x) => x.actor === 'agent' && x.by === me && x.emoji === emoji)
+  if (i >= 0) rx.splice(i, 1)                                   // same emoji dobara -> hatao (toggle)
+  else rx.push({ emoji, actor: 'agent', by: me, ts: Date.now() })
+  const up = update('messages', m.id, { reactions: rx })
+  broadcast({ type: 'message', conversationId: m.conversation_id, message: up })
+  res.json({ ok: true, message: up })
 })
 
 // Manual lookup: pull a sender into the inbox by PSID/IGSID
@@ -1441,6 +1467,9 @@ app.get('/api/webhooks/meta', (req, res) => {
 })
 
 // Webhook receiver: Messenger (object "page") + Instagram (object "instagram").
+// Meta reaction type-name -> emoji (jab webhook me raw emoji na aaye).
+const REACTION_EMOJI = { love: '❤️', like: '👍', haha: '😆', wow: '😮', sad: '😢', angry: '😠', dislike: '👎', other: '❤️' }
+
 app.post('/api/webhooks/meta', async (req, res) => {
   // Meta expects a fast 200; do the work but don't block on profile fetches failing.
   res.sendStatus(200)
@@ -1453,6 +1482,22 @@ app.post('/api/webhooks/meta', async (req, res) => {
   for (const entry of entries) {
     const events = entry.messaging || entry.standby || []
     for (const ev of events) {
+      // Customer ne Meta par kisi message par emoji REACTION di (messaging_reactions).
+      // CRM me us message par dikhao (Meta se aayi reaction). action: 'react' | 'unreact'.
+      if (ev.reaction) {
+        const r = ev.reaction || {}
+        const emoji = r.emoji || REACTION_EMOJI[String(r.reaction || '').toLowerCase()] || '❤️'
+        // target message: apni id === Meta mid, YA stored meta_message_id (mid) === Meta mid
+        const target = getAll('messages').find((m) => String(m.id) === String(r.mid) || String(m.mid) === String(r.mid))
+        if (target) {
+          const from = findById('conversations', target.conversation_id)?.name || 'Customer'
+          let rx = Array.isArray(target.reactions) ? target.reactions.filter((x) => x.actor !== 'customer') : []
+          if (String(r.action) !== 'unreact') rx.push({ emoji, actor: 'customer', by: from, ts: Date.now() })
+          const up = update('messages', target.id, { reactions: rx })
+          broadcast({ type: 'message', conversationId: target.conversation_id, message: up })
+        }
+        continue
+      }
       const msg = ev.message
       if (!msg) continue
       const isEcho = !!msg.is_echo
