@@ -303,7 +303,9 @@ export default function Leads() {
 
   // Chat ek hi reusable "chat tab" mein khulti hai: fixed window-name se doosri lead pe click
   // karne par naya tab nahi banta — wahi tab nayi chat pe chala jaata hai (band ho to naya khulta hai).
-  const openChat = (cid) => { if (!cid) return; const w = window.open(`/dashboard?conv=${encodeURIComponent(cid)}`, 'crm_chat'); if (w) w.focus() }
+  // Chat kholte waqt customer ka naam bhi bhejo (?q=) — Dashboard sirf usi ko load karega
+  // (poora inbox nahi, isliye turant khulti hai). Naam search se clear karne par saari load.
+  const openChat = (cid, name) => { if (!cid) return; const w = window.open(`/dashboard?conv=${encodeURIComponent(cid)}${name ? `&q=${encodeURIComponent(name)}` : ''}`, 'crm_chat'); if (w) w.focus() }
   const openMessenger = async (cid) => {
     const w = window.open('', '_blank')
     try { const r = await api.get(`/api/meta/messenger-link/${encodeURIComponent(cid)}`); if (w) w.location.href = r?.url || 'https://business.facebook.com/latest/inbox/all' }
@@ -385,7 +387,7 @@ export default function Leads() {
       }
       case 'actions': return (
         <RowMenu open={menuId === rowKey} onToggle={() => setMenuId(menuId === rowKey ? null : rowKey)}
-          onChat={() => { setMenuId(null); openChat(l._cid) }}
+          onChat={() => { setMenuId(null); openChat(l._cid, l.name) }}
           onDetails={() => { setMenuId(null); navigate(`/leads/${encodeURIComponent(l._cid)}`) }}
           onMessenger={/^(fb|ig):/.test(String(l._cid || '')) ? () => { setMenuId(null); openMessenger(l._cid) } : null} />)
       default: return null
@@ -599,7 +601,7 @@ export default function Leads() {
                 ) : pageRows.map((l, i) => {
                   const rowKey = `${l._cid || 'nocid'}#${i}`   // per-row unique — Unknown leads share a blank _cid
                   return (
-                  <tr key={rowKey} onClick={() => openChat(l._cid)} className={`cursor-pointer transition hover:bg-brand-50/40 ${l._cid && selected.has(l._cid) ? 'bg-brand-50/60' : ''}`}>
+                  <tr key={rowKey} onClick={() => openChat(l._cid, l.name)} className={`cursor-pointer transition hover:bg-brand-50/40 ${l._cid && selected.has(l._cid) ? 'bg-brand-50/60' : ''}`}>
                     <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>{l._cid ? <input type="checkbox" checked={selected.has(l._cid)} onChange={() => toggleRow(l._cid)} /> : null}</td>
                     {activeCols.map((c) => (
                       <td key={c.key} className={`px-3 py-3 ${c.right ? 'text-right' : ''}`} onClick={(c.key === 'actions' || c.key === 'tags' || c.key === 'messages' || c.key === 'assign') ? (e) => e.stopPropagation() : undefined}>{cellFor(c.key, l, rowKey)}</td>

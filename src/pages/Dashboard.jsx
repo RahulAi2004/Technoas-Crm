@@ -212,13 +212,17 @@ export default function Dashboard() {
   const [conversationsRaw, setConversationsRaw] = useState([])
   const [convTotal, setConvTotal] = useState(0)            // total conversations on server (list shows the recent slice)
   const [renderCount, setRenderCount] = useState(80)       // how many rows to actually render (grows on scroll)
-  const searchRef = useRef('')                             // current search text — read by the 5s poller
+  const searchRef = useRef(new URLSearchParams(window.location.search).get('q') || '')  // deep-link ?q= -> mount par hi scoped load
   const firstSearchRun = useRef(true)
   // Remember the last opened conversation so a reload continues where you left off.
   // Phone par ek waqt me ek hi panel dikhta hai (list → chat → panel), isliye wahan koi chat
   // KHUD-BA-KHUD nahi khulti — warna app khulte hi chat aa jaati hai aur customers ki list
   // kabhi dikhti hi nahi. Desktop par list aur chat saath dikhte hain, wahan purana behaviour.
-  const [currentId, setCurrentId] = useState(() => (isPhone() ? null : localStorage.getItem('currentConvId') || null))
+  const [currentId, setCurrentId] = useState(() => {
+    const urlConv = new URLSearchParams(window.location.search).get('conv')   // Leads se ?conv= -> mount par hi wahi chat khuli
+    if (urlConv) return urlConv
+    return isPhone() ? null : (localStorage.getItem('currentConvId') || null)
+  })
   const [messages, setMessages] = useState([])
   // Optimistic sends jab tak server copy nahi aati: turant dikhein, poll inhe na giraye.
   const [pending, setPending] = useState([])
@@ -240,7 +244,8 @@ export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams()
   useEffect(() => {
     const c = searchParams.get('conv')
-    if (c) { setCurrentId(c); localStorage.setItem('currentConvId', c); searchParams.delete('conv'); setSearchParams(searchParams, { replace: true }) }
+    // conv + q (customer ka naam) URL se consume — currentId/search pehle hi initializer se set hain.
+    if (c) { setCurrentId(c); localStorage.setItem('currentConvId', c); searchParams.delete('conv'); searchParams.delete('q'); setSearchParams(searchParams, { replace: true }) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -275,7 +280,8 @@ export default function Dashboard() {
   const fetchConvs = async () => {
     try {
       const q = searchRef.current.trim()
-      const r = await api.get(`/api/inbox?limit=6000${q ? `&q=${encodeURIComponent(q)}` : ''}`)
+      const pin = currentId ? `&conv=${encodeURIComponent(currentId)}` : ''   // khuli chat hamesha list me (scoped search me bhi)
+      const r = await api.get(`/api/inbox?limit=6000${q ? `&q=${encodeURIComponent(q)}` : ''}${pin}`)
       const rows = Array.isArray(r?.conversations) ? r.conversations : (Array.isArray(r) ? r : [])
       setConversationsRaw(rows)
       setConvTotal(r?.total ?? rows.length)
@@ -316,7 +322,9 @@ export default function Dashboard() {
   }, [currentId])
 
   // Search + view filter (all / unassigned / mentions / bookmarks)
-  const [search, setSearch] = useState('')
+  // Deep-link (Leads se ?q=<naam>): search me customer ka naam pre-fill -> sirf wahi load
+  // hota hai (poora inbox nahi). Naam clear karte hi saari chats load ho jaati hain.
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('q') || '')
   // Search runs server-side over ALL conversations (debounced 300ms). The 5s poller reads searchRef.
   useEffect(() => {
     searchRef.current = search

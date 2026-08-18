@@ -399,10 +399,20 @@ app.get('/api/inbox', authRequired, (req, res) => {
   const seeAll = reqCan(req, 'cap:view_all_chats')
   const assignments = getAssignments()
   if (!seeAll) { const uid = String(req.user?.id || '_'); convs = convs.filter((c) => asIds(assignments[String(c.id)]).includes(uid)) }
-  if (q) convs = convs.filter((c) => `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.list_preview || ''}`.toLowerCase().includes(q))
-  convs = convs.slice().sort((a, b) => cts(b) - cts(a))
-  const total = convs.length
-  const light = convs.slice(0, limit).map((c) => { const o = {}; for (const f of LIST) if (c[f] !== undefined) o[f] = c[f]; o.assigned_user_ids = asIds(assignments[String(c.id)]); return o })
+  // `convs` yahan tak access-filtered hai (agent: sirf assigned). Ab search se narrow karo.
+  const accessible = convs
+  let filtered = q ? accessible.filter((c) => `${c.name || ''} ${c.company || ''} ${c.phone || ''} ${c.list_preview || ''}`.toLowerCase().includes(q)) : accessible
+  filtered = filtered.slice().sort((a, b) => cts(b) - cts(a))
+  const total = filtered.length
+  const toLight = (c) => { const o = {}; for (const f of LIST) if (c[f] !== undefined) o[f] = c[f]; o.assigned_user_ids = asIds(assignments[String(c.id)]); return o }
+  const light = filtered.slice(0, limit).map(toLight)
+  // Leads se khuli chat (`?conv=`) ko HAMESHA list me rakho — chahe search-scope me na aaye
+  // (warna deep-link par header/naam gayab ho jata). Access already `accessible` se guaranteed.
+  const pin = String(req.query.conv || '')
+  if (pin && !light.some((c) => String(c.id) === pin)) {
+    const pc = accessible.find((c) => String(c.id) === pin)
+    if (pc) light.unshift(toLight(pc))
+  }
   res.json({ conversations: light, total, returned: light.length, q: q || null, scoped: !seeAll })
 })
 
