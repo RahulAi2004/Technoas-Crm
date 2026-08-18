@@ -392,7 +392,7 @@ app.get('/api/inbox', authRequired, (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 6000)
   const LIST = ['id','name','company','phone','channel','channel_bg','avatar','avatar_bg','avatar_url','initials',
     'list_preview','list_time','last_ts','last_dir','last_out_ts','last_in_ts','first_ts','unread','tags',
-    'status','status_bg','status_icon','assigned_to','bookmarked','created_at','meta_recipient_id','customer_id','lead_id','stage']
+    'status','status_bg','status_icon','assigned_to','bookmarked','created_at','meta_recipient_id','customer_id','lead_id','stage','ad_referral','ad_referral_dismissed']
   const cts = (c) => Number(c.last_ts) || (c.created_at ? Date.parse(c.created_at) : 0) || 0
   let convs = getAll('conversations')
   // Sirf assigned chats — jinke paas cap:view_all_chats nahi (sales agent), unhe apni hi dikhein.
@@ -1480,6 +1480,21 @@ app.get('/api/webhooks/meta', (req, res) => {
 // Meta reaction type-name -> emoji (jab webhook me raw emoji na aaye).
 const REACTION_EMOJI = { love: '❤️', like: '👍', haha: '😆', wow: '😮', sad: '😢', angry: '😠', dislike: '👎', other: '❤️' }
 
+// Click-to-Messenger AD referral -> chat me "is ad ka reply hai" banner ke liye normalize.
+// Meta referral shape: { ref, source, type, ad_id, ads_context_data:{ ad_title, photo_url, ... } }
+function extractReferral(referral) {
+  if (!referral) return null
+  const ad = referral.ads_context_data || {}
+  return {
+    title: ad.ad_title || (referral.ref ? String(referral.ref).slice(0, 80) : 'an ad'),
+    thumbnail: ad.photo_url || null,
+    ad_id: referral.ad_id || null,
+    ref: referral.ref || null,
+    source: referral.source || null,
+    ts: Date.now(),
+  }
+}
+
 app.post('/api/webhooks/meta', async (req, res) => {
   // Meta expects a fast 200; do the work but don't block on profile fetches failing.
   res.sendStatus(200)
@@ -1508,6 +1523,15 @@ app.post('/api/webhooks/meta', async (req, res) => {
         }
         continue
       }
+      // Ad referral (Click-to-Messenger) — standalone `referral` event ya postback ke saath
+      // (jab message ke bina aaye). Message ke SAATH aaye to neeche msg.referral se handle hota.
+      const standaloneRef = (ev.referral || ev.postback?.referral)
+      if (standaloneRef && !ev.message) {
+        const sid = ev.sender?.id
+        const c = sid ? findById('conversations', `${channel === 'Instagram' ? 'ig' : 'fb'}:${sid}`) : null
+        if (c) { const info = extractReferral(standaloneRef); if (info) { const up = update('conversations', c.id, { ad_referral: info, ad_referral_dismissed: false }); broadcast({ type: 'conversation', conversation: up }) } }
+        continue
+      }
       const msg = ev.message
       if (!msg) continue
       const isEcho = !!msg.is_echo
@@ -1532,6 +1556,12 @@ app.post('/api/webhooks/meta', async (req, res) => {
         broadcast({ type: 'conversation', conversation: conv })
         ensureLeadForConversation(conv)  // auto lead-capture
         ensureCustomerForConversation(conv)  // auto customer-capture
+      }
+
+      // Ad referral message ke SAATH (naya thread Click-to-Messenger ad se) — conversation par store.
+      if (msg.referral && !isEcho) {
+        const info = extractReferral(msg.referral)
+        if (info) { conv = update('conversations', conv.id, { ad_referral: info, ad_referral_dismissed: false }) }
       }
 
       // Echo (page / Meta Business Suite se bheja outgoing) bhi CRM mein aata hai — par
@@ -1890,15 +1920,18 @@ app.get('/api/leads-list', authRequired, requirePerm('page:leads'), async (req, 
     // badal jata hai, ts sthir rehta hai. Isliye last message = us conversation ka MAX ts wala
     // (equal ts par baad wala array index). Ye Inbox se exactly match karta hai.
     const lastByConv = {}
+    const countByConv = {}                                    // kitne message exchange hue (in+out; note/system skip)
     let _i = 0
     for (const m of getAll('messages')) {
       const i = _i++
       if (m.dir === 'note' || isSystemMsg(m)) continue        // note + system/auto messages skip (Agent/Customer clean)
+      countByConv[m.conversation_id] = (countByConv[m.conversation_id] || 0) + 1
       const k = Number(m.ts) || (m.created_at ? Date.parse(m.created_at) : 0) || 0
       const prev = lastByConv[m.conversation_id]
       if (!prev || k >= prev.k) lastByConv[m.conversation_id] = { m, k, i }
     }
     const rows = r.rows.map((row) => {
+      row.msg_count = countByConv[row.id] || 0                 // dono taraf ke total messages
       const lm = lastByConv[row.id]?.m
       if (lm) {
         row.last_by = lm.dir === 'out' ? 'out' : 'in'   // out = agent, in = customer

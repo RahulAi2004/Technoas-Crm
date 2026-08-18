@@ -57,6 +57,7 @@ const LEAD_COLUMNS = [
   { key: 'name', header: 'Customer Name', always: true },
   { key: 'tags', header: 'Tags', always: true },
   { key: 'assign', header: 'Assign', has: () => can('cap:assign_chats') },   // admin: chat kis agent ko
+  { key: 'msgCount', header: 'Messages', always: true },   // dono taraf ke kitne message exchange hue
   { key: 'source', header: 'Source', has: (l) => !!l._source },
   { key: 'stage', header: 'Stage', has: (l) => !!l._stage },
   { key: 'status', header: 'Lead Status', has: (l) => !!l._status },
@@ -237,6 +238,7 @@ export default function Leads() {
           _lastAgent: l.last_agent || '',
           _lastAt: Number(l.last_at) || 0,
           _lastText: l.last_text || '',
+          _msgCount: Number(l.msg_count) || 0,   // dono taraf ke total exchanged messages
           _tags: Array.isArray(l.tags) ? l.tags : [],
         }))
         setData(merged)
@@ -336,6 +338,11 @@ export default function Leads() {
         if (!l._cid) return <span className="text-slate-300">—</span>
         return <AssignCell cid={l._cid} agents={agents} value={assignMap[l._cid]} onChange={assignChat} />
       }
+      case 'msgCount': return (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap tabular-nums font-medium text-slate-700" title="Total messages exchanged (customer + us)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          {l._msgCount ?? 0}
+        </span>)
       case 'source': return <span className="whitespace-nowrap text-slate-600">{l._source || '—'}</span>
       case 'stage': return <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">{l._stage}</span>
       case 'status': return <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">{l._status}</span>

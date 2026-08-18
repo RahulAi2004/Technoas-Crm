@@ -1228,6 +1228,24 @@ export default function Dashboard() {
 
             {midTab === 'conversation' && (
               <div className="flex min-h-0 flex-1 flex-col">
+                {/* Ad-referral banner (Meta jaisa): customer kis Click-to-Messenger ad se aaya. ✕ se dismiss. */}
+                {conv?.ad_referral && !conv?.ad_referral_dismissed && (
+                  <div className="mx-4 mt-3 flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+                    {conv.ad_referral.thumbnail
+                      ? <img src={conv.ad_referral.thumbnail} alt="" referrerPolicy="no-referrer" className="h-10 w-10 shrink-0 rounded-md object-cover ring-1 ring-sky-200" />
+                      : <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-sky-100 text-sky-600 ring-1 ring-sky-200"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>}
+                    <div className="min-w-0 flex-1 text-xs">
+                      <div className="font-semibold text-slate-700">This chat contains a reply to <span className="text-sky-700">{conv.ad_referral.title}</span></div>
+                      {conv.ad_referral.ad_id && (
+                        <a href={`https://www.facebook.com/ads/library/?id=${encodeURIComponent(conv.ad_referral.ad_id)}`} target="_blank" rel="noreferrer" className="font-semibold text-sky-600 hover:underline">View ad</a>
+                      )}
+                    </div>
+                    <button onClick={() => patchConv(conv.id, { ad_referral_dismissed: true })} title="Dismiss" aria-label="Dismiss"
+                      className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-slate-400 hover:bg-white hover:text-slate-700">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                )}
                 <div ref={chatRef} className="nice-scroll flex-1 overflow-y-auto bg-slate-50/40 px-4 py-4">
                   <div className="flex min-h-full flex-col justify-end">
                   {[...conv.messages, ...pending.filter((pm) => !conv.messages.some((m) => String(m.id) === String(pm.id)))]
