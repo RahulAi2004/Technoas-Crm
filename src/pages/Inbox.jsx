@@ -22,6 +22,8 @@ export default function Inbox() {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [live, setLive] = useState(false)
+  const [typers, setTypers] = useState({})   // { [conversationId]: { name, until } } — kaun type kar raha hai
+  const typingRef = useRef({ cid: null, lastPing: 0, stopTimer: null })
   const [meta, setMeta] = useState(null)
   const [appId, setAppId] = useState('')
   const [appSecret, setAppSecret] = useState('')
@@ -74,6 +76,7 @@ export default function Inbox() {
 
   // ---- load thread when active conversation changes ----
   useEffect(() => {
+    stopTyping()                 // pichli chat me type kar rahe the to woh clear karo
     activeIdRef.current = activeId
     if (!activeId) { setMessages([]); return }
     let cancelled = false
@@ -113,6 +116,15 @@ export default function Inbox() {
         }))
       }
 
+      if (evt.type === 'typing') {
+        setTypers(prev => {
+          const next = { ...prev }
+          if (evt.state === 'typing') next[evt.conversationId] = { name: evt.name, until: Date.now() + 5000 }
+          else delete next[evt.conversationId]
+          return next
+        })
+      }
+
       if (evt.type === 'conversation') {
         setConvs(prev => {
           const exists = prev.some(c => c.id === evt.conversation.id)
@@ -137,10 +149,49 @@ export default function Inbox() {
       (c.list_preview || '').toLowerCase().includes(q))
   }, [query, convs])
 
+  // ---- typing signal (agent-to-agent) ----
+  // Throttled: type karte waqt har ~2.5s me ek 'typing' ping, aur ruknay par 'stopped'.
+  const pingTyping = () => {
+    const cid = activeIdRef.current
+    if (!cid) return
+    const t = typingRef.current
+    const now = Date.now()
+    if (t.cid !== cid || now - t.lastPing > 2500) {
+      t.cid = cid; t.lastPing = now
+      api.post(`/api/conversations/${encodeURIComponent(cid)}/typing`, { state: 'typing' }).catch(() => {})
+    }
+    clearTimeout(t.stopTimer)
+    t.stopTimer = setTimeout(stopTyping, 3000)
+  }
+  const stopTyping = () => {
+    const t = typingRef.current
+    clearTimeout(t.stopTimer)
+    const cid = t.cid
+    t.cid = null; t.lastPing = 0
+    if (cid) api.post(`/api/conversations/${encodeURIComponent(cid)}/typing`, { state: 'stopped' }).catch(() => {})
+  }
+  // component unmount par bhi typing clear kar do
+  useEffect(() => () => stopTyping(), [])
+
+  // Received typing events expire karo (agar 'stopped' miss ho jaye) — har 1.5s me prune.
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setTypers(prev => {
+        const now = Date.now()
+        let changed = false
+        const next = {}
+        for (const [k, v] of Object.entries(prev)) { if (v.until > now) next[k] = v; else changed = true }
+        return changed ? next : prev
+      })
+    }, 1500)
+    return () => clearInterval(iv)
+  }, [])
+
   const send = async (e) => {
     e.preventDefault()
     const body = text.trim()
     if (!body || !active) return
+    stopTyping()
     setText('')
     setSending(true)
     try {
@@ -279,6 +330,18 @@ export default function Inbox() {
                   </div>
                 )
               ))}
+              {typers[activeId] && typers[activeId].until > Date.now() && (
+                <div className="flex justify-start">
+                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-md bg-white px-3.5 py-2.5 shadow-sm">
+                    <span className="text-[11px] font-medium text-slate-500">{typers[activeId].name} is typing</span>
+                    <span className="flex gap-0.5">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: '0ms' }} />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: '150ms' }} />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: '300ms' }} />
+                    </span>
+                  </div>
+                </div>
+              )}
               <div ref={bottomRef} />
             </div>
 
@@ -286,7 +349,8 @@ export default function Inbox() {
               <div className="flex items-end gap-2">
                 <textarea
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(e) => { setText(e.target.value); if (e.target.value.trim()) pingTyping(); else stopTyping() }}
+                  onBlur={stopTyping}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(e) } }}
                   rows={1}
                   placeholder={`Reply to ${active.name}...`}

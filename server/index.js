@@ -62,13 +62,15 @@ const sseClients = new Set()
 // Event kis conversation ka hai (agar hai to) — SSE ko assignment se filter karne ke liye.
 const eventCid = (e) => e?.conversationId || e?.conversation?.id || e?.message?.conversation_id || null
 
-function broadcast(event) {
+function broadcast(event, { excludeUid = null } = {}) {
   const payload = `data: ${JSON.stringify(event)}\n\n`
   const cid = eventCid(event)
   const assignees = cid != null ? assigneesOf(cid) : null
   for (const res of sseClients) {
     // conversation-scoped event: sirf view-all clients + us chat ke assigned agents ko bhejo
     if (cid != null && !res._seeAll && !assignees.includes(String(res._uid || ''))) continue
+    // typing jaise events: bhejne wale ko khud wapas na milein
+    if (excludeUid != null && String(res._uid) === String(excludeUid)) continue
     try { res.write(payload) } catch { /* client gone; cleaned up on close */ }
   }
 }
@@ -1598,6 +1600,20 @@ app.post('/api/conversations/:id/read', authRequired, (req, res) => {
   if (!conv) return res.status(404).json({ error: 'conversation not found' })
   broadcast({ type: 'conversation', conversation: conv })
   res.json(conv)
+})
+
+// "Agent is typing" — ephemeral signal (DB me kuch save nahi hota). Sirf usi chat ke
+// doosre agents ko SSE se turant bhej diya jata hai taake do agents ek saath reply na
+// karein (WhatsApp-style typing dots). Note: ye CRM-agents ke beech hai — customer ka
+// typing Meta webhook se nahi aata, is liye woh yahan nahi.
+app.post('/api/conversations/:id/typing', authRequired, (req, res) => {
+  if (!requireConvAccess(req.params.id, req, res)) return
+  const state = req.body?.state === 'typing' ? 'typing' : 'stopped'
+  broadcast(
+    { type: 'typing', conversationId: req.params.id, userId: req.user.id, name: agentName(req), state },
+    { excludeUid: req.user.id },
+  )
+  res.json({ ok: true })
 })
 
 // ============================================================
