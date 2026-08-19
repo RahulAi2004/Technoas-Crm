@@ -1456,8 +1456,8 @@ function startInstagramPromote(intervalMs = 2 * 60 * 1000) {
 let metaPollTimer = null
 function startMetaPolling() {
   if (metaPollTimer) clearInterval(metaPollTimer)
-  metaPollTimer = setInterval(() => { syncMetaConversations().catch(() => {}) }, 10000)
-  console.log('🔄 Meta API polling every 10s (pull mode)')
+  metaPollTimer = setInterval(() => { syncMetaConversations().catch(() => {}) }, 5000)
+  console.log('🔄 Meta API polling every 5s (pull mode)')
 }
 
 // Manual trigger (also used right after connecting)

@@ -317,7 +317,7 @@ export default function Dashboard() {
       })
       .catch(() => {})
     load()
-    const t = setInterval(load, 4000)
+    const t = setInterval(load, 2000)   // open chat: 2s poll (tha 4s) — naya message jaldi dikhe
     return () => { cancelled = true; clearInterval(t) }
   }, [currentId])
 
