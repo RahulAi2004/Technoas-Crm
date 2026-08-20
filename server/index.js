@@ -1881,7 +1881,7 @@ Analyze the conversation and respond with ONLY a JSON object in EXACTLY this sha
  "objections": string[],
  "leadPrediction": { "conversionProbability": number }
 }
-Numbers 0-100. agentMetrics values are short (e.g. "1m 42s", "92%", "High", "Good"). objections = concerns/blockers slowing the deal. leadPrediction.conversionProbability 0-100. Be concise, practical and specific to this conversation. The recommendedReply must be a ready-to-send message in the customer's language.`
+Numbers 0-100. agentMetrics values are short (e.g. "1m 42s", "92%", "High", "Good"). objections = concerns/blockers slowing the deal. leadPrediction.conversionProbability 0-100. Be concise, practical and specific to this conversation. The recommendedReply must be a ready-to-send message in the customer's language. GROUNDING (critical): never invent order specifics — quantities, sizes, colours, product types, prices, totals, shipping addresses, dates, or design names — that the customer did not actually state in this conversation; if such details are unknown, leave them out or ask for them rather than fabricating an order.`
 
 app.get('/api/ai/analyze/:id', authRequired, async (req, res) => {
   if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY in server/.env' })
@@ -2488,6 +2488,8 @@ app.post('/api/ai/recommend-reply/:id', authRequired, async (req, res) => {
 LANGUAGE RULE (critical): Detect the language of the UNANSWERED customer message(s) ONLY — ignore the language of earlier messages. Write your reply in EXACTLY that language. If the unanswered message(s) are in English, reply in English. If they are in Spanish, reply in Spanish. If the language is unclear, mixed, or just an emoji/number, default to English. NEVER reply in a different language than the customer's latest unanswered message(s).
 
 COVERAGE RULE: The customer may have sent SEVERAL unanswered messages or questions. Address ALL of them in a single reply — do not answer only the last one. Cover every question/request they raised.
+
+GROUNDING RULE (critical — do not violate): Base your reply ONLY on what the customer has ACTUALLY written in this conversation. NEVER invent, assume, or "summarize" specific order details — quantities, sizes, colours, design names, product types, prices, totals, shipping addresses, or dates — unless the customer stated them verbatim in these messages. Do NOT produce an order summary or confirmation of specifics that are not present in the chat. If the unanswered message is only a short confirmation ("yes", "ok", "sure"), a greeting, an emoji/number, or unclear/gibberish, reply with a brief natural acknowledgement or a clarifying question (e.g. ask what they need) — do NOT fabricate an order or details. When in doubt, ask rather than assume.
 
 Be professional, helpful and concise. Use the full conversation only as background context.
 Respond with ONLY a JSON object: { "detectedLanguage": string, "reply": string }`
