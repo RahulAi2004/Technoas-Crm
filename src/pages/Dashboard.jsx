@@ -467,6 +467,28 @@ export default function Dashboard() {
   }, [draft])
   useEffect(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, [messages.length, pending.length, currentId])
 
+  // ── AI suggested reply — ek hi jagah fetch, dono jagah use: (1) AI Supervisor → Responses tab,
+  // (2) composer ke upar Meta-jaisa "click to fill" bar. Ek call = double LLM cost se bacha.
+  const [aiReply, setAiReply] = useState({ text: '', info: null, loading: false })  // { text, info(pending/…), loading }
+  const [aiSuggestOff, setAiSuggestOff] = useState(false)   // composer bar user ne dismiss kiya (is suggestion ke liye)
+  const genAiReply = (force = false) => {
+    const cid = currentId
+    if (!cid) { setAiReply({ text: '', info: null, loading: false }); return }
+    setAiReply((s) => ({ ...s, loading: true }))
+    api.post(`/api/ai/recommend-reply/${encodeURIComponent(cid)}`, { force })
+      .then((r) => { setAiReply({ text: typeof r.reply === 'string' ? r.reply : '', info: r, loading: false }); setAiSuggestOff(false) })
+      .catch(() => setAiReply((s) => ({ ...s, loading: false })))
+  }
+  // Chat badle ya nayi customer message aaye → fresh suggestion (server no-op karta hai jab humne pehle hi reply kar diya ho)
+  useEffect(() => { setAiReply({ text: '', info: null, loading: false }); setAiSuggestOff(false); genAiReply(false) }, [currentId, messages.length])
+  // Meta-jaisa: suggestion par click → text compose box me aa jata hai, wahan edit karke Send
+  const fillFromAi = () => {
+    if (!aiReply.text) return
+    setMode('reply')
+    setDraft(aiReply.text)
+    requestAnimationFrame(() => { const el = draftRef.current; if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length) } catch {} } })
+  }
+
   const sendMessage = async (text, kind = mode) => {
     if (!text.trim() || !currentId) return
     const time = nowTime()
@@ -1346,6 +1368,17 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
+                  {/* AI suggested reply — Meta-jaisa "Click to fill": click → text compose box me, edit karke Send */}
+                  {mode === 'reply' && !aiSuggestOff && aiReply.info?.pending !== false && aiReply.text && draft.trim() !== aiReply.text.trim() && (
+                    <div className="mb-2 overflow-hidden rounded-xl border border-violet-200 bg-violet-50/70">
+                      <div className="flex items-center gap-2 border-b border-violet-100 px-3 py-1.5">
+                        <span className="text-[11px] font-bold text-violet-700">✨ AI · Suggested reply · Click to fill</span>
+                        <button onClick={() => genAiReply(true)} disabled={aiReply.loading} title="Regenerate" className="ml-auto text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50">{aiReply.loading ? '…' : '↻'}</button>
+                        <button onClick={() => setAiSuggestOff(true)} title="Dismiss" className="grid h-5 w-5 place-items-center rounded-full text-violet-400 hover:bg-white hover:text-rose-600">×</button>
+                      </div>
+                      <button onClick={fillFromAi} title="Click to fill the message box" className="block w-full px-3 py-2 text-left text-sm leading-snug text-slate-700 hover:bg-white">{aiReply.text}</button>
+                    </div>
+                  )}
                   <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message… (paste an image with Ctrl+V, sent on Send)'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
                   <input ref={fileInputRef} type="file" onChange={onFileChosen} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.ai,.psd,.eps,.zip" />
                   <div className="mt-1.5 flex items-center justify-between gap-2">
@@ -1425,7 +1458,7 @@ export default function Dashboard() {
             </nav>
 
             <div className="nice-scroll flex-1 overflow-y-auto px-5 py-4">
-              {aiTab === 'responses' && <ResponsesTab onSendReply={(text) => sendMessage(text, 'reply')} onSendImage={sendAssetImage} conv={conv} msgCount={messages.length} />}
+              {aiTab === 'responses' && <ResponsesTab onSendReply={(text) => sendMessage(text, 'reply')} onSendImage={sendAssetImage} conv={conv} reply={aiReply.text} setReply={(t) => setAiReply((s) => ({ ...s, text: t }))} info={aiReply.info} loading={aiReply.loading} onGenerate={genAiReply} />}
               {aiTab === 'translate' && <TranslationTab onSendReply={(text) => sendMessage(text, 'reply')} incoming={incomingList} />}
               {aiTab === 'summary' && <SummaryTab conv={conv} msgCount={messages.length} />}
               {aiTab === 'actions' && <ActionsTab ai={ai} onAnalyze={analyze} />}
@@ -2377,30 +2410,14 @@ function SummaryTab({ conv, msgCount }) {
 // AI Recommended Reply — answers the customer messages that arrived AFTER the agent's
 // last reply (the unanswered ones). Re-generates automatically when new customer
 // messages arrive; cheap/no-op when the agent has already replied to the latest.
-function ResponsesTab({ onSendReply, onSendImage, conv, msgCount }) {
+// reply / info / loading / generate ab parent (chat component) se aate hain — wahi state composer ke
+// "click to fill" bar ke saath shared hai, is liye ek hi LLM call dono jagah serve karti hai.
+function ResponsesTab({ onSendReply, onSendImage, conv, reply, setReply, info, loading, onGenerate }) {
   const toast = useToast()
   const cid = conv?.id
-  const [reply, setReply] = useState('')
-  const [info, setInfo] = useState(null)   // { pending, pendingCount, pendingMessages, detectedLanguage, reply, empty }
-  const [loading, setLoading] = useState(false)
   const [qa, setQa] = useState(null)       // quick-actions from backend (editable in Settings)
   useEffect(() => { api.get('/api/quick-actions').then(setQa).catch(() => {}) }, [])
-
-  const generate = (force = false) => {
-    if (!cid) return
-    setLoading(true)
-    api.post(`/api/ai/recommend-reply/${encodeURIComponent(cid)}`, { force })
-      .then((r) => {
-        setInfo(r)
-        if (typeof r.reply === 'string') setReply(r.reply)
-      })
-      .catch((ex) => toast(ex.message || 'Failed', 'error'))
-      .finally(() => setLoading(false))
-  }
-
-  // Auto: on conversation change AND whenever the message list changes (new customer
-  // message → fresh reply; agent's own send → server returns "no pending", no AI call).
-  useEffect(() => { setReply(''); setInfo(null); if (cid) generate(false) }, [cid, msgCount])
+  const generate = (force = false) => onGenerate(force)
 
   return (
     <>
