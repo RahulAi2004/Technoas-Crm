@@ -1368,16 +1368,29 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
-                  {/* AI suggested reply — Meta-jaisa "Click to fill": click → text compose box me, edit karke Send */}
-                  {mode === 'reply' && !aiSuggestOff && aiReply.info?.pending !== false && aiReply.text && draft.trim() !== aiReply.text.trim() && (
-                    <div className="mb-2 overflow-hidden rounded-xl border border-violet-200 bg-violet-50/70">
-                      <div className="flex items-center gap-2 border-b border-violet-100 px-3 py-1.5">
-                        <span className="text-[11px] font-bold text-violet-700">✨ AI · Suggested reply · Click to fill</span>
-                        <button onClick={() => genAiReply(true)} disabled={aiReply.loading} title="Regenerate" className="ml-auto text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50">{aiReply.loading ? '…' : '↻'}</button>
-                        <button onClick={() => setAiSuggestOff(true)} title="Dismiss" className="grid h-5 w-5 place-items-center rounded-full text-violet-400 hover:bg-white hover:text-rose-600">×</button>
+                  {/* AI suggested reply — Meta-jaisa. Box ke upar hamesha ek suggestion affordance:
+                      reply ready -> "Click to fill" card | ban raha -> generating | kuch pending nahi -> "Suggest a reply" button */}
+                  {mode === 'reply' && currentId && !aiSuggestOff && (
+                    aiReply.text && draft.trim() !== aiReply.text.trim() ? (
+                      <div className="mb-2 overflow-hidden rounded-xl border border-violet-200 bg-violet-50/70">
+                        <div className="flex items-center gap-2 border-b border-violet-100 px-3 py-1.5">
+                          <span className="text-[11px] font-bold text-violet-700">✨ AI · Suggested reply · Click to fill</span>
+                          <button onClick={() => genAiReply(true)} disabled={aiReply.loading} title="Regenerate" className="ml-auto text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50">{aiReply.loading ? '…' : '↻'}</button>
+                          <button onClick={() => setAiSuggestOff(true)} title="Dismiss" className="grid h-5 w-5 place-items-center rounded-full text-violet-400 hover:bg-white hover:text-rose-600">×</button>
+                        </div>
+                        <button onClick={fillFromAi} title="Click to fill the message box" className="block w-full px-3 py-2 text-left text-sm leading-snug text-slate-700 hover:bg-white">{aiReply.text}</button>
                       </div>
-                      <button onClick={fillFromAi} title="Click to fill the message box" className="block w-full px-3 py-2 text-left text-sm leading-snug text-slate-700 hover:bg-white">{aiReply.text}</button>
-                    </div>
+                    ) : aiReply.loading ? (
+                      <div className="mb-2 flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50/70 px-3 py-2 text-[12px] font-semibold text-violet-700">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        ✨ AI suggested reply banaa raha hai…
+                      </div>
+                    ) : (!aiReply.text && draft.trim() === '') ? (
+                      <button onClick={() => genAiReply(true)} className="mb-2 flex w-full items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/40 px-3 py-2 text-left text-[12px] font-semibold text-violet-700 hover:bg-violet-50">
+                        ✨ AI · Suggest a reply
+                        <span className="ml-auto text-[11px] font-medium text-violet-500">click →</span>
+                      </button>
+                    ) : null
                   )}
                   <textarea ref={draftRef} rows="2" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} placeholder={mode === 'note' ? 'Write an internal note (visible to team only)...' : 'Type your message… (paste an image with Ctrl+V, sent on Send)'} className="nice-scroll block w-full resize-none overflow-y-auto rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"></textarea>
                   <input ref={fileInputRef} type="file" onChange={onFileChosen} className="hidden" accept="image/*,application/pdf,.doc,.docx,.txt,.ai,.psd,.eps,.zip" />
