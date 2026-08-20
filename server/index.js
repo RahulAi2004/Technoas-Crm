@@ -17,6 +17,7 @@ import { listStyles, getStyle } from './catalog.js'
 import { generateDocument, documentStatus } from './documents.js'
 import { cwEnabled, cwShadowMode, cwSendEnabled, cwStoreShadow, cwSendMessage, cwSendToPsid, cwSendFileToPsid, cwConvForPsid, cwShadowStats, cwReconcile, startChatwootReconcile, cwInstagramConversations, cwContactAvatars } from './chatwoot.js'
 import { tmConfigured, tmBaseUrl, tmHealth, tmStats, tmListTasks, tmCreateTask, tmUsers, tmTask, tmTransition, tmComment, tmRemind, tmNotifications } from './taskmgmt.js'
+import { startDecoinksEventBridge } from './decoinks-events.js'
 import { randomUUID, createHash } from 'node:crypto'
 import { nextcloudWebhook } from './nextcloud-webhook.js'
 
@@ -3323,6 +3324,7 @@ app.listen(PORT, () => {
   startBackfillWorker()        // missing image bytes ko source_url se dobara download (broken images fix)
   startChatwootReconcile()     // Chatwoot: webhook ke gaps API se bharo (server-down safety)
   startInstagramPromote()      // Chatwoot IG messages ko CRM inbox conversations (ig:) me laao
+  startDecoinksEventBridge()   // decoinks_db ke naye artworks -> Task Management ARTWORK_CREATED event
   setTimeout(backfillDirTs, 15000)   // data load hone ke baad last_out_ts/last_in_ts bhar do
 })
 

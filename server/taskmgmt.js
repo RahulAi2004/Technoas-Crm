@@ -68,5 +68,8 @@ export const tmTask = (id) => tm(`/tasks/${id}`)
 // State-machine transition — event: 'start' | 'submit' | 'approve' | 'accept' | 'reject' | 'hold' ...
 export const tmTransition = (id, body) => tm(`/tasks/${id}/transition`, { method: 'POST', body })
 export const tmComment = (id, body) => tm(`/tasks/${id}/comments`, { method: 'POST', body })
+// Fire a business event → Task Management's automation engine creates the matching template tasks.
+export const tmFireEvent = (event, entityType, entityId, extra = {}) =>
+  tm('/events', { method: 'POST', body: { event, entityType, entityId, ...extra } })
 export const tmRemind = (id) => tm(`/tasks/${id}/remind`, { method: 'POST', body: {} })
 export const tmNotifications = () => tm('/notifications')
