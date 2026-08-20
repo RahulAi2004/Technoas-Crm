@@ -1383,7 +1383,7 @@ export default function Dashboard() {
                     ) : aiReply.loading ? (
                       <div className="mb-2 flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50/70 px-3 py-2 text-[12px] font-semibold text-violet-700">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                        ✨ AI suggested reply banaa raha hai…
+                        ✨ Generating AI suggested reply…
                       </div>
                     ) : (!aiReply.text && draft.trim() === '') ? (
                       <button onClick={() => genAiReply(true)} className="mb-2 flex w-full items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/40 px-3 py-2 text-left text-[12px] font-semibold text-violet-700 hover:bg-violet-50">
