@@ -579,22 +579,17 @@ export default function Dashboard() {
     } catch (ex) { toast(`Download failed: ${ex.message}`, 'error') }
   }
 
-  // Poori conversation (text + images + timeline) ko Word (.doc) me download karo.
-  const downloadChatDoc = async () => {
+  // Poori conversation (text + images + timeline) ko Word .docx me download karo.
+  // Direct link (?t=token) — SYNCHRONOUS user-gesture ke andar, taaki Chrome doosri/teesri
+  // download block na kare (fetch+blob ke await se gesture khatam ho jaata tha -> block).
+  const downloadChatDoc = () => {
     if (!currentConv) return
     setConvMenuOpen(false)
-    toast('Preparing chat document…', 'info')
-    try {
-      const res = await fetch(`/api/conversations/${encodeURIComponent(currentConv.id)}/export.doc`,
-        { headers: { Authorization: `Bearer ${getToken() || ''}` } })
-      if (!res.ok) throw new Error('http ' + res.status)
-      const href = URL.createObjectURL(await res.blob())
-      const safe = (currentConv.name || 'chat').replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '_') || 'chat'
-      const a = document.createElement('a'); a.href = href; a.download = `${safe}_chat.docx`
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(href), 5000)
-      toast('Chat downloaded', 'success')
-    } catch (ex) { toast(`Chat download failed: ${ex.message}`, 'error') }
+    const safe = (currentConv.name || 'chat').replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '_') || 'chat'
+    const url = `/api/conversations/${encodeURIComponent(currentConv.id)}/export.doc?t=${encodeURIComponent(getToken() || '')}`
+    const a = document.createElement('a'); a.href = url; a.download = `${safe}_chat.docx`
+    document.body.appendChild(a); a.click(); a.remove()
+    toast('Chat document ban raha hai…', 'info')
   }
   // Emoji-picker: bahar click par band.
   useEffect(() => {
