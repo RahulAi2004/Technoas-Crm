@@ -589,7 +589,7 @@ export default function Dashboard() {
     const url = `/api/conversations/${encodeURIComponent(currentConv.id)}/export.doc?t=${encodeURIComponent(getToken() || '')}`
     const a = document.createElement('a'); a.href = url; a.download = `${safe}_chat.docx`
     document.body.appendChild(a); a.click(); a.remove()
-    toast('Chat document ban raha hai…', 'info')
+    toast('Document is being downloaded…', 'info')
   }
   // Emoji-picker: bahar click par band.
   useEffect(() => {
