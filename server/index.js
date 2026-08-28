@@ -525,6 +525,76 @@ app.get('/api/conversations/:id/messages', authRequired, (req, res) => {
   res.json(msgs)
 })
 
+// Export a whole conversation (text + images + timeline) as a Word-openable .doc.
+// HTML-based .doc: Word opens it directly; images embedded as base64 so it works offline.
+app.get('/api/conversations/:id/export.doc', authImg, async (req, res) => {
+  if (!requireConvAccess(req.params.id, req, res)) return
+  const conv = findById('conversations', req.params.id)
+  if (!conv) return res.status(404).json({ error: 'conversation not found' })
+  const msgs = getAll('messages')
+    .filter((m) => m.conversation_id === req.params.id)
+    .sort((a, b) => (a.ts || 0) - (b.ts || 0))
+
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const custName = conv.name || 'Customer'
+  const channel = conv.channel || (String(conv.id).startsWith('ig:') ? 'Instagram' : 'Facebook')
+  const fmtTs = (m) => {
+    const d = m.ts ? new Date(Number(m.ts)) : null
+    return d ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : (m.time || '')
+  }
+
+  const blocks = []
+  let lastDay = ''
+  for (const m of msgs) {
+    const isIn = m.dir === 'in'
+    const who = isIn ? esc(custName) : esc(m.agent || 'Agent')
+    const ts = fmtTs(m)
+    const day = (ts.split(',')[0] || '').trim()
+    if (day && day !== lastDay) { blocks.push(`<p style="text-align:center;color:#888;font-size:10pt;margin:16px 0 6px">— ${esc(day)} —</p>`); lastDay = day }
+    let extra = ''
+    for (const a of (m.attachments || [])) {
+      if (a?.type === 'image') {
+        let src = null
+        if (a.name) {
+          try {
+            const f = await getArtworkFileByName(a.name)
+            if (f?.image_data) {
+              const ext = String(f.file_type || 'jpg').toLowerCase()
+              const mime = MIME_BY_EXT[ext] || `image/${ext}`
+              src = `data:${mime};base64,${Buffer.from(f.image_data).toString('base64')}`
+            }
+          } catch { /* fall through to url */ }
+        }
+        if (!src && a.url) src = a.url
+        extra += src
+          ? `<div><img src="${src}" style="max-width:340px;border-radius:8px;margin:4px 0"/></div>`
+          : `<div style="color:#b00;font-size:9pt">[image unavailable]</div>`
+      } else if (a?.type === 'file') {
+        extra += `<div style="font-size:9pt;color:#555">&#128206; ${esc(a.name || 'file')}</div>`
+      }
+    }
+    const bg = isIn ? '#f1f0f0' : '#e7ddff'
+    const align = isIn ? 'left' : 'right'
+    const text = m.text ? `<div>${esc(m.text).replace(/\n/g, '<br/>')}</div>` : ''
+    blocks.push(
+      `<table width="100%" style="margin:6px 0"><tr><td align="${align}">` +
+      `<div style="display:inline-block;max-width:70%;text-align:left;background:${bg};padding:8px 12px;border-radius:10px;font-size:11pt">` +
+      `<div style="font-size:8pt;color:#666;margin-bottom:3px"><b>${who}</b> &middot; ${esc(ts)}</div>${text}${extra}</div></td></tr></table>`)
+  }
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">` +
+    `<head><meta charset="utf-8"><title>${esc(custName)} - Chat</title></head>` +
+    `<body style="font-family:'Segoe UI',Arial,sans-serif;color:#111">` +
+    `<h2 style="margin:0">${esc(custName)}</h2>` +
+    `<p style="color:#666;margin:2px 0 12px">${esc(channel)} &middot; ${msgs.length} messages &middot; exported ${esc(new Date().toLocaleString('en-GB'))}</p><hr/>` +
+    `${blocks.join('\n')}</body></html>`
+
+  const safeName = (custName.replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '_') || 'chat')
+  res.set('Content-Type', 'application/msword')
+  res.set('Content-Disposition', `attachment; filename="${safeName}_chat.doc"`)
+  res.send('﻿' + html)   // UTF-8 BOM so Word reads accents/emoji correctly
+})
+
 app.post('/api/conversations/:id/messages', authRequired, (req, res) => {
   if (!requireConvAccess(req.params.id, req, res)) return
   const { dir, text, time, category } = req.body || {}

@@ -578,6 +578,24 @@ export default function Dashboard() {
       if (revoke) setTimeout(() => URL.revokeObjectURL(revoke), 5000)
     } catch (ex) { toast(`Download failed: ${ex.message}`, 'error') }
   }
+
+  // Poori conversation (text + images + timeline) ko Word (.doc) me download karo.
+  const downloadChatDoc = async () => {
+    if (!currentConv) return
+    setConvMenuOpen(false)
+    toast('Preparing chat document…', 'info')
+    try {
+      const res = await fetch(`/api/conversations/${encodeURIComponent(currentConv.id)}/export.doc`,
+        { headers: { Authorization: `Bearer ${getToken() || ''}` } })
+      if (!res.ok) throw new Error('http ' + res.status)
+      const href = URL.createObjectURL(await res.blob())
+      const safe = (currentConv.name || 'chat').replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '_') || 'chat'
+      const a = document.createElement('a'); a.href = href; a.download = `${safe}_chat.doc`
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(href), 5000)
+      toast('Chat downloaded', 'success')
+    } catch (ex) { toast(`Chat download failed: ${ex.message}`, 'error') }
+  }
   // Emoji-picker: bahar click par band.
   useEffect(() => {
     if (!reactPickerFor) return
@@ -1230,6 +1248,10 @@ export default function Dashboard() {
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setConvMenuOpen(false)} />
                       <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                        <button onClick={downloadChatDoc} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                          Download chat (Word)
+                        </button>
                         <button onClick={deleteLead} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50">
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                           Delete lead
