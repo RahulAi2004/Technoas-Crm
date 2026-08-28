@@ -525,103 +525,88 @@ app.get('/api/conversations/:id/messages', authRequired, (req, res) => {
   res.json(msgs)
 })
 
-// Export a whole conversation (text + images + timeline) as a Word-openable .doc.
-// MHTML (multipart/related): each image is a SEPARATE MIME part referenced by
-// Content-Location — Word renders these correctly. (data: URIs do NOT work in Word.)
+// Export a whole conversation (text + images + timeline) as a REAL Word .docx.
+// Built with the `docx` library so images embed natively (data:/MHTML don't render
+// reliably in Word). Dynamic import: if the lib isn't installed, only this route
+// fails (clear 500) — the backend still boots.
 app.get('/api/conversations/:id/export.doc', authImg, async (req, res) => {
   if (!requireConvAccess(req.params.id, req, res)) return
   const conv = findById('conversations', req.params.id)
   if (!conv) return res.status(404).json({ error: 'conversation not found' })
+
+  let D, sizeOf
+  try {
+    D = await import('docx')
+    const isMod = await import('image-size')
+    sizeOf = isMod.default || isMod.imageSize || isMod
+  } catch (e) {
+    return res.status(500).json({ error: 'DOCX generator not installed on server (docx / image-size).' })
+  }
+  const { Document, Packer, Paragraph, TextRun, ImageRun, AlignmentType, HeadingLevel } = D
+
   const msgs = getAll('messages')
     .filter((m) => m.conversation_id === req.params.id)
     .sort((a, b) => (a.ts || 0) - (b.ts || 0))
-
-  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const custName = conv.name || 'Customer'
   const channel = conv.channel || (String(conv.id).startsWith('ig:') ? 'Instagram' : 'Facebook')
   const fmtTs = (m) => {
     const d = m.ts ? new Date(Number(m.ts)) : null
     return d ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : (m.time || '')
   }
-  // Word renders these raster types from MHTML; others (webp/tiff/ai/pdf/psd) it can't.
-  const WORD_IMG = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp'])
+  const RASTER = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp'])   // types Word embeds
 
-  const imgParts = []   // { loc, mime, b64 }
-  let imgIdx = 0
-  const blocks = []
+  const children = [
+    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(custName)] }),
+    new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: `${channel} · ${msgs.length} messages · exported ${new Date().toLocaleString('en-GB')}`, color: '888888', size: 18 })] }),
+  ]
+
   let lastDay = ''
   for (const m of msgs) {
     const isIn = m.dir === 'in'
-    const who = isIn ? esc(custName) : esc(m.agent || 'Agent')
+    const who = isIn ? custName : (m.agent || 'Agent')
     const ts = fmtTs(m)
+    const align = isIn ? AlignmentType.LEFT : AlignmentType.RIGHT
     const day = (ts.split(',')[0] || '').trim()
-    if (day && day !== lastDay) { blocks.push(`<p style="text-align:center;color:#888;font-size:10pt;margin:16px 0 6px">&mdash; ${esc(day)} &mdash;</p>`); lastDay = day }
-    let extra = ''
+    if (day && day !== lastDay) {
+      children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 60 }, children: [new TextRun({ text: `— ${day} —`, color: '9aa0a6', size: 16 })] }))
+      lastDay = day
+    }
+    children.push(new Paragraph({ alignment: align, spacing: { before: 140 }, children: [new TextRun({ text: `${who} · ${ts}`, bold: true, size: 15, color: '5b6470' })] }))
+    if (m.text) {
+      const lines = String(m.text).split('\n')
+      children.push(new Paragraph({ alignment: align, children: lines.map((ln, i) => new TextRun({ text: ln, break: i > 0 ? 1 : 0, size: 22 })) }))
+    }
     for (const a of (m.attachments || [])) {
-      if (a?.type === 'image') {
-        let embedded = false
-        if (a.name) {
-          try {
-            const f = await getArtworkFileByName(a.name)
-            if (f?.image_data) {
-              let ext = String(f.file_type || 'jpg').toLowerCase()
-              if (ext === 'jpeg') ext = 'jpg'
-              const mime = MIME_BY_EXT[ext] || `image/${ext}`
-              if (WORD_IMG.has(ext)) {
-                const loc = `img${imgIdx++}.${ext}`
-                imgParts.push({ loc, mime, b64: Buffer.from(f.image_data).toString('base64') })
-                extra += `<div><img src="${loc}" width="320" style="max-width:320px"/></div>`
-                embedded = true
-              } else {
-                extra += `<div style="font-size:9pt;color:#888">[image: ${esc(ext)} — open in CRM]</div>`
-                embedded = true
-              }
+      if (a?.type === 'image' && a.name) {
+        try {
+          const f = await getArtworkFileByName(a.name)
+          if (f?.image_data) {
+            let ext = String(f.file_type || 'jpg').toLowerCase()
+            if (ext === 'jpeg') ext = 'jpg'
+            const buf = Buffer.from(f.image_data)
+            if (RASTER.has(ext)) {
+              let w = 340, h = 255
+              try { const dim = sizeOf(buf); if (dim && dim.width) { w = Math.min(340, dim.width); h = Math.round(dim.height * (w / dim.width)) } } catch { /* default size */ }
+              children.push(new Paragraph({ alignment: align, spacing: { before: 40, after: 40 }, children: [new ImageRun({ data: buf, transformation: { width: w, height: h } })] }))
+            } else {
+              children.push(new Paragraph({ alignment: align, children: [new TextRun({ text: `[image: ${ext} — open in CRM]`, italics: true, color: '888888', size: 16 })] }))
             }
-          } catch { /* fall through */ }
-        }
-        if (!embedded) extra += `<div style="font-size:9pt;color:#b00">[image unavailable]</div>`
+          } else {
+            children.push(new Paragraph({ alignment: align, children: [new TextRun({ text: '[image unavailable]', italics: true, color: 'b00000', size: 16 })] }))
+          }
+        } catch { /* skip broken image */ }
       } else if (a?.type === 'file') {
-        extra += `<div style="font-size:9pt;color:#555">&#128206; ${esc(a.name || 'file')}</div>`
+        children.push(new Paragraph({ alignment: align, children: [new TextRun({ text: `📎 ${a.name || 'file'}`, color: '555555', size: 18 })] }))
       }
     }
-    const bg = isIn ? '#f1f0f0' : '#e7ddff'
-    const align = isIn ? 'left' : 'right'
-    const text = m.text ? `<div>${esc(m.text).replace(/\n/g, '<br/>')}</div>` : ''
-    blocks.push(
-      `<table width="100%" style="margin:6px 0"><tr><td align="${align}">` +
-      `<div style="display:inline-block;max-width:70%;text-align:left;background:${bg};padding:8px 12px;border-radius:10px;font-size:11pt">` +
-      `<div style="font-size:8pt;color:#666;margin-bottom:3px"><b>${who}</b> &middot; ${esc(ts)}</div>${text}${extra}</div></td></tr></table>`)
   }
 
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">` +
-    `<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>${esc(custName)} - Chat</title></head>` +
-    `<body style="font-family:'Segoe UI',Arial,sans-serif;color:#111">` +
-    `<h2 style="margin:0">${esc(custName)}</h2>` +
-    `<p style="color:#666;margin:2px 0 12px">${esc(channel)} &middot; ${msgs.length} messages &middot; exported ${esc(new Date().toLocaleString('en-GB'))}</p><hr/>` +
-    `${blocks.join('\n')}</body></html>`
-
-  // ---- assemble MHTML (multipart/related) ----
-  const boundary = '----=_TechnocasChat_' + Date.now()
-  const wrap76 = (s) => s.replace(/.{76}/g, '$&\r\n')
-  let out = 'MIME-Version: 1.0\r\n'
-  out += `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"\r\n\r\n`
-  out += `--${boundary}\r\n`
-  out += 'Content-Type: text/html; charset="utf-8"\r\n'
-  out += 'Content-Transfer-Encoding: base64\r\n\r\n'
-  out += wrap76(Buffer.from(html, 'utf8').toString('base64')) + '\r\n'
-  for (const p of imgParts) {
-    out += `--${boundary}\r\n`
-    out += `Content-Type: ${p.mime}\r\n`
-    out += 'Content-Transfer-Encoding: base64\r\n'
-    out += `Content-Location: ${p.loc}\r\n\r\n`
-    out += wrap76(p.b64) + '\r\n'
-  }
-  out += `--${boundary}--\r\n`
-
+  const doc = new Document({ sections: [{ properties: {}, children }] })
+  const buffer = await Packer.toBuffer(doc)
   const safeName = (custName.replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '_') || 'chat')
-  res.set('Content-Type', 'application/msword')
-  res.set('Content-Disposition', `attachment; filename="${safeName}_chat.doc"`)
-  res.send(out)
+  res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+  res.set('Content-Disposition', `attachment; filename="${safeName}_chat.docx"`)
+  res.send(buffer)
 })
 
 app.post('/api/conversations/:id/messages', authRequired, (req, res) => {

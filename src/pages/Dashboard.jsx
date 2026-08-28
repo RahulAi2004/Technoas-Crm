@@ -590,7 +590,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error('http ' + res.status)
       const href = URL.createObjectURL(await res.blob())
       const safe = (currentConv.name || 'chat').replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '_') || 'chat'
-      const a = document.createElement('a'); a.href = href; a.download = `${safe}_chat.doc`
+      const a = document.createElement('a'); a.href = href; a.download = `${safe}_chat.docx`
       document.body.appendChild(a); a.click(); a.remove()
       setTimeout(() => URL.revokeObjectURL(href), 5000)
       toast('Chat downloaded', 'success')
