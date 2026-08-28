@@ -526,7 +526,8 @@ app.get('/api/conversations/:id/messages', authRequired, (req, res) => {
 })
 
 // Export a whole conversation (text + images + timeline) as a Word-openable .doc.
-// HTML-based .doc: Word opens it directly; images embedded as base64 so it works offline.
+// MHTML (multipart/related): each image is a SEPARATE MIME part referenced by
+// Content-Location — Word renders these correctly. (data: URIs do NOT work in Word.)
 app.get('/api/conversations/:id/export.doc', authImg, async (req, res) => {
   if (!requireConvAccess(req.params.id, req, res)) return
   const conv = findById('conversations', req.params.id)
@@ -542,7 +543,11 @@ app.get('/api/conversations/:id/export.doc', authImg, async (req, res) => {
     const d = m.ts ? new Date(Number(m.ts)) : null
     return d ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : (m.time || '')
   }
+  // Word renders these raster types from MHTML; others (webp/tiff/ai/pdf/psd) it can't.
+  const WORD_IMG = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp'])
 
+  const imgParts = []   // { loc, mime, b64 }
+  let imgIdx = 0
   const blocks = []
   let lastDay = ''
   for (const m of msgs) {
@@ -550,25 +555,31 @@ app.get('/api/conversations/:id/export.doc', authImg, async (req, res) => {
     const who = isIn ? esc(custName) : esc(m.agent || 'Agent')
     const ts = fmtTs(m)
     const day = (ts.split(',')[0] || '').trim()
-    if (day && day !== lastDay) { blocks.push(`<p style="text-align:center;color:#888;font-size:10pt;margin:16px 0 6px">— ${esc(day)} —</p>`); lastDay = day }
+    if (day && day !== lastDay) { blocks.push(`<p style="text-align:center;color:#888;font-size:10pt;margin:16px 0 6px">&mdash; ${esc(day)} &mdash;</p>`); lastDay = day }
     let extra = ''
     for (const a of (m.attachments || [])) {
       if (a?.type === 'image') {
-        let src = null
+        let embedded = false
         if (a.name) {
           try {
             const f = await getArtworkFileByName(a.name)
             if (f?.image_data) {
-              const ext = String(f.file_type || 'jpg').toLowerCase()
+              let ext = String(f.file_type || 'jpg').toLowerCase()
+              if (ext === 'jpeg') ext = 'jpg'
               const mime = MIME_BY_EXT[ext] || `image/${ext}`
-              src = `data:${mime};base64,${Buffer.from(f.image_data).toString('base64')}`
+              if (WORD_IMG.has(ext)) {
+                const loc = `img${imgIdx++}.${ext}`
+                imgParts.push({ loc, mime, b64: Buffer.from(f.image_data).toString('base64') })
+                extra += `<div><img src="${loc}" width="320" style="max-width:320px"/></div>`
+                embedded = true
+              } else {
+                extra += `<div style="font-size:9pt;color:#888">[image: ${esc(ext)} — open in CRM]</div>`
+                embedded = true
+              }
             }
-          } catch { /* fall through to url */ }
+          } catch { /* fall through */ }
         }
-        if (!src && a.url) src = a.url
-        extra += src
-          ? `<div><img src="${src}" style="max-width:340px;border-radius:8px;margin:4px 0"/></div>`
-          : `<div style="color:#b00;font-size:9pt">[image unavailable]</div>`
+        if (!embedded) extra += `<div style="font-size:9pt;color:#b00">[image unavailable]</div>`
       } else if (a?.type === 'file') {
         extra += `<div style="font-size:9pt;color:#555">&#128206; ${esc(a.name || 'file')}</div>`
       }
@@ -583,16 +594,34 @@ app.get('/api/conversations/:id/export.doc', authImg, async (req, res) => {
   }
 
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">` +
-    `<head><meta charset="utf-8"><title>${esc(custName)} - Chat</title></head>` +
+    `<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>${esc(custName)} - Chat</title></head>` +
     `<body style="font-family:'Segoe UI',Arial,sans-serif;color:#111">` +
     `<h2 style="margin:0">${esc(custName)}</h2>` +
     `<p style="color:#666;margin:2px 0 12px">${esc(channel)} &middot; ${msgs.length} messages &middot; exported ${esc(new Date().toLocaleString('en-GB'))}</p><hr/>` +
     `${blocks.join('\n')}</body></html>`
 
+  // ---- assemble MHTML (multipart/related) ----
+  const boundary = '----=_TechnocasChat_' + Date.now()
+  const wrap76 = (s) => s.replace(/.{76}/g, '$&\r\n')
+  let out = 'MIME-Version: 1.0\r\n'
+  out += `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"\r\n\r\n`
+  out += `--${boundary}\r\n`
+  out += 'Content-Type: text/html; charset="utf-8"\r\n'
+  out += 'Content-Transfer-Encoding: base64\r\n\r\n'
+  out += wrap76(Buffer.from(html, 'utf8').toString('base64')) + '\r\n'
+  for (const p of imgParts) {
+    out += `--${boundary}\r\n`
+    out += `Content-Type: ${p.mime}\r\n`
+    out += 'Content-Transfer-Encoding: base64\r\n'
+    out += `Content-Location: ${p.loc}\r\n\r\n`
+    out += wrap76(p.b64) + '\r\n'
+  }
+  out += `--${boundary}--\r\n`
+
   const safeName = (custName.replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '_') || 'chat')
   res.set('Content-Type', 'application/msword')
   res.set('Content-Disposition', `attachment; filename="${safeName}_chat.doc"`)
-  res.send('﻿' + html)   // UTF-8 BOM so Word reads accents/emoji correctly
+  res.send(out)
 })
 
 app.post('/api/conversations/:id/messages', authRequired, (req, res) => {
