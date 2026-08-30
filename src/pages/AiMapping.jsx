@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import SidebarCrm from '../components/SidebarCrm.jsx'
+import TopBarUser from '../components/TopBarUser.jsx'
+import BackButton from '../components/BackButton.jsx'
 import { api } from '../lib/api.js'
 import { useToast } from '../components/ToastContext.jsx'
 
@@ -33,6 +36,13 @@ const Sel = ({ value, onChange, opts }) => (
     {opts.map(o => <option key={o} value={o}>{o === '' ? '— Select —' : titleCase(o)}</option>)}
   </select>
 )
+const Stat = ({ label, value, sub, accent }) => (
+  <div className="rounded-xl border border-slate-200 bg-white px-4 py-2.5">
+    <div className="text-[11px] font-medium text-slate-500">{label}</div>
+    <div className={`mt-0.5 text-xl font-extrabold ${accent || 'text-slate-800'}`}>{value}</div>
+    {sub && <div className="text-[10px] text-slate-400">{sub}</div>}
+  </div>
+)
 
 const emptyForm = () => ({
   primary_intent: '', secondary_intent: '', purchase_intent: '', purchase_intent_score: '',
@@ -42,18 +52,8 @@ const emptyForm = () => ({
   correction_reason: '', supervisor_notes: '',
 })
 
-// ---- sidebar nav item ----
-const NavItem = ({ icon, label, active, badge, onClick }) => (
-  <button onClick={onClick} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium ${active ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-white/5'}`}>
-    <span className="flex items-center gap-3">{icon}{label}</span>
-    {badge != null && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${active ? 'bg-white/20' : 'bg-white/10 text-slate-300'}`}>{badge}</span>}
-  </button>
-)
-const ic = (d) => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
-
 export default function AiMapping() {
   const toast = useToast()
-  const [section, setSection] = useState('review')
   const [stats, setStats] = useState(null)
   const [tab, setTab] = useState('all')
   const [q, setQ] = useState('')
@@ -138,87 +138,32 @@ export default function AiMapping() {
   const ann = detail?.annotation
   const fmt = (ts) => ts ? new Date(ts).toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
   const total = counts.all || 0
-  const assigned = Math.max(0, (counts.all || 0) - (counts.completed || 0))
-  const ringPct = stats?.total_messages ? Math.round((stats.mapped / stats.total_messages) * 100) : 0
+  const mappedPct = stats?.total_messages ? Math.round((stats.mapped / stats.total_messages) * 100) : 0
   const msgNo = idx >= 0 ? page * PAGE + idx + 1 : '—'
   const notesLen = (form.supervisor_notes || '').length
 
-  const StatPill = ({ label, value, sub, up }) => (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 min-w-[120px]">
-      <div className="text-[11px] font-medium text-slate-500">{label}</div>
-      <div className="mt-0.5 text-xl font-extrabold text-slate-800">{value}{up && <span className="ml-1 text-xs font-semibold text-emerald-500">↑ {up}</span>}</div>
-      {sub && <div className="text-[10px] text-slate-400">{sub}</div>}
-    </div>
-  )
-
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-800">
-      {/* ---- supervisor sidebar ---- */}
-      <aside className="flex w-64 shrink-0 flex-col bg-[#0b1020] text-slate-200">
-        <div className="flex items-center gap-2 px-4 py-4">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-600 text-white">🧠</span>
-          <div className="min-w-0"><div className="truncate text-sm font-bold text-white">Decoinks AI Mapping</div><div className="text-[10px] text-slate-400">Human Review &amp; Assignment</div></div>
-          <Link to="/dashboard" title="Back to CRM" className="ml-auto grid h-7 w-7 place-items-center rounded-md text-slate-400 hover:bg-white/10">‹</Link>
-        </div>
-        <div className="nice-scroll flex-1 overflow-y-auto px-3">
-          <p className="mb-1 mt-2 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">Supervisor</p>
-          <div className="space-y-1">
-            <NavItem icon={ic(<><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></>)} label="Overview Dashboard" active={section === 'overview'} onClick={() => setSection('overview')} />
-            <NavItem icon={ic(<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>)} label="Message Review" active={section === 'review'} badge={counts.in_review ?? ''} onClick={() => setSection('review')} />
-            <NavItem icon={ic(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></>)} label="Conversations" active={section === 'conversations'} badge={total} onClick={() => setSection('conversations')} />
-            <NavItem icon={ic(<><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></>)} label="Training Batches" active={section === 'batches'} onClick={() => setSection('batches')} />
-            <NavItem icon={ic(<><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></>)} label="Annotation Rules" active={section === 'rules'} onClick={() => setSection('rules')} />
-            <NavItem icon={ic(<><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3"/></>)} label="Mappings" active={section === 'mappings'} onClick={() => setSection('mappings')} />
-            <NavItem icon={ic(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></>)} label="Reports" active={section === 'reports'} onClick={() => setSection('reports')} />
-            <NavItem icon={ic(<><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 4-5"/></>)} label="Performance" active={section === 'performance'} onClick={() => setSection('performance')} />
+    <div className="crm-shell h-screen overflow-hidden grid">
+      <SidebarCrm active="ai-mapping" />
+      <div className="flex h-screen flex-col overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3 text-slate-700">
+            <BackButton />
+            <span className="hidden h-9 w-9 place-items-center rounded-lg bg-violet-50 text-violet-600 sm:grid">🧠</span>
+            <div><h1 className="truncate text-lg font-bold leading-tight">AI Mapping</h1><p className="hidden truncate text-[11px] text-slate-500 sm:block">Message Investigation &amp; Assignment — Human Review</p></div>
           </div>
-          <p className="mb-1 mt-4 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">Admin</p>
-          <div className="space-y-1">
-            <NavItem icon={ic(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></>)} label="Users" active={section === 'users'} onClick={() => setSection('users')} />
-            <NavItem icon={ic(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></>)} label="Teams" active={section === 'teams'} onClick={() => setSection('teams')} />
-            <NavItem icon={ic(<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9z"/></>)} label="Settings" active={section === 'settings'} onClick={() => setSection('settings')} />
-          </div>
-
-          {/* Mapping Progress ring */}
-          <div className="mt-5 rounded-xl bg-white/5 p-4">
-            <div className="mb-3 text-xs font-bold text-slate-300">Mapping Progress</div>
-            <div className="flex items-center gap-4">
-              <div className="relative grid h-16 w-16 place-items-center rounded-full" style={{ background: `conic-gradient(#7c3aed ${ringPct * 3.6}deg, rgba(255,255,255,.1) 0)` }}>
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-[#0b1020] text-sm font-bold text-white">{ringPct}%</div>
-              </div>
-              <div className="flex-1 space-y-0.5 text-[11px]">
-                <div className="flex justify-between"><span className="text-slate-400">Total</span><b className="text-slate-200">{stats?.total_messages ?? '—'}</b></div>
-                <div className="flex justify-between"><span className="text-slate-400">Mapped</span><b className="text-slate-200">{stats?.mapped ?? '—'}</b></div>
-                <div className="flex justify-between"><span className="text-slate-400">Approved</span><b className="text-slate-200">{stats?.approved ?? '—'}</b></div>
-                <div className="flex justify-between"><span className="text-slate-400">Accuracy</span><b className="text-emerald-400">{stats?.accuracy != null ? stats.accuracy + '%' : '—'}</b></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 border-t border-white/10 px-4 py-3">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white">{(me.name || me.email || 'U').slice(0, 1).toUpperCase()}</span>
-          <div className="min-w-0"><div className="truncate text-xs font-semibold text-white">{me.name || me.email || 'Supervisor'}</div><div className="text-[10px] text-slate-400">{titleCase(me.role || 'Supervisor')}</div></div>
-        </div>
-      </aside>
-
-      {/* ---- main ---- */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* top bar */}
-        <header className="flex shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-6 py-3">
-          <h1 className="text-lg font-bold text-slate-800">Message Investigation &amp; Assignment</h1>
-          <div className="ml-auto flex items-center gap-3">
-            <StatPill label="Assigned to me" value={assigned} />
-            <StatPill label="In Review" value={counts.in_review ?? 0} />
-            <StatPill label="Reviewed Today" value={stats?.reviewed_today ?? 0} />
-            <StatPill label="Accuracy (Today)" value={stats?.accuracy != null ? stats.accuracy + '%' : '—'} />
-          </div>
+          <TopBarUser />
         </header>
 
-        {section !== 'review' ? (
-          <div className="grid flex-1 place-items-center text-slate-400">
-            <div className="text-center"><div className="text-4xl">🚧</div><div className="mt-2 font-semibold">{titleCase(section)}</div><div className="text-sm">Coming soon</div></div>
-          </div>
-        ) : (
+        {/* stats */}
+        <div className="grid shrink-0 grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 md:grid-cols-5">
+          <Stat label="Total Messages" value={(stats?.total_messages ?? 0).toLocaleString()} />
+          <Stat label="Mapped (AI)" value={(stats?.mapped ?? 0).toLocaleString()} sub={`${mappedPct}% of total`} accent="text-violet-600" />
+          <Stat label="In Review" value={counts.in_review ?? 0} />
+          <Stat label="Reviewed Today" value={stats?.reviewed_today ?? 0} />
+          <Stat label="Accuracy" value={stats?.accuracy != null ? stats.accuracy + '%' : '—'} accent="text-emerald-600" />
+        </div>
+
         <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: '360px 1fr' }}>
           {/* navigator */}
           <aside className="flex min-h-0 flex-col border-r border-slate-200 bg-white">
@@ -229,14 +174,12 @@ export default function AiMapping() {
                   <button key={k} onClick={() => setTab(k)} className={`rounded-lg px-2.5 py-1.5 ${tab === k ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{t} {c ?? ''}</button>
                 ))}
               </div>
-              <div className="mb-2 flex gap-2">
-                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search messages…" className={inputCls} />
-              </div>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search messages…" className={inputCls + ' mb-2'} />
               <select value={sort} onChange={e => setSort(e.target.value)} className={inputCls}>
                 <option value="oldest">Sort: Oldest First</option><option value="newest">Sort: Newest First</option>
               </select>
             </div>
-            <div className="border-b border-slate-100 px-4 py-2 text-xs font-semibold text-slate-500">{total} Messages</div>
+            <div className="border-b border-slate-100 px-4 py-2 text-xs font-semibold text-slate-500">{total.toLocaleString()} Messages</div>
             <div className="nice-scroll min-h-0 flex-1 overflow-y-auto">
               {list.length === 0 && <div className="p-6 text-center text-sm text-slate-400">No messages</div>}
               {list.map((msg, i) => {
@@ -260,7 +203,7 @@ export default function AiMapping() {
               })}
             </div>
             <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">
-              <span>Showing {list.length ? page * PAGE + 1 : 0} to {page * PAGE + list.length} of {total}</span>
+              <span>Showing {list.length ? page * PAGE + 1 : 0}–{page * PAGE + list.length} of {total.toLocaleString()}</span>
               <span className="flex gap-1">
                 <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))} className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40">‹</button>
                 <button disabled={list.length < PAGE} onClick={() => setPage(p => p + 1)} className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40">›</button>
@@ -273,14 +216,13 @@ export default function AiMapping() {
             {!m ? <div className="grid h-full place-items-center text-slate-400">Select a message to review</div> : (
               <>
                 <div className="mb-3 flex items-center justify-between">
-                  <div className="text-base font-bold text-slate-800">Reviewing Message #{msgNo} of {total} <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-xs font-mono text-slate-500">MSG-{String(m.message_id).slice(0, 4).toUpperCase()}</span>
+                  <div className="text-base font-bold text-slate-800">Reviewing Message #{msgNo} of {total.toLocaleString()} <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-xs font-mono text-slate-500">MSG-{String(m.message_id).slice(0, 4).toUpperCase()}</span>
                     <button onClick={() => { navigator.clipboard?.writeText(m.message_id); toast('Message ID copied', 'success') }} title="Copy ID" className="ml-1 text-slate-400 hover:text-slate-600">⧉</button>
                   </div>
                   <Link to="/dashboard" className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">View Full Conversation ↗</Link>
                 </div>
 
                 <div className="mb-4 grid gap-3" style={{ gridTemplateColumns: '1fr 260px 200px' }}>
-                  {/* message */}
                   <div className="rounded-xl border border-slate-200 bg-white p-4">
                     <div className="flex items-center gap-2">
                       <span className="grid h-8 w-8 place-items-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">{(m.customer_name || 'C').slice(0, 2).toUpperCase()}</span>
@@ -288,7 +230,6 @@ export default function AiMapping() {
                     </div>
                     <div className="mt-3 text-base font-medium text-slate-800">{m.body}</div>
                   </div>
-                  {/* AI prediction */}
                   <div className="rounded-xl border border-violet-100 bg-violet-50/50 p-3 text-xs">
                     <div className="mb-2 font-bold text-violet-700">AI Prediction <span className="font-normal text-slate-400">(For Reference)</span></div>
                     {[['Primary Intent', ann?.primary_intent], ['Purchase Intent', ann?.purchase_intent], ['Commercial Signal', detail?.signal?.signal_type], ['Confidence Score', ann?.ai_confidence != null ? Math.round(ann.ai_confidence * 100) + '%' : null]].map(([k, v]) => (
@@ -296,7 +237,6 @@ export default function AiMapping() {
                     ))}
                     <button onClick={aiGenerate} disabled={busy} className="mt-2 w-full rounded-md bg-violet-600 px-2 py-1 font-semibold text-white hover:bg-violet-700 disabled:opacity-50">✨ Generate AI</button>
                   </div>
-                  {/* status */}
                   <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs">
                     <div className="mb-2 font-bold text-slate-700">Status</div>
                     {(() => { const b = STATUS_BADGE[detail?.feedback ? 'reviewed' : ann ? 'needs_review' : 'pending']; return <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${b.c}`}>{b.t}</span> })()}
@@ -370,7 +310,6 @@ export default function AiMapping() {
             )}
           </main>
         </div>
-        )}
       </div>
     </div>
   )
