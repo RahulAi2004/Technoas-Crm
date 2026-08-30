@@ -676,7 +676,7 @@ app.get('/api/ai-mapping/messages', authRequired, async (req, res) => {
              CASE WHEN f.feedback_id IS NOT NULL THEN 'reviewed'
                   WHEN a.annotation_id IS NOT NULL THEN 'needs_review'
                   ELSE 'pending' END AS review_status,
-             c.extra->>'name' AS customer_name
+             COALESCE(NULLIF(c.extra->>'name',''), NULLIF(initcap(c.channel),'')||' user') AS customer_name
         FROM app.messages m
         LEFT JOIN LATERAL (SELECT * FROM app.message_ai_annotations x WHERE x.message_id=m.message_id ORDER BY x.updated_at DESC LIMIT 1) a ON true
         LEFT JOIN LATERAL (SELECT * FROM app.message_training_feedback y WHERE y.message_id=m.message_id ORDER BY y.created_at DESC LIMIT 1) f ON true
@@ -701,7 +701,7 @@ app.get('/api/ai-mapping/messages', authRequired, async (req, res) => {
 app.get('/api/ai-mapping/message/:id', authRequired, async (req, res) => {
   try {
     const id = req.params.id
-    const m = (await dbQuery(`SELECT m.*, COALESCE(m.sent_at,m.created_at) AS ts, c.extra->>'name' AS customer_name, c.channel
+    const m = (await dbQuery(`SELECT m.*, COALESCE(m.sent_at,m.created_at) AS ts, COALESCE(NULLIF(c.extra->>'name',''), NULLIF(initcap(c.channel),'')||' user') AS customer_name, c.channel
                                 FROM app.messages m LEFT JOIN app.conversations c ON c.conversation_id=m.conversation_id
                                WHERE m.message_id=$1`, [id])).rows[0]
     if (!m) return res.status(404).json({ error: 'message not found' })

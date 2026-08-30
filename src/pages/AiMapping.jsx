@@ -76,7 +76,7 @@ export default function AiMapping() {
   const [stats, setStats] = useState(null)
   const [tab, setTab] = useState('all')
   const [q, setQ] = useState('')
-  const [sort, setSort] = useState('oldest')
+  const [sort, setSort] = useState('newest')
   const [page, setPage] = useState(0)
   const [list, setList] = useState([])
   const [counts, setCounts] = useState({})
