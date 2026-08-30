@@ -15,6 +15,7 @@ import Leads from './pages/Leads.jsx'
 import Tasks from './pages/Tasks.jsx'
 import LeadDetails from './pages/LeadDetails.jsx'
 import AiTraining from './pages/AiTraining.jsx'
+import AiMapping from './pages/AiMapping.jsx'
 import Receipts from './pages/Receipts.jsx'
 import ArtworkVault from './pages/ArtworkVault.jsx'
 import Integrations from './pages/Integrations.jsx'
@@ -55,6 +56,7 @@ export default function App() {
       <Route path="/team" element={<RequireAuth><Team /></RequireAuth>} />
       <Route path="/ai-assistant" element={<RequireAuth><AiAssistant /></RequireAuth>} />
       <Route path="/ai-training" element={<RequireAuth><AiTraining /></RequireAuth>} />
+      <Route path="/ai-mapping" element={<RequireAuth><AiMapping /></RequireAuth>} />
       <Route path="/after-session" element={<RequireAuth><AfterSession /></RequireAuth>} />
       <Route path="/artwork-vault" element={<RequireAuth><ArtworkVault /></RequireAuth>} />
       <Route path="/connect-meta" element={<RequireAuth><MetaConnect /></RequireAuth>} />

@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { getAll, findById, insert, update, remove, getSetting, setSetting, deleteSetting, flush, query as dbQuery } from './db.js'
+import { getAll, findById, insert, update, remove, getSetting, setSetting, deleteSetting, flush, query as dbQuery, getClient as getDbClient } from './db.js'
 import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
 import { spawn } from 'node:child_process'
@@ -623,6 +623,200 @@ app.post('/api/conversations/:id/messages', authRequired, (req, res) => {
   })
   broadcast({ type: 'message', conversationId: req.params.id, message: msg })
   res.status(201).json(msg)
+})
+
+// ============================================================
+// AI Mapping — Message Investigation & Assignment
+// Reads/writes the app.* AI extension tables (annotations, signals, state,
+// qualification, training_feedback, batches). messages/conversations are frozen.
+// ============================================================
+
+// Top-bar + sidebar progress stats
+app.get('/api/ai-mapping/stats', authRequired, async (req, res) => {
+  try {
+    const q = await dbQuery(`
+      SELECT
+        (SELECT count(*) FROM app.messages)                                                   AS total_messages,
+        (SELECT count(*) FROM app.message_ai_annotations)                                      AS mapped,
+        (SELECT count(*) FROM app.message_training_feedback WHERE validation_status='correct') AS approved,
+        (SELECT count(*) FROM app.message_training_feedback)                                   AS reviewed_total,
+        (SELECT count(*) FROM app.message_training_feedback WHERE reviewed_at::date=current_date) AS reviewed_today`)
+    const r = q.rows[0] || {}
+    const rev = +r.reviewed_total || 0, appr = +r.approved || 0
+    res.json({
+      total_messages: +r.total_messages || 0, mapped: +r.mapped || 0, approved: appr,
+      reviewed_total: rev, reviewed_today: +r.reviewed_today || 0,
+      accuracy: rev ? Math.round((appr / rev) * 1000) / 10 : null,
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Message navigator list (with AI intent + review status)
+app.get('/api/ai-mapping/messages', authRequired, async (req, res) => {
+  try {
+    const status = String(req.query.status || 'all').toLowerCase()
+    const search = String(req.query.q || '').trim()
+    const sort = String(req.query.sort || 'oldest').toLowerCase() === 'newest' ? 'DESC' : 'ASC'
+    const limit = Math.min(100, Math.max(1, +req.query.limit || 30))
+    const offset = Math.max(0, +req.query.offset || 0)
+    const params = []
+    let where = `m.body IS NOT NULL AND m.body <> ''`
+    if (search) { params.push('%' + search + '%'); where += ` AND m.body ILIKE $${params.length}` }
+    // review status: reviewed (final feedback) / needs_review (annotation, no final) / pending (no annotation)
+    if (status === 'in review' || status === 'needs_review' || status === 'review')
+      where += ` AND a.annotation_id IS NOT NULL AND f.feedback_id IS NULL`
+    else if (status === 'completed' || status === 'reviewed')
+      where += ` AND f.feedback_id IS NOT NULL`
+    else if (status === 'pending')
+      where += ` AND a.annotation_id IS NULL`
+    const rows = (await dbQuery(`
+      SELECT m.message_id, m.conversation_id, m.direction, m.body, m.sender_type,
+             COALESCE(m.sent_at, m.created_at) AS ts,
+             a.primary_intent, a.ai_confidence,
+             CASE WHEN f.feedback_id IS NOT NULL THEN 'reviewed'
+                  WHEN a.annotation_id IS NOT NULL THEN 'needs_review'
+                  ELSE 'pending' END AS review_status,
+             c.extra->>'name' AS customer_name
+        FROM app.messages m
+        LEFT JOIN LATERAL (SELECT * FROM app.message_ai_annotations x WHERE x.message_id=m.message_id ORDER BY x.updated_at DESC LIMIT 1) a ON true
+        LEFT JOIN LATERAL (SELECT * FROM app.message_training_feedback y WHERE y.message_id=m.message_id ORDER BY y.created_at DESC LIMIT 1) f ON true
+        LEFT JOIN app.conversations c ON c.conversation_id=m.conversation_id
+       WHERE ${where}
+       ORDER BY ts ${sort}
+       LIMIT ${limit} OFFSET ${offset}`, params)).rows
+    // counts for the tabs
+    const counts = (await dbQuery(`
+      SELECT count(*) AS all,
+        count(*) FILTER (WHERE a.annotation_id IS NOT NULL AND f.feedback_id IS NULL) AS in_review,
+        count(*) FILTER (WHERE f.feedback_id IS NOT NULL) AS completed
+      FROM app.messages m
+      LEFT JOIN LATERAL (SELECT annotation_id FROM app.message_ai_annotations x WHERE x.message_id=m.message_id LIMIT 1) a ON true
+      LEFT JOIN LATERAL (SELECT feedback_id FROM app.message_training_feedback y WHERE y.message_id=m.message_id LIMIT 1) f ON true
+      WHERE m.body IS NOT NULL AND m.body<>''`)).rows[0]
+    res.json({ messages: rows, counts, limit, offset })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// One message: full detail + AI annotation + related signals/state/qualification + conversation context
+app.get('/api/ai-mapping/message/:id', authRequired, async (req, res) => {
+  try {
+    const id = req.params.id
+    const m = (await dbQuery(`SELECT m.*, COALESCE(m.sent_at,m.created_at) AS ts, c.extra->>'name' AS customer_name, c.channel
+                                FROM app.messages m LEFT JOIN app.conversations c ON c.conversation_id=m.conversation_id
+                               WHERE m.message_id=$1`, [id])).rows[0]
+    if (!m) return res.status(404).json({ error: 'message not found' })
+    const ann = (await dbQuery(`SELECT * FROM app.message_ai_annotations WHERE message_id=$1 ORDER BY updated_at DESC LIMIT 1`, [id])).rows[0] || null
+    const signal = (await dbQuery(`SELECT * FROM app.message_commercial_signals WHERE message_id=$1 ORDER BY created_at DESC LIMIT 1`, [id])).rows[0] || null
+    const state = (await dbQuery(`SELECT * FROM app.message_state_changes WHERE message_id=$1 ORDER BY created_at DESC LIMIT 1`, [id])).rows[0] || null
+    const qual = (await dbQuery(`SELECT * FROM app.message_qualification_changes WHERE message_id=$1 ORDER BY created_at DESC LIMIT 1`, [id])).rows[0] || null
+    const feedback = (await dbQuery(`SELECT * FROM app.message_training_feedback WHERE message_id=$1 ORDER BY created_at DESC LIMIT 1`, [id])).rows[0] || null
+    res.json({ message: m, annotation: ann, signal, state, qualification: qual, feedback })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Save annotation + human validation. mode: 'draft' | 'approve'
+app.post('/api/ai-mapping/message/:id/save', authRequired, async (req, res) => {
+  const client = await getDbClient()
+  try {
+    const id = req.params.id
+    const b = req.body || {}
+    const mode = b.mode === 'approve' ? 'approve' : 'draft'
+    const reviewer = agentName(req)
+    await client.query('BEGIN')
+    const m = (await client.query(`SELECT conversation_id, customer_id_x.customer_id, lead_id_x.lead_id
+        FROM app.messages m
+        LEFT JOIN LATERAL (SELECT c.customer_id FROM app.conversations c WHERE c.conversation_id=m.conversation_id) customer_id_x ON true
+        LEFT JOIN LATERAL (SELECT l.lead_id FROM app.leads l WHERE l.conversation_id=m.conversation_id LIMIT 1) lead_id_x ON true
+        WHERE m.message_id=$1`, [id])).rows[0]
+    if (!m) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'message not found' }) }
+    const conv = m.conversation_id, cust = m.customer_id || null, lead = m.lead_id || null
+
+    // upsert annotation (one current per message)
+    const existing = (await client.query(`SELECT annotation_id FROM app.message_ai_annotations WHERE message_id=$1 ORDER BY updated_at DESC LIMIT 1`, [id])).rows[0]
+    const vals = [id, conv, cust, lead, b.primary_intent || null, b.secondary_intent || null, b.purchase_intent || null,
+      b.purchase_intent_score != null ? +b.purchase_intent_score : null, b.sentiment || null, b.urgency || null,
+      b.objection_type || null, b.action_required != null ? !!b.action_required : null, b.recommended_action || null,
+      b.recommended_response_strategy || null, b.ai_summary || null, b.ai_confidence != null ? +b.ai_confidence : null,
+      b.model_version || 'human-review', b.prompt_version || null]
+    let annotationId
+    if (existing) {
+      annotationId = existing.annotation_id
+      await client.query(`UPDATE app.message_ai_annotations SET
+        conversation_id=$2,customer_id=$3,lead_id=$4,primary_intent=$5,secondary_intent=$6,purchase_intent=$7,
+        purchase_intent_score=$8,sentiment=$9,urgency=$10,objection_type=$11,action_required=$12,recommended_action=$13,
+        recommended_response_strategy=$14,ai_summary=$15,ai_confidence=$16,model_version=$17,prompt_version=$18,updated_at=now()
+        WHERE annotation_id=$1`, [annotationId, ...vals.slice(1)])
+    } else {
+      annotationId = (await client.query(`INSERT INTO app.message_ai_annotations
+        (message_id,conversation_id,customer_id,lead_id,primary_intent,secondary_intent,purchase_intent,purchase_intent_score,
+         sentiment,urgency,objection_type,action_required,recommended_action,recommended_response_strategy,ai_summary,
+         ai_confidence,model_version,prompt_version,processed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,now()) RETURNING annotation_id`, vals)).rows[0].annotation_id
+    }
+
+    if (mode === 'approve') {
+      // refresh related signal/state/qualification for this message (clean re-approve)
+      await client.query(`DELETE FROM app.message_commercial_signals WHERE message_id=$1`, [id])
+      await client.query(`DELETE FROM app.message_state_changes WHERE message_id=$1`, [id])
+      await client.query(`DELETE FROM app.message_qualification_changes WHERE message_id=$1`, [id])
+      if (b.commercial_signal) await client.query(`INSERT INTO app.message_commercial_signals
+        (message_id,conversation_id,customer_id,lead_id,signal_type,amount,currency,quantity,payment_method,confidence,is_confirmed)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [id, conv, cust, lead, b.commercial_signal, b.amount != null && b.amount !== '' ? +b.amount : null, b.currency || null,
+         b.quantity != null && b.quantity !== '' ? +b.quantity : null, b.payment_method || null, b.ai_confidence != null ? +b.ai_confidence : null,
+         !!b.signal_confirmed])
+      if (b.stage_from && b.stage_to && !b.no_stage_change) await client.query(`INSERT INTO app.message_state_changes
+        (message_id,conversation_id,customer_id,lead_id,state_type,value_before,value_after,change_detected,reason)
+        VALUES ($1,$2,$3,$4,'stage',$5,$6,true,$7)`, [id, conv, cust, lead, b.stage_from, b.stage_to, b.supervisor_notes || null])
+      if (b.qualification_impact) await client.query(`INSERT INTO app.message_qualification_changes
+        (message_id,conversation_id,customer_id,lead_id,qualification_field,new_value)
+        VALUES ($1,$2,$3,$4,'impact',$5)`, [id, conv, cust, lead, b.qualification_impact])
+    }
+
+    // training feedback (human validation) — keep one current row per message
+    await client.query(`DELETE FROM app.message_training_feedback WHERE message_id=$1`, [id])
+    if (mode === 'approve') {
+      await client.query(`INSERT INTO app.message_training_feedback
+        (message_id,annotation_id,training_batch_id,ai_output,human_output,validation_status,error_type,correction_reason,reviewed_by,reviewed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())`,
+        [id, annotationId, b.training_batch_id || null, b.ai_output ? JSON.stringify(b.ai_output) : null, JSON.stringify(b),
+         b.validation_status || 'correct', b.error_type || null, b.correction_reason || null, reviewer])
+      if (b.training_batch_id) await client.query(`UPDATE app.training_batches SET reviewed_count=reviewed_count+1,
+        accepted_count=accepted_count + CASE WHEN $2='correct' THEN 1 ELSE 0 END,
+        corrected_count=corrected_count + CASE WHEN $2<>'correct' THEN 1 ELSE 0 END WHERE training_batch_id=$1`,
+        [b.training_batch_id, b.validation_status || 'correct'])
+    }
+    await client.query('COMMIT')
+    res.json({ ok: true, annotation_id: annotationId, mode })
+  } catch (e) { try { await client.query('ROLLBACK') } catch {} res.status(500).json({ error: e.message }) }
+  finally { client.release() }
+})
+
+// Training batches
+app.get('/api/ai-mapping/batches', authRequired, async (req, res) => {
+  try { res.json((await dbQuery(`SELECT * FROM app.training_batches ORDER BY created_at DESC`)).rows) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/ai-mapping/batches', authRequired, async (req, res) => {
+  try {
+    const b = req.body || {}
+    const r = (await dbQuery(`INSERT INTO app.training_batches (batch_name,training_type,description,status,started_at)
+      VALUES ($1,$2,$3,'active',now()) RETURNING *`, [b.batch_name || 'Batch', b.training_type || 'message_mapping', b.description || null])).rows[0]
+    res.json(r)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Optional: generate an AI annotation for a message using the existing model (fills the "AI Prediction").
+app.post('/api/ai-mapping/message/:id/ai-generate', authRequired, async (req, res) => {
+  try {
+    if (!aiConfigured()) return res.status(400).json({ error: 'AI not configured' })
+    const m = (await dbQuery(`SELECT body FROM app.messages WHERE message_id=$1`, [req.params.id])).rows[0]
+    if (!m) return res.status(404).json({ error: 'message not found' })
+    const sys = 'You map a single CRM chat message to a structured sales interpretation. Only use what the message itself says; never invent orders, amounts, or facts. Return JSON.'
+    const user = `Message: "${m.body}"\nReturn JSON with keys: primary_intent, secondary_intent, purchase_intent, purchase_intent_score (0-100), sentiment (positive|neutral|negative), urgency (low|medium|high), objection_type, commercial_signal, amount, currency, payment_method, recommended_action, ai_summary, ai_confidence (0-1).`
+    const out = await chatJSON(sys, user)
+    res.json({ prediction: out })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ============================================================
