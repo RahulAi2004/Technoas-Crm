@@ -132,6 +132,7 @@ export default function SidebarCrm({ active }) {
             </Link>
           </li>
           )}
+          {false && (
           <li>
             <Link to="/ai-training" title="AI Training" className={active === 'ai-training'
               ? 'flex items-center gap-3 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white'
@@ -140,6 +141,7 @@ export default function SidebarCrm({ active }) {
               <span className="sb-txt">AI Training</span>
             </Link>
           </li>
+          )}
           <li>
             <Link to="/ai-mapping" title="AI Mapping" className={active === 'ai-mapping'
               ? 'flex items-center gap-3 rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white'
