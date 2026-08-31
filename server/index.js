@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process'
 import { ManyChatClient } from './manychat.js'
 import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
-import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages } from './ai.js'
+import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages, getUsageStats } from './ai.js'
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
@@ -814,7 +814,7 @@ app.post('/api/ai-mapping/message/:id/ai-generate', authRequired, async (req, re
     if (!m) return res.status(404).json({ error: 'message not found' })
     const sys = 'You map a single CRM chat message to a structured sales interpretation. Only use what the message itself says; never invent orders, amounts, or facts. Return JSON.'
     const user = `Message: "${m.body}"\nReturn JSON with keys: primary_intent, secondary_intent, purchase_intent, purchase_intent_score (0-100), sentiment (positive|neutral|negative), urgency (low|medium|high), objection_type, commercial_signal, amount, currency, payment_method, recommended_action, ai_summary, ai_confidence (0-1).`
-    const out = await chatJSON(sys, user)
+    const out = await chatJSON(sys, user, { tag: 'ai-mapping' })
     res.json({ prediction: out })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2074,6 +2074,14 @@ app.get('/api/ai/status', authRequired, (req, res) => {
   res.json({ configured: aiConfigured(), anthropic: anthropicConfigured(), models: aiModels(), chatModels: chatModels(), qdrant: qdrantConfigured() })
 })
 
+// Live AI usage/cost since server start (in-memory; resets on restart). For visibility
+// into where OpenAI credits go — per feature (tag) and per model.
+app.get('/api/ai/usage', authRequired, (req, res) => {
+  const u = getUsageStats()
+  const round = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, +Number(v).toFixed(4)]))
+  res.json({ since: u.since, calls: u.calls, totalUSD: +u.total.toFixed(4), byTagUSD: round(u.byTag), byModelUSD: round(u.byModel), model: aiModels().chat })
+})
+
 // ============================================================
 // Message memory in Qdrant — every message is embedded + stored so it's
 // semantically searchable and can power conversation memory / RAG.
@@ -2235,7 +2243,7 @@ app.get('/api/ai/analyze/:id', authRequired, async (req, res) => {
   try {
     const kb = await ragContext(lastIn)
     const user = `${kb ? `Knowledge base (use if relevant):\n${kb}\n\n` : ''}Customer: ${conv.name} · Channel: ${conv.channel}\n\nConversation:\n${transcript}`
-    const result = await chatJSON(ANALYZE_SYSTEM, user)
+    const result = await chatJSON(ANALYZE_SYSTEM, user, { tag: 'analyze' })
     res.json({ ok: true, model: aiModels().chat, usedRag: !!kb, analysis: result })
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
@@ -2501,7 +2509,7 @@ app.post('/api/ai/translate-assist', authRequired, async (req, res) => {
  "replyNative": string              // replyEn translated into the customer's language; if the customer's language is English, return ""
 }`
   try {
-    const out = await chatJSON(sys, text.trim())
+    const out = await chatJSON(sys, text.trim(), { tag: 'translate-assist' })
     res.json(out)
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
@@ -2520,7 +2528,7 @@ app.post('/api/ai/verify-translation', authRequired, async (req, res) => {
  "pairs": [ { "src": string, "en": string } ] // word-by-word (or short phrase) mapping: each source word/phrase → its English meaning, in order
 }`
   try {
-    const out = await chatJSON(sys, text.trim())
+    const out = await chatJSON(sys, text.trim(), { tag: 'verify-translation' })
     res.json({ ok: true, literal: out.literal || '', pairs: Array.isArray(out.pairs) ? out.pairs : [] })
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message, code: e.code, hint: e.hint })
@@ -2832,7 +2840,7 @@ GROUNDING RULE (critical — do not violate): Base your reply ONLY on what the c
 Be professional, helpful and concise. Use the full conversation only as background context.
 Respond with ONLY a JSON object: { "detectedLanguage": string, "reply": string }`
     const user = `${kb ? `Knowledge base (use if relevant):\n${kb}\n\n` : ''}Customer: ${conv.name} · Channel: ${conv.channel}\n\nFull conversation (BACKGROUND CONTEXT ONLY — do not copy its language):\n${msgs.map(fmtMsg).join('\n')}\n\n>>> UNANSWERED customer message(s) you must reply to (detect THEIR language, answer ALL of them):\n${targetText}`
-    const out = await chatJSON(sys, user)
+    const out = await chatJSON(sys, user, { tag: 'recommend-reply' })
     res.json({
       ok: true,
       pending: pendingMsgs.length > 0,
@@ -3285,7 +3293,7 @@ app.post('/api/after-session/recommend/:id', authRequired, async (req, res) => {
   try {
     const t = await asTranscript(req.params.id)
     if (!t) return res.json({ recommended: {} })
-    const out = await chatJSON(`You are filling an end-of-session CRM record for Decoinks (custom apparel + DTF print shop). From the conversation, fill ALL these fields accurately. Scores (intent_score, purchase_probability, sentiment_score, complexity_score) are 0-100 integers. Respond ONLY JSON with exactly these keys:\n${AS_FIELDS_DOC}`, t)
+    const out = await chatJSON(`You are filling an end-of-session CRM record for Decoinks (custom apparel + DTF print shop). From the conversation, fill ALL these fields accurately. Scores (intent_score, purchase_probability, sentiment_score, complexity_score) are 0-100 integers. Respond ONLY JSON with exactly these keys:\n${AS_FIELDS_DOC}`, t, { tag: 'after-session' })
     res.json({ recommended: out })
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
@@ -3297,7 +3305,7 @@ app.post('/api/after-session/validate/:id', authRequired, async (req, res) => {
     const t = await asTranscript(req.params.id)
     const values = req.body?.values || {}
     const out = await chatJSON(`You validate an agent's end-of-session CRM entries against the actual conversation. For EACH field, decide if the agent's value is consistent with the chat. Respond ONLY JSON: an object where each key is the field name and the value is {"ok": boolean, "note": "short reason only if wrong, else ''"}. Be strict: if a value contradicts or is unsupported by the chat, ok=false.\nCONVERSATION:\n${t}`,
-      `Agent's entered values:\n${JSON.stringify(values)}`)
+      `Agent's entered values:\n${JSON.stringify(values)}`, { tag: 'after-session-validate' })
     res.json({ verdicts: out })
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })

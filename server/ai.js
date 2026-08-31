@@ -9,6 +9,29 @@ export const aiConfigured = () => !!KEY                  // OpenAI (chat + embed
 export const anthropicConfigured = () => !!ANTHROPIC_KEY // Claude
 export const aiModels = () => ({ chat: CHAT_MODEL, embed: EMBED_MODEL })
 
+// ---- AI usage / cost tracking ------------------------------------------------
+// $ per 1M tokens: [input, output]. Prefix-matched, so 'gpt-5.5-xyz' → 'gpt-5'.
+const PRICE = {
+  'gpt-4o-mini': [0.15, 0.60], 'gpt-4o': [2.50, 10.00],
+  'gpt-5.5': [5.00, 25.00], 'gpt-5': [5.00, 25.00],
+  'text-embedding-3-small': [0.02, 0], 'text-embedding-3-large': [0.13, 0],
+}
+const priceOf = (m) => PRICE[m] || PRICE[Object.keys(PRICE).find((k) => String(m || '').startsWith(k))] || [0, 0]
+// Live, in-memory usage since server start (resets on restart). Exposed via /api/ai/usage.
+const _usage = { since: new Date().toISOString(), calls: 0, total: 0, byTag: {}, byModel: {} }
+export const getUsageStats = () => _usage
+function trackUsage(tag, model, u) {
+  if (!u) return
+  const [pin, pout] = priceOf(model)
+  const it = u.prompt_tokens ?? u.input_tokens ?? 0
+  const ot = u.completion_tokens ?? u.output_tokens ?? 0
+  const cost = it / 1e6 * pin + ot / 1e6 * pout
+  _usage.calls++; _usage.total += cost
+  _usage.byTag[tag] = (_usage.byTag[tag] || 0) + cost
+  _usage.byModel[model] = (_usage.byModel[model] || 0) + cost
+  try { console.log(`[ai$] tag=${tag} model=${model} in=${it} out=${ot} $${cost.toFixed(4)} running=$${_usage.total.toFixed(3)}`) } catch {}
+}
+
 // Models offered in the AI Assistant's model picker. Edit this list to add/remove models.
 // provider is inferred from the id ('claude-*' → anthropic, else → openai).
 export const CHAT_MODELS = [
@@ -26,7 +49,7 @@ export const chatModels = () => CHAT_MODELS.map((m) => ({
   ready: m.provider === 'anthropic' ? anthropicConfigured() : aiConfigured(),
 }))
 
-async function openai(path, body) {
+async function openai(path, body, tag = 'other') {
   if (!KEY) { const e = new Error('OPENAI_API_KEY not set'); e.status = 400; throw e }
   const res = await fetch('https://api.openai.com/v1' + path, {
     method: 'POST',
@@ -43,6 +66,7 @@ async function openai(path, body) {
       : undefined
     throw err
   }
+  trackUsage(tag, data?.model || body?.model, data?.usage)
   return data
 }
 
@@ -99,8 +123,8 @@ async function anthropicChat(messages, { model }) {
 }
 
 // input: string | string[] → returns array of vectors (number[][])
-export async function embed(input) {
-  const d = await openai('/embeddings', { model: EMBED_MODEL, input })
+export async function embed(input, { tag = 'embed' } = {}) {
+  const d = await openai('/embeddings', { model: EMBED_MODEL, input }, tag)
   return d.data.map((x) => x.embedding)
 }
 
@@ -109,7 +133,7 @@ const stripFences = (t) => String(t || '').replace(/^\s*```(?:json)?\s*/i, '').r
 const isGpt5 = (m) => /^gpt-5/i.test(String(m || ''))
 
 // Returns parsed JSON object from the model (forced JSON mode). Routes OpenAI/Anthropic by model.
-export async function chatJSON(system, user, { model = CHAT_MODEL, temperature = 0.3 } = {}) {
+export async function chatJSON(system, user, { model = CHAT_MODEL, temperature = 0.3, tag = 'chatJSON' } = {}) {
   if (providerOf(model) === 'anthropic') {
     const txt = await anthropicChat(
       [{ role: 'system', content: system + '\n\nReply with ONLY a valid JSON object — no markdown, no code fences, no extra text.' }, { role: 'user', content: user }],
@@ -121,25 +145,25 @@ export async function chatJSON(system, user, { model = CHAT_MODEL, temperature =
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     response_format: { type: 'json_object' },
     ...(isGpt5(model) ? {} : { temperature }),
-  })
+  }, tag)
   const txt = d.choices?.[0]?.message?.content || '{}'
   return JSON.parse(txt)
 }
 
 // Full multi-turn chat (pass an array of {role, content}) — for the AI assistant.
 // Routes to OpenAI or Anthropic based on the model id.
-export async function chatMessages(messages, { model = CHAT_MODEL, temperature = 0.4 } = {}) {
+export async function chatMessages(messages, { model = CHAT_MODEL, temperature = 0.4, tag = 'assistant' } = {}) {
   if (providerOf(model) === 'anthropic') return anthropicChat(messages, { model })
-  const d = await openai('/chat/completions', { model, messages, ...(isGpt5(model) ? {} : { temperature }) })
+  const d = await openai('/chat/completions', { model, messages, ...(isGpt5(model) ? {} : { temperature }) }, tag)
   return d.choices?.[0]?.message?.content?.trim() || ''
 }
 
 // Plain text completion (e.g. translations, freeform replies).
-export async function chatText(system, user, { model = CHAT_MODEL, temperature = 0.4 } = {}) {
+export async function chatText(system, user, { model = CHAT_MODEL, temperature = 0.4, tag = 'chatText' } = {}) {
   const d = await openai('/chat/completions', {
     model,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     ...(isGpt5(model) ? {} : { temperature }),
-  })
+  }, tag)
   return d.choices?.[0]?.message?.content?.trim() || ''
 }

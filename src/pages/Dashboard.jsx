@@ -1741,18 +1741,19 @@ function TranslationTab({ onSendReply, incoming }) {
   const list = Array.isArray(incoming) ? incoming : []
   const lastIncoming = list.slice(-count).join('\n')   // last N customer messages
 
-  // Auto-run whenever the selected messages change (new message / count badle → khud update).
-  useEffect(() => {
-    let cancelled = false
-    setData(null); setReplyEn(''); setNative('')
+  // On-demand: messages badalne par sirf reset (AI call NAHI — credits bachane ke liye).
+  // Agent "Translate now" button dabaye tab hi gpt call hoti hai.
+  useEffect(() => { setData(null); setReplyEn(''); setNative('') }, [lastIncoming])
+
+  const runTranslate = async () => {
     if (!lastIncoming.trim()) return
     setLoading(true)
-    api.post('/api/ai/translate-assist', { text: lastIncoming })
-      .then((r) => { if (!cancelled) { setData(r); setReplyEn(r.replyEn || ''); setNative(r.replyNative || '') } })
-      .catch((ex) => { if (!cancelled) toast(ex.message || 'Translate failed', 'error') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [lastIncoming])
+    try {
+      const r = await api.post('/api/ai/translate-assist', { text: lastIncoming })
+      setData(r); setReplyEn(r.replyEn || ''); setNative(r.replyNative || '')
+    } catch (ex) { toast(ex.message || 'Translate failed', 'error') }
+    finally { setLoading(false) }
+  }
 
   const isEnglish = !data || /english/i.test(data.detectedLanguage || '')
 
@@ -1799,8 +1800,14 @@ function TranslationTab({ onSendReply, incoming }) {
   if (!list.length) {
     return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">No customer messages in this chat yet.</div>
   }
-  if (loading || !data) {
+  if (loading) {
     return <>{countBar}<div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-6 text-center text-sm text-violet-700">🌐 Translating…</div></>
+  }
+  if (!data) {
+    return <>{countBar}<div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-5 text-center">
+      <p className="mb-3 text-sm text-slate-600">Customer ke last {count > 1 ? `${count} messages` : 'message'} ka translation + reply-help lene ke liye button dabayein.</p>
+      <button onClick={runTranslate} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700">🌐 Translate now</button>
+    </div></>
   }
   return (
     <>
