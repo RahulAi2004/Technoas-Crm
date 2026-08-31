@@ -19,7 +19,7 @@ const pool = new Pool({
   query_timeout: 90000,
   statement_timeout: 90000,
   idleTimeoutMillis: 30000,
-  max: 30,                       // was 12 — peak-hour message/artwork/AI/reconcile load saturated the pool → write timeouts. DB max_connections=100 (only ~24 used), so headroom is safe.
+  max: 50,                       // 12→30→50: peak-hour load (leads 7s refresh + inbox SSE + reconcile + meta sync + AI + artwork) saturated the pool → connection timeouts. DB max_connections=100 (~43 used), so 50 is safe headroom.
   keepAlive: true,              // TCP keepalive so the socat proxy (technocas_postgres_proxy) doesn't silently drop idle connections mid-flight
   keepAliveInitialDelayMillis: 10000,
 })

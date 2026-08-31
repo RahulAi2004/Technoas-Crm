@@ -106,11 +106,17 @@ export class MetaClient {
   // Pull conversations (with recent messages embedded) for a platform.
   // platform: 'messenger' (Facebook) | 'instagram'
   getConversations(platform) {
+    // Instagram's Graph API rejects heavy nested requests ("Please reduce the amount
+    // of data you're asking for"), so IG gets a lighter query (fewer convs/messages,
+    // no inline image_data/video_data — attachment bytes are fetched separately).
+    const ig = platform === 'instagram'
     return this.request('/me/conversations', {
       query: {
         platform,
-        fields: 'id,updated_time,participants,messages.limit(25){id,message,from,created_time,attachments{mime_type,name,image_data,video_data,file_url}}',
-        limit: 50,
+        fields: ig
+          ? 'id,updated_time,participants,messages.limit(10){id,message,from,created_time,attachments{mime_type,name,file_url}}'
+          : 'id,updated_time,participants,messages.limit(25){id,message,from,created_time,attachments{mime_type,name,image_data,video_data,file_url}}',
+        limit: ig ? 20 : 50,
       },
     })
   }
