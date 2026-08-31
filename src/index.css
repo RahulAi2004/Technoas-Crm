@@ -112,6 +112,8 @@ input:focus, select:focus, textarea:focus { outline: none; }
 /* Shared SidebarCrm (Leads, Customers, Orders, Lead Details… — pages using .crm-shell).
    Collapse is desktop-only; on mobile the sidebar is a full drawer so labels stay visible. */
 @media (min-width: 1024px) {
+  /* keep the sidebar viewport-tall so its inner nav scrolls (bottom items were getting cut off) */
+  .crm-sidebar { height: 100vh; overflow: hidden; }
   .crm-shell:has(.crm-sidebar[data-collapsed="true"]) { grid-template-columns: 72px 1fr; }
   .crm-sidebar[data-collapsed="true"] .sb-txt { display: none !important; }
   .crm-sidebar[data-collapsed="true"] .sb-brand { justify-content: center; padding-left: 0; padding-right: 0; }

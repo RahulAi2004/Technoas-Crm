@@ -58,7 +58,7 @@ export default function SidebarCrm({ active }) {
         </button>
       )}
 
-      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 pb-6">
+      <nav className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-6">
         <ul className="space-y-1">
           {can('page:leads') && (
           <li>
