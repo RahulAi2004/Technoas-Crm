@@ -820,6 +820,66 @@ app.post('/api/ai-mapping/message/:id/ai-generate', authRequired, async (req, re
 })
 
 // ============================================================
+// Artwork De-duplication portal (migration) — review exact-duplicate files,
+// pick a canonical, mark the rest 'remove' (mark-only; no physical delete).
+// ============================================================
+app.get('/api/dedup/stats', authRequired, async (req, res) => {
+  try {
+    const c = req.query.customer || 'Jaysin Julios'
+    const q = await dbQuery(`SELECT count(*) files, count(DISTINCT dup_group) groups,
+        count(*) FILTER (WHERE decision='remove') removed,
+        count(*) FILTER (WHERE decision='keep') kept,
+        count(*) FILTER (WHERE decision IS NULL) undecided,
+        count(DISTINCT dup_group) FILTER (WHERE dup_group IN (SELECT dup_group FROM app.migration_dedup_files WHERE customer=$1 AND decision IS NOT NULL)) AS groups_touched
+      FROM app.migration_dedup_files WHERE customer=$1`, [c])
+    res.json(q.rows[0])
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.get('/api/dedup/customers', authRequired, async (req, res) => {
+  try { res.json((await dbQuery(`SELECT customer, count(*) files, count(DISTINCT dup_group) groups FROM app.migration_dedup_files GROUP BY customer ORDER BY customer`)).rows) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.get('/api/dedup/groups', authRequired, async (req, res) => {
+  try {
+    const c = req.query.customer || 'Jaysin Julios'
+    const thumbs = (await dbQuery(`SELECT dup_group, thumb_b64 FROM app.migration_dedup_files WHERE customer=$1 AND thumb_b64 IS NOT NULL`, [c])).rows
+    const tmap = {}; for (const t of thumbs) if (!tmap[t.dup_group]) tmap[t.dup_group] = t.thumb_b64
+    const rows = (await dbQuery(`SELECT id, dup_group, drive_path, file_name, file_size, asset_type, decision
+        FROM app.migration_dedup_files WHERE customer=$1 ORDER BY dup_group, file_name`, [c])).rows
+    const g = {}
+    for (const r of rows) {
+      const k = r.dup_group
+      if (!g[k]) g[k] = { dup_group: k, thumb: tmap[k] || null, files: [] }
+      g[k].files.push({ id: r.id, path: r.drive_path, name: r.file_name, size: r.file_size, type: r.asset_type, decision: r.decision })
+    }
+    res.json(Object.values(g))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/dedup/decision', authRequired, async (req, res) => {
+  try {
+    const ids = req.body?.ids, decision = req.body?.decision ?? null
+    if (!Array.isArray(ids) || !ids.length || ![null, 'keep', 'remove'].includes(decision)) return res.status(400).json({ error: 'ids[] + decision (keep|remove|null) required' })
+    await dbQuery(`UPDATE app.migration_dedup_files SET decision=$2, decided_by=$3, decided_at=CASE WHEN $2 IS NULL THEN NULL ELSE now() END WHERE id = ANY($1::uuid[])`,
+      [ids, decision, agentName(req)])
+    res.json({ ok: true, updated: ids.length })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+// Auto-resolve: within every undecided group, keep the first file, remove the rest.
+app.post('/api/dedup/auto-resolve', authRequired, async (req, res) => {
+  try {
+    const c = req.body?.customer || 'Jaysin Julios'
+    const r = await dbQuery(`
+      WITH ranked AS (
+        SELECT id, row_number() OVER (PARTITION BY dup_group ORDER BY length(drive_path), file_name) rn
+        FROM app.migration_dedup_files
+        WHERE customer=$1 AND dup_group IN (SELECT dup_group FROM app.migration_dedup_files WHERE customer=$1 GROUP BY dup_group HAVING count(*) FILTER (WHERE decision IS NOT NULL)=0))
+      UPDATE app.migration_dedup_files d SET decision = CASE WHEN r.rn=1 THEN 'keep' ELSE 'remove' END, decided_by=$2, decided_at=now()
+      FROM ranked r WHERE d.id=r.id`, [c, agentName(req)])
+    res.json({ ok: true, updated: r.rowCount })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ============================================================
 // Dashboard stats
 // ============================================================
 app.get('/api/stats/dashboard', authRequired, (req, res) => {
