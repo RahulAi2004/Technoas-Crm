@@ -150,6 +150,25 @@ app.get('/api/admin/activity', authRequired, requirePerm('cap:manage_users'), as
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Detailed reply log — who replied to whom, what, when (message_sent only)
+app.get('/api/admin/messages', authRequired, requirePerm('cap:manage_users'), async (req, res) => {
+  try {
+    const user = String(req.query.user || '').trim()
+    const q = String(req.query.q || '').trim()
+    const date = String(req.query.date || '').trim()   // YYYY-MM-DD (UTC)
+    const limit = Math.min(1000, Math.max(1, +req.query.limit || 200))
+    const params = []; let where = `action='message_sent'`
+    if (user) { params.push(user); where += ` AND user_name = $${params.length}` }
+    if (q) { params.push('%' + q + '%'); where += ` AND (customer_name ILIKE $${params.length} OR detail->>'text' ILIKE $${params.length})` }
+    if (date) { params.push(date); where += ` AND created_at::date = $${params.length}::date` }
+    const rows = (await dbQuery(`SELECT id, user_name, customer_name,
+        detail->>'text' AS text, detail->>'channel' AS channel, detail->>'via' AS via,
+        (detail->>'has_attachment')::boolean AS has_attachment, conversation_ref, created_at
+      FROM app.user_activity WHERE ${where} ORDER BY created_at DESC LIMIT ${limit}`, params)).rows
+    res.json({ messages: rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Per-user rollup: last login/logout, logins today, messages today/total
 app.get('/api/admin/summary', authRequired, requirePerm('cap:manage_users'), async (req, res) => {
   try {
@@ -2304,7 +2323,9 @@ function saveMessage(row) {
   if (m.dir === 'out' && m.agent) {
     const c = findById('conversations', m.conversation_id)
     const u = getAll('users').find(x => x.name === m.agent)
-    logActivity({ action: 'message_sent', userId: u?.id || null, userName: m.agent, conversationRef: m.conversation_id, customerName: c?.name || null, detail: { preview: String(m.text || '').slice(0, 120), via: m.via || 'crm' } })
+    const hasImg = Array.isArray(m.attachments) && m.attachments.length
+    logActivity({ action: 'message_sent', userId: u?.id || null, userName: m.agent, conversationRef: m.conversation_id, customerName: c?.name || null,
+      detail: { text: String(m.text || '').slice(0, 2000), channel: c?.channel || null, via: m.via || 'crm', has_attachment: !!hasImg } })
   }
   return m
 }
