@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS app.message_ai_annotations (
   ai_confidence           numeric,
   model_version           varchar,
   prompt_version          varchar,
+  order_no                text,          -- tag this message to a customer order (AI Mapping)
   processed_at            timestamptz,
   created_at              timestamptz NOT NULL DEFAULT now(),
   updated_at              timestamptz NOT NULL DEFAULT now()

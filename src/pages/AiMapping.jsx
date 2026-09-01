@@ -68,7 +68,7 @@ const emptyForm = () => ({
   commercial_signal: '', amount: '', currency: 'USD', payment_method: '',
   stage_from: '', stage_to: '', no_stage_change: false, qualification_impact: '',
   sentiment: 'neutral', urgency: 'medium', action_required: '', validation_status: 'correct',
-  correction_reason: '', supervisor_notes: '',
+  correction_reason: '', supervisor_notes: '', order_no: '',
 })
 
 export default function AiMapping() {
@@ -78,6 +78,10 @@ export default function AiMapping() {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('newest')
   const [page, setPage] = useState(0)
+  const [customers, setCustomers] = useState([])
+  const [customer, setCustomer] = useState('')   // selected customer_id ('' = all)
+  const [orders, setOrders] = useState([])
+  const [orderFilter, setOrderFilter] = useState('')   // navigator: filter messages by tagged order_no
   const [list, setList] = useState([])
   const [counts, setCounts] = useState({})
   const [selId, setSelId] = useState(null)
@@ -92,12 +96,25 @@ export default function AiMapping() {
   const loadStats = useCallback(() => { api.get('/api/ai-mapping/stats').then(setStats).catch(() => {}) }, [])
   const loadList = useCallback(() => {
     const p = new URLSearchParams({ status: tab, q, sort, limit: String(PAGE), offset: String(page * PAGE) })
+    if (customer) p.set('customer', customer)
+    if (orderFilter) p.set('order', orderFilter)
     api.get(`/api/ai-mapping/messages?${p}`).then(r => { setList(r.messages || []); setCounts(r.counts || {}) }).catch(() => {})
-  }, [tab, q, sort, page])
+  }, [tab, q, sort, page, customer, orderFilter])
   useEffect(() => { loadStats() }, [loadStats])
+  useEffect(() => { api.get('/api/ai-mapping/customers').then(r => setCustomers(r.customers || [])).catch(() => {}) }, [])
+  // selected customer → load their orders (for the Order No field + order filter)
+  useEffect(() => {
+    setOrderFilter('')
+    if (!customer) { setOrders([]); return }
+    api.get(`/api/ai-mapping/orders?customer=${encodeURIComponent(customer)}`).then(r => setOrders(r.orders || [])).catch(() => setOrders([]))
+  }, [customer])
   useEffect(() => { const t = setTimeout(loadList, 250); return () => clearTimeout(t) }, [loadList])
-  useEffect(() => { setPage(0) }, [tab, q, sort])
-  useEffect(() => { if (!selId && list.length) setSelId(list[0].message_id) }, [list, selId])
+  useEffect(() => { setPage(0) }, [tab, q, sort, customer, orderFilter])
+  // keep a valid selection when the list changes (customer/order/tab switch)
+  useEffect(() => {
+    if (list.length && !list.some(x => x.message_id === selId)) setSelId(list[0].message_id)
+    if (!list.length) setSelId(null)
+  }, [list]) // eslint-disable-line
 
   useEffect(() => {
     if (!selId) { setDetail(null); return }
@@ -113,9 +130,14 @@ export default function AiMapping() {
         sentiment: a.sentiment || 'neutral', urgency: a.urgency || 'medium',
         action_required: a.recommended_action || '', validation_status: fb.validation_status || 'correct',
         correction_reason: fb.correction_reason || '', supervisor_notes: (fb.human_output && fb.human_output.supervisor_notes) || '',
+        order_no: a.order_no || '',
       })
     }).catch(() => {})
   }, [selId])
+  // if the selected customer has exactly ONE order, auto-fill Order No (unless already set)
+  useEffect(() => {
+    if (orders.length === 1) setForm(f => (f.order_no ? f : { ...f, order_no: orders[0].order_number }))
+  }, [orders, selId])
 
   const idx = useMemo(() => list.findIndex(m => m.message_id === selId), [list, selId])
   const goNext = () => { if (idx >= 0 && idx < list.length - 1) setSelId(list[idx + 1].message_id) }
@@ -195,9 +217,22 @@ export default function AiMapping() {
                 ))}
               </div>
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search messages…" className={inputCls + ' mb-2'} />
-              <select value={sort} onChange={e => setSort(e.target.value)} className={inputCls}>
+              <select value={sort} onChange={e => setSort(e.target.value)} className={inputCls + ' mb-2'}>
                 <option value="oldest">Sort: Oldest First</option><option value="newest">Sort: Newest First</option>
               </select>
+              {/* Customer filter — select a customer to see only their messages */}
+              <select value={customer} onChange={e => setCustomer(e.target.value)} className={inputCls}>
+                <option value="">👥 All customers</option>
+                {customers.map(c => <option key={c.customer_id} value={c.customer_id}>{c.name} ({c.msg_count})</option>)}
+              </select>
+              {/* Order filter — appears when a customer with orders is selected */}
+              {customer && orders.length > 0 && (
+                <select value={orderFilter} onChange={e => setOrderFilter(e.target.value)} className={inputCls + ' mt-2'}>
+                  <option value="">📦 All orders ({orders.length})</option>
+                  {orders.map(o => <option key={o.order_id} value={o.order_number}>Order {o.order_number}{o.total_amount ? ` · ${o.total_amount}` : ''}</option>)}
+                </select>
+              )}
+              {customer && orders.length === 0 && <div className="mt-2 text-[11px] text-slate-400">No orders for this customer yet</div>}
             </div>
             <div className="border-b border-slate-100 px-4 py-2 text-xs font-semibold text-slate-500">{total.toLocaleString()} Messages</div>
             <div className="nice-scroll min-h-0 flex-1 overflow-y-auto">
@@ -253,6 +288,15 @@ export default function AiMapping() {
                       <div><div className="text-sm font-semibold text-slate-800">Customer — {m.customer_name || 'Customer'}</div><div className="text-[11px] text-slate-400">{fmt(m.ts)} · {m.channel || 'Facebook Messenger'}</div></div>
                     </div>
                     <div className="mt-3 rounded-lg bg-slate-50 p-3 text-base font-medium text-slate-800">{m.body}</div>
+                    <div className="mt-3">
+                      <label className="mb-1 block text-xs font-semibold text-slate-600">📦 Order No <span className="font-normal text-slate-400">— tag this message to an order</span></label>
+                      {orders.length > 0
+                        ? <select value={form.order_no} onChange={e => set('order_no', e.target.value)} className={inputCls}>
+                            <option value="">— No order —</option>
+                            {orders.map(o => <option key={o.order_id} value={o.order_number}>Order {o.order_number}{o.order_status ? ` · ${titleCase(o.order_status)}` : ''}{o.total_amount ? ` · ${o.total_amount}` : ''}</option>)}
+                          </select>
+                        : <input value={form.order_no} onChange={e => set('order_no', e.target.value)} className={inputCls} placeholder="Select a customer (left) to list orders, or type an order no…" />}
+                    </div>
                   </Section>
 
                   <Section id="airef" title="AI Prediction & Status" hint="reference">

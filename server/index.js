@@ -656,11 +656,19 @@ app.get('/api/ai-mapping/messages', authRequired, async (req, res) => {
   try {
     const status = String(req.query.status || 'all').toLowerCase()
     const search = String(req.query.q || '').trim()
+    const customer = String(req.query.customer || '').trim()   // filter by customer_id
+    const order = String(req.query.order || '').trim()         // filter by tagged order_no
     const sort = String(req.query.sort || 'oldest').toLowerCase() === 'newest' ? 'DESC' : 'ASC'
     const limit = Math.min(100, Math.max(1, +req.query.limit || 30))
     const offset = Math.max(0, +req.query.offset || 0)
-    const params = []
-    let where = `m.body IS NOT NULL AND m.body <> ''`
+    // shared filters (customer/order) — applied to BOTH the list and the tab-counts so they stay in sync
+    const baseParams = []
+    let base = `m.body IS NOT NULL AND m.body <> ''`
+    if (customer) { baseParams.push(customer); base += ` AND c.customer_id = $${baseParams.length}` }
+    if (order) { baseParams.push(order); base += ` AND a.order_no = $${baseParams.length}` }
+    // list-only filters (search + status) layered on top
+    const params = [...baseParams]
+    let where = base
     if (search) { params.push('%' + search + '%'); where += ` AND m.body ILIKE $${params.length}` }
     // review status: reviewed (final feedback) / needs_review (annotation, no final) / pending (no annotation)
     if (status === 'in review' || status === 'needs_review' || status === 'review')
@@ -672,7 +680,7 @@ app.get('/api/ai-mapping/messages', authRequired, async (req, res) => {
     const rows = (await dbQuery(`
       SELECT m.message_id, m.conversation_id, m.direction, m.body, m.sender_type,
              COALESCE(m.sent_at, m.created_at) AS ts,
-             a.primary_intent, a.ai_confidence,
+             a.primary_intent, a.ai_confidence, a.order_no,
              CASE WHEN f.feedback_id IS NOT NULL THEN 'reviewed'
                   WHEN a.annotation_id IS NOT NULL THEN 'needs_review'
                   ELSE 'pending' END AS review_status,
@@ -684,16 +692,52 @@ app.get('/api/ai-mapping/messages', authRequired, async (req, res) => {
        WHERE ${where}
        ORDER BY ts ${sort}
        LIMIT ${limit} OFFSET ${offset}`, params)).rows
-    // counts for the tabs
+    // counts for the tabs (respect the customer/order filter)
     const counts = (await dbQuery(`
       SELECT count(*) AS all,
         count(*) FILTER (WHERE a.annotation_id IS NOT NULL AND f.feedback_id IS NULL) AS in_review,
         count(*) FILTER (WHERE f.feedback_id IS NOT NULL) AS completed
       FROM app.messages m
-      LEFT JOIN LATERAL (SELECT annotation_id FROM app.message_ai_annotations x WHERE x.message_id=m.message_id LIMIT 1) a ON true
+      LEFT JOIN LATERAL (SELECT annotation_id, order_no FROM app.message_ai_annotations x WHERE x.message_id=m.message_id ORDER BY x.updated_at DESC LIMIT 1) a ON true
       LEFT JOIN LATERAL (SELECT feedback_id FROM app.message_training_feedback y WHERE y.message_id=m.message_id LIMIT 1) f ON true
-      WHERE m.body IS NOT NULL AND m.body<>''`)).rows[0]
+      LEFT JOIN app.conversations c ON c.conversation_id=m.conversation_id
+      WHERE ${base}`, baseParams)).rows[0]
     res.json({ messages: rows, counts, limit, offset })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Customers that have messages (for the customer selector) — id, name, message count
+app.get('/api/ai-mapping/customers', authRequired, async (req, res) => {
+  try {
+    const search = String(req.query.q || '').trim()
+    const params = []
+    let extra = ''
+    if (search) { params.push('%' + search + '%'); extra = ` AND (cu.extra->>'name' ILIKE $1 OR c.extra->>'name' ILIKE $1)` }
+    const rows = (await dbQuery(`
+      SELECT c.customer_id,
+             COALESCE(NULLIF(max(cu.extra->>'name'),''), NULLIF(max(c.extra->>'name'),''), 'Customer') AS name,
+             count(m.message_id) AS msg_count
+        FROM app.messages m
+        JOIN app.conversations c ON c.conversation_id = m.conversation_id
+        LEFT JOIN app.customers cu ON cu.customer_id = c.customer_id
+       WHERE m.body IS NOT NULL AND m.body <> '' AND c.customer_id IS NOT NULL${extra}
+       GROUP BY c.customer_id
+       ORDER BY count(m.message_id) DESC
+       LIMIT 1000`, params)).rows
+    res.json({ customers: rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Orders for a customer (for the Order No dropdown)
+app.get('/api/ai-mapping/orders', authRequired, async (req, res) => {
+  try {
+    const customer = String(req.query.customer || '').trim()
+    if (!customer) return res.json({ orders: [] })
+    const rows = (await dbQuery(`
+      SELECT order_id, order_number, order_status, total_amount, created_at
+        FROM app.orders WHERE customer_id = $1
+       ORDER BY created_at DESC NULLS LAST LIMIT 200`, [customer])).rows
+    res.json({ orders: rows })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -737,21 +781,21 @@ app.post('/api/ai-mapping/message/:id/save', authRequired, async (req, res) => {
       b.purchase_intent_score != null ? +b.purchase_intent_score : null, b.sentiment || null, b.urgency || null,
       b.objection_type || null, b.action_required != null ? !!b.action_required : null, b.recommended_action || null,
       b.recommended_response_strategy || null, b.ai_summary || null, b.ai_confidence != null ? +b.ai_confidence : null,
-      b.model_version || 'human-review', b.prompt_version || null]
+      b.model_version || 'human-review', b.prompt_version || null, b.order_no || null]
     let annotationId
     if (existing) {
       annotationId = existing.annotation_id
       await client.query(`UPDATE app.message_ai_annotations SET
         conversation_id=$2,customer_id=$3,lead_id=$4,primary_intent=$5,secondary_intent=$6,purchase_intent=$7,
         purchase_intent_score=$8,sentiment=$9,urgency=$10,objection_type=$11,action_required=$12,recommended_action=$13,
-        recommended_response_strategy=$14,ai_summary=$15,ai_confidence=$16,model_version=$17,prompt_version=$18,updated_at=now()
+        recommended_response_strategy=$14,ai_summary=$15,ai_confidence=$16,model_version=$17,prompt_version=$18,order_no=$19,updated_at=now()
         WHERE annotation_id=$1`, [annotationId, ...vals.slice(1)])
     } else {
       annotationId = (await client.query(`INSERT INTO app.message_ai_annotations
         (message_id,conversation_id,customer_id,lead_id,primary_intent,secondary_intent,purchase_intent,purchase_intent_score,
          sentiment,urgency,objection_type,action_required,recommended_action,recommended_response_strategy,ai_summary,
-         ai_confidence,model_version,prompt_version,processed_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,now()) RETURNING annotation_id`, vals)).rows[0].annotation_id
+         ai_confidence,model_version,prompt_version,order_no,processed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now()) RETURNING annotation_id`, vals)).rows[0].annotation_id
     }
 
     if (mode === 'approve') {
