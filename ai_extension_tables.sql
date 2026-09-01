@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS app.message_ai_annotations (
   model_version           varchar,
   prompt_version          varchar,
   order_no                text,          -- tag this message to a customer order (AI Mapping)
+  human_edits             jsonb,         -- reviewer/boss edits kept separately from the AI prediction
+  edited_by               text,
+  edited_at               timestamptz,
   processed_at            timestamptz,
   created_at              timestamptz NOT NULL DEFAULT now(),
   updated_at              timestamptz NOT NULL DEFAULT now()

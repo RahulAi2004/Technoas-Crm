@@ -95,17 +95,21 @@ export default function AiMapping() {
 
   const loadStats = useCallback(() => { api.get('/api/ai-mapping/stats').then(setStats).catch(() => {}) }, [])
   const loadList = useCallback(() => {
-    const p = new URLSearchParams({ status: tab, q, sort, limit: String(PAGE), offset: String(page * PAGE) })
+    // customer selected → fetch their FULL history in one page (no pagination); else 24/page
+    const lim = customer ? 5000 : PAGE
+    const off = customer ? 0 : page * PAGE
+    const p = new URLSearchParams({ status: tab, q, sort, limit: String(lim), offset: String(off) })
     if (customer) p.set('customer', customer)
     if (orderFilter) p.set('order', orderFilter)
     api.get(`/api/ai-mapping/messages?${p}`).then(r => { setList(r.messages || []); setCounts(r.counts || {}) }).catch(() => {})
   }, [tab, q, sort, page, customer, orderFilter])
   useEffect(() => { loadStats() }, [loadStats])
   useEffect(() => { api.get('/api/ai-mapping/customers').then(r => setCustomers(r.customers || [])).catch(() => {}) }, [])
-  // selected customer → load their orders (for the Order No field + order filter)
+  // selected customer → load their orders + show their FULL history from the start (oldest first)
   useEffect(() => {
     setOrderFilter('')
     if (!customer) { setOrders([]); return }
+    setSort('oldest')   // customer chuno to messages shuru se (connect hone se aaj tak)
     api.get(`/api/ai-mapping/orders?customer=${encodeURIComponent(customer)}`).then(r => setOrders(r.orders || [])).catch(() => setOrders([]))
   }, [customer])
   useEffect(() => { const t = setTimeout(loadList, 250); return () => clearTimeout(t) }, [loadList])
@@ -258,11 +262,17 @@ export default function AiMapping() {
               })}
             </div>
             <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">
-              <span>Showing {list.length ? page * PAGE + 1 : 0}–{page * PAGE + list.length} of {total.toLocaleString()}</span>
-              <span className="flex gap-1">
-                <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))} className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40">‹</button>
-                <button disabled={list.length < PAGE} onClick={() => setPage(p => p + 1)} className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40">›</button>
-              </span>
+              {customer ? (
+                <span>Showing all {list.length.toLocaleString()} messages (start → today)</span>
+              ) : (
+                <>
+                  <span>Showing {list.length ? page * PAGE + 1 : 0}–{page * PAGE + list.length} of {total.toLocaleString()}</span>
+                  <span className="flex gap-1">
+                    <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))} className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40">‹</button>
+                    <button disabled={list.length < PAGE} onClick={() => setPage(p => p + 1)} className="rounded border border-slate-200 px-2 py-0.5 disabled:opacity-40">›</button>
+                  </span>
+                </>
+              )}
             </div>
           </aside>
 
@@ -315,6 +325,7 @@ export default function AiMapping() {
                           <div><span className="text-slate-400">Started</span><div className="font-semibold text-slate-700">{ann?.created_at ? fmt(ann.created_at) : '—'}</div></div>
                           <div><span className="text-slate-400">Updated</span><div className="font-semibold text-slate-700">{ann?.updated_at ? fmt(ann.updated_at) : '—'}</div></div>
                         </div>
+                        {ann?.edited_by && <div className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-800">✏️ Last edited by <b>{ann.edited_by}</b>{ann.edited_at ? ` · ${fmt(ann.edited_at)}` : ''} <span className="text-amber-500">(saved separately in human_edits)</span></div>}
                       </div>
                     </div>
                   </Section>

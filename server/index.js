@@ -659,7 +659,9 @@ app.get('/api/ai-mapping/messages', authRequired, async (req, res) => {
     const customer = String(req.query.customer || '').trim()   // filter by customer_id
     const order = String(req.query.order || '').trim()         // filter by tagged order_no
     const sort = String(req.query.sort || 'oldest').toLowerCase() === 'newest' ? 'DESC' : 'ASC'
-    const limit = Math.min(100, Math.max(1, +req.query.limit || 30))
+    // when a single customer is selected we can safely return their FULL history in one page
+    const maxLimit = customer ? 5000 : 100
+    const limit = Math.min(maxLimit, Math.max(1, +req.query.limit || 30))
     const offset = Math.max(0, +req.query.offset || 0)
     // shared filters (customer/order) — applied to BOTH the list and the tab-counts so they stay in sync
     const baseParams = []
@@ -777,25 +779,38 @@ app.post('/api/ai-mapping/message/:id/save', authRequired, async (req, res) => {
 
     // upsert annotation (one current per message)
     const existing = (await client.query(`SELECT annotation_id FROM app.message_ai_annotations WHERE message_id=$1 ORDER BY updated_at DESC LIMIT 1`, [id])).rows[0]
+    // Boss/reviewer edits — kept in a SEPARATE column (human_edits) so the AI's original
+    // prediction columns are never lost; also stamp who edited + when.
+    const humanEdits = JSON.stringify({
+      primary_intent: b.primary_intent || null, secondary_intent: b.secondary_intent || null,
+      purchase_intent: b.purchase_intent || null, purchase_intent_score: b.purchase_intent_score ?? null,
+      sentiment: b.sentiment || null, urgency: b.urgency || null, commercial_signal: b.commercial_signal || null,
+      amount: b.amount ?? null, currency: b.currency || null, payment_method: b.payment_method || null,
+      stage_from: b.stage_from || null, stage_to: b.stage_to || null, qualification_impact: b.qualification_impact || null,
+      action_required: b.recommended_action || null, order_no: b.order_no || null,
+      validation_status: b.validation_status || null, correction_reason: b.correction_reason || null,
+      supervisor_notes: b.supervisor_notes || null, mode,
+    })
     const vals = [id, conv, cust, lead, b.primary_intent || null, b.secondary_intent || null, b.purchase_intent || null,
       b.purchase_intent_score != null ? +b.purchase_intent_score : null, b.sentiment || null, b.urgency || null,
       b.objection_type || null, b.action_required != null ? !!b.action_required : null, b.recommended_action || null,
       b.recommended_response_strategy || null, b.ai_summary || null, b.ai_confidence != null ? +b.ai_confidence : null,
-      b.model_version || 'human-review', b.prompt_version || null, b.order_no || null]
+      b.model_version || 'human-review', b.prompt_version || null, b.order_no || null, humanEdits, reviewer]
     let annotationId
     if (existing) {
       annotationId = existing.annotation_id
       await client.query(`UPDATE app.message_ai_annotations SET
         conversation_id=$2,customer_id=$3,lead_id=$4,primary_intent=$5,secondary_intent=$6,purchase_intent=$7,
         purchase_intent_score=$8,sentiment=$9,urgency=$10,objection_type=$11,action_required=$12,recommended_action=$13,
-        recommended_response_strategy=$14,ai_summary=$15,ai_confidence=$16,model_version=$17,prompt_version=$18,order_no=$19,updated_at=now()
+        recommended_response_strategy=$14,ai_summary=$15,ai_confidence=$16,model_version=$17,prompt_version=$18,order_no=$19,
+        human_edits=$20::jsonb,edited_by=$21,edited_at=now(),updated_at=now()
         WHERE annotation_id=$1`, [annotationId, ...vals.slice(1)])
     } else {
       annotationId = (await client.query(`INSERT INTO app.message_ai_annotations
         (message_id,conversation_id,customer_id,lead_id,primary_intent,secondary_intent,purchase_intent,purchase_intent_score,
          sentiment,urgency,objection_type,action_required,recommended_action,recommended_response_strategy,ai_summary,
-         ai_confidence,model_version,prompt_version,order_no,processed_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now()) RETURNING annotation_id`, vals)).rows[0].annotation_id
+         ai_confidence,model_version,prompt_version,order_no,human_edits,edited_by,processed_at,edited_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,now(),now()) RETURNING annotation_id`, vals)).rows[0].annotation_id
     }
 
     if (mode === 'approve') {
