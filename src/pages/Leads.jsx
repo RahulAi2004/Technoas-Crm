@@ -11,7 +11,9 @@ import { can } from '../lib/auth.js'
 const fmt$ = (n) => (n == null || n === '' || Number(n) === 0) ? '—' : `$${Number(n).toLocaleString()}`
 // UTC me dikhta hai — periodRange bhi UTC din par filter karta hai, warna 2 AM (UTC+5) wala lead
 // row me "Aug 12" dikhta aur Today ke count se bahar reh jata.
-const fmtDateTime = (ts) => ts ? new Date(Number(ts)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }) : '—'
+// Pakistan Standard Time (UTC+5, no DST) — dates/times + period buckets sabhi PKT me dikhte hain.
+const PKT_OFF = 5 * 60 * 60 * 1000
+const fmtDateTime = (ts) => ts ? new Date(Number(ts)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Karachi' }) : '—'
 // "kitni der pehle" — pending/elapsed duration since a timestamp (ms)
 const agoStr = (ts) => {
   if (!ts) return '—'
@@ -38,13 +40,15 @@ const FSEL = 'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 t
 // local midnight use hota tha, to UTC+5 se dekhne par raat 12–5 baje wale leads aaj me aa jate
 // the (Today 26 vs Printshop 12) aur har timezone ke viewer ko alag count dikhta tha.
 function periodRange(period, customFrom, customTo) {
-  const d = new Date(); const sod = (x) => Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate())
+  // PKT wall-clock via UTC getters on a +5h-shifted date; sod() = real ms of that PKT midnight.
+  const d = new Date(Date.now() + PKT_OFF)
+  const sod = (x) => Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()) - PKT_OFF
   if (period === 'today') return { from: sod(d), to: Infinity }
   if (period === 'week') { const m = new Date(d); m.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return { from: sod(m), to: Infinity } }
-  if (period === 'month') return { from: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1), to: Infinity }
-  if (period === 'quarter') return { from: Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1), to: Infinity }
-  if (period === 'year') return { from: Date.UTC(d.getUTCFullYear(), 0, 1), to: Infinity }
-  if (period === 'custom') return { from: customFrom ? Date.parse(customFrom + 'T00:00:00Z') : 0, to: customTo ? Date.parse(customTo + 'T23:59:59.999Z') : Infinity }
+  if (period === 'month') return { from: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - PKT_OFF, to: Infinity }
+  if (period === 'quarter') return { from: Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1) - PKT_OFF, to: Infinity }
+  if (period === 'year') return { from: Date.UTC(d.getUTCFullYear(), 0, 1) - PKT_OFF, to: Infinity }
+  if (period === 'custom') return { from: customFrom ? Date.parse(customFrom + 'T00:00:00Z') - PKT_OFF : 0, to: customTo ? Date.parse(customTo + 'T23:59:59.999Z') - PKT_OFF : Infinity }
   return { from: 0, to: Infinity }
 }
 const PERIODS = [['today', 'Today'], ['week', 'This Week'], ['month', 'This Month'], ['quarter', 'This Quarter'], ['year', 'This Year'], ['custom', 'Custom'], ['all', 'All Time']]
@@ -291,7 +295,7 @@ export default function Leads() {
   useEffect(() => {
     if (period === 'custom') return
     const r = periodRange(period)
-    const s = (ms) => new Date(ms).toISOString().slice(0, 10)   // UTC — periodRange ki seema ke sath match kare
+    const s = (ms) => new Date(ms + PKT_OFF).toISOString().slice(0, 10)   // PKT date (periodRange ki seema ke sath match)
     setFrom(r.from ? s(r.from) : '')                          // 'all' -> khaali
     setTo(period === 'all' ? '' : s(Date.now()))             // rolling periods -> aaj tak
   }, [period])
