@@ -1094,8 +1094,23 @@ export default function LeadPanel({ conv, onClose }) {
   const [preview, setPreview] = useState(null)  // { kind, title, html } — quote/invoice preview modal
   const [ai, setAi] = useState(null)            // AI-enriched read-only insights (Leads dashboard wale fields)
   const [audit, setAudit] = useState({})        // field -> { by, byId, at }  (kaun-kab validate)
+  const [ohSummary, setOhSummary] = useState('')   // Order History — AI-generated latest-order summary
+  const [ohPrompt, setOhPrompt] = useState('')     // optional custom instruction
+  const [ohBusy, setOhBusy] = useState(false)
 
   const cid = conv?.id
+  // load any previously generated order-history summary for this conversation (per-browser)
+  useEffect(() => { try { setOhSummary(cid ? (localStorage.getItem('oh-' + cid) || '') : '') } catch { setOhSummary('') }; setOhPrompt('') }, [cid])
+  const generateOrderHistory = async () => {
+    if (!cid) return
+    setOhBusy(true)
+    try {
+      const r = await api.post(`/api/leads/order-summary/${encodeURIComponent(cid)}`, { prompt: ohPrompt })
+      const s = r?.summary || ''
+      setOhSummary(s)
+      try { if (s) localStorage.setItem('oh-' + cid, s) } catch { /* ignore */ }
+    } catch (e) { setErr(e.message || 'Order summary failed') } finally { setOhBusy(false) }
+  }
 
   // gpt-4o extract 10-40s lamba hota hai; is dauran network blip / backend-restart se browser
   // "Failed to fetch" de sakta hai. Aise transient fail par apne aap 2 baar retry (thoda ruk ke).
@@ -1305,7 +1320,7 @@ export default function LeadPanel({ conv, onClose }) {
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
   }
 
-  const TABS = [['pending', 'Pending'], ['lead', 'Lead'], ['customer', 'Customer'], ['product', 'Product & Artwork'], ['shipping', 'Delivery'], ['quote', 'Quote'], ['invoice', 'Invoice'], ['payment', 'Payment'], ['order', 'Sales Order']]
+  const TABS = [['pending', 'Pending'], ['lead', 'Lead'], ['customer', 'Customer'], ['orderhistory', 'Order History'], ['product', 'Product & Artwork'], ['shipping', 'Delivery'], ['quote', 'Quote'], ['invoice', 'Invoice'], ['payment', 'Payment'], ['order', 'Sales Order']]
   // Readable columns: panel ki chaudai ke hisaab se (chhote panel me 1-2, wide me 3). Cramped nahi.
   const grid = wide
     ? 'grid gap-3 grid-cols-2 lg:grid-cols-3'
@@ -1379,7 +1394,7 @@ export default function LeadPanel({ conv, onClose }) {
 
       {/* Body */}
       <div className="nice-scroll flex-1 overflow-y-auto px-4 py-3">
-        {tab !== 'pending' && !canValidate(tab) && (
+        {tab !== 'pending' && tab !== 'orderhistory' && !canValidate(tab) && (
           <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">🔒 Your role doesn't have permission to validate or fill fields in this section — view-only.</div>
         )}
         {tab === 'pending' && (<div className="space-y-3">
@@ -1438,6 +1453,31 @@ export default function LeadPanel({ conv, onClose }) {
             sameAs={sameBilling} onSame={setSameBilling}
             onChange={(v) => setVal('billing_address', v)}
             onValidate={() => saveOne('billing_address', sameBilling ? vals.shipping_address : vals.billing_address)} /></div>
+        </div>)}
+
+        {tab === 'orderhistory' && (<div className="space-y-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Order History</h3>
+            <p className="text-[11px] leading-snug text-slate-500">Poori chat ko padh kar customer ke <b>latest order</b> ki summary AI generate karega — products, qty, sizes, colors, artwork, price, payment &amp; delivery. Custom instruction likh sakte ho (optional).</p>
+          </div>
+          <textarea value={ohPrompt} onChange={(e) => setOhPrompt(e.target.value)} rows={2}
+            placeholder="Optional: kya focus karna hai likho (e.g. 'sirf pricing aur payment', ya 'pichle 2 orders compare karo')…"
+            className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] outline-none focus:border-brand-500" />
+          <button onClick={generateOrderHistory} disabled={ohBusy || !cid}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+            {ohBusy ? 'Generating…' : (ohSummary ? '↻ Regenerate' : '✨ Generate order summary')}
+          </button>
+          {ohBusy && <div className="rounded-lg border border-dashed border-brand-200 bg-brand-50/40 p-4 text-center text-[12px] text-brand-700">🧾 Chat padh ke latest order ki summary bana rahe hain…</div>}
+          {!ohBusy && ohSummary && (
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Latest Order Summary</span>
+                <button onClick={() => { navigator.clipboard?.writeText(ohSummary) }} className="text-[11px] font-semibold text-slate-400 hover:text-slate-600">Copy</button>
+              </div>
+              <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-slate-800">{ohSummary}</div>
+            </div>
+          )}
+          {!ohBusy && !ohSummary && <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-[12px] text-slate-400">Abhi tak koi summary nahi — upar "Generate" dabao.</div>}
         </div>)}
 
         {tab === 'product' && (<div className="space-y-3">

@@ -2503,6 +2503,25 @@ app.post('/api/leads/backfill-orders', authRequired, async (req, res) => {
     res.json({ ok: true, ...summary })
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 })
+// Order History — poori chat padh kar customer ke LATEST order ki summary AI generate kare.
+// Optional { prompt } = custom instruction (agent likhe to usi hisaab se).
+app.post('/api/leads/order-summary/:id', authRequired, async (req, res) => {
+  if (!aiConfigured()) return res.status(400).json({ error: 'OpenAI not configured — set OPENAI_API_KEY' })
+  try {
+    const id = req.params.id
+    const msgs = getAll('messages')
+      .filter((m) => m.conversation_id === id && (m.text || '').trim() && m.dir !== 'note')
+      .sort((a, b) => (Number(a.ts) || 0) - (Number(b.ts) || 0))
+    if (!msgs.length) return res.json({ summary: '' })
+    const transcript = msgs.map((m) => `${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.text}`).join('\n').slice(0, 24000)
+    const custom = String(req.body?.prompt || '').trim()
+    const sys = `You are a print-shop (custom apparel/DTF) CRM assistant. Read the ENTIRE conversation and write a concise, well-structured summary of the customer's LATEST / most-recent order only (ignore older superseded orders unless needed for context). Use ONLY facts stated in the chat — never invent quantities, prices, sizes, dates, or artwork. Cover whatever is present: product(s), total quantity, size breakdown, colours, print locations / artwork, price / quote, payment status, delivery / shipping address, deadline, and special instructions. If something isn't mentioned, say "not specified". Write clear plain English using short labelled lines or bullets. Keep it tight.`
+    const user = `${custom ? `Agent instruction (follow this): ${custom}\n\n` : ''}CONVERSATION:\n${transcript}`
+    const out = await chatText(sys, user, { tag: 'order-summary' })
+    res.json({ summary: out || '' })
+  } catch (e) { res.status(e.status || 500).json({ error: e.message, hint: e.hint }) }
+})
+
 // Agent ne ek field pe Validate dabaya -> wahi ek field DB me save.
 app.post('/api/leads/field/:id', authRequired, async (req, res) => {
   try {
