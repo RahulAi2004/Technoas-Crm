@@ -40,11 +40,20 @@ const loc = (t) => (USE_APP && APP_NAME[t] && !PUBLIC_ONLY.has(t))
 // keys resolved in-SQL from a related table's legacy_id -> its UUID pk.
 const PK = { agents: 'agent_id', customers: 'customer_id', conversations: 'conversation_id', messages: 'message_id', leads: 'lead_id', orders: 'order_id', payments: 'payment_id', notes: 'note_id', artwork: 'artwork_id', ai_chats: 'id' }
 const JSONB_COLS = new Set(['attachments', 'messages', 'sizes', 'line_items', 'files'])
+// Postgres jsonb (and text) reject the NUL character - IG/Meta payloads sometimes
+// contain it, which crashed every write with "invalid input syntax for type json".
+// Strip it from both the serialized JSON (escaped form) and plain string params.
+// Strip NUL escapes AND lone UTF-16 surrogates — PG jsonb rejects both ("invalid input
+// syntax for type json"). Well-formed JSON.stringify escapes ONLY lone surrogates as
+// \uXXXX (valid emoji pairs stay literal), so removing every \uD800-\uDFFF escape is safe.
+const jsonSafe = (v) => JSON.stringify(v).replace(/\\u0000/g, '').replace(/\\u[dD][89a-fA-F][0-9a-fA-F]{2}/g, '')
+const NUL_RE = new RegExp(String.fromCharCode(0), 'g')
+const strSafe = (v) => (typeof v === 'string' ? v.replace(NUL_RE, '').replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '').replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '') : v)
 const APP_MAP = {
   agents:        { scalar: (d) => ({ name: d.name || 'Agent', email: (d.email || `user${d.id}@local`).toLowerCase(), role: d.role || 'agent', password_hash: d.password_hash || null }) },
   customers:     { scalar: (d) => ({ full_name: d.name || 'Unknown', email: d.email || null, phone: d.phone || null, company: d.company || null, platform_primary: (d.channel || '').toLowerCase() || null, tier: d.tier || null, total_spent: Number(d.spend) || 0, total_orders: Number(d.orders) || 0, payment_status: d.payment_status || null, products: d.products || null, avatar: d.avatar || null }) },
-  conversations: { scalar: (d) => ({ channel: d.channel || null, status: d.status || 'open', unread: Number(d.unread) || 0, bookmarked: !!d.bookmarked, meta_sender_id: d.meta_recipient_id || null, intent_primary: d.name || null }), fk: (d) => ({ customer_id: ['customers', d.id ? `cust:${d.id}` : null] }) },
-  messages:      { scalar: (d) => ({ direction: d.dir === 'note' ? 'note' : d.dir === 'out' ? 'out' : 'in', sender_type: d.dir === 'in' ? 'customer' : d.dir === 'out' ? 'agent' : 'system', body: d.text || '', message_type: (d.attachments && d.attachments.length) ? 'image' : 'text', attachments: JSON.stringify(d.attachments || []), category: d.category || null, meta_message_id: d.mid || null }), fk: (d) => ({ conversation_id: ['conversations', d.conversation_id] }) },
+  conversations: { scalar: (d) => { const lts = Number(d.last_ts || d.last_out_ts || d.last_in_ts) || 0; return { channel: d.channel || null, status: d.status || 'open', unread: Number(d.unread) || 0, bookmarked: !!d.bookmarked, meta_sender_id: d.meta_recipient_id || null, intent_primary: d.name || null, last_message_at: lts ? new Date(lts).toISOString() : null } }, fk: (d) => ({ customer_id: ['customers', d.id ? `cust:${d.id}` : null] }) },
+  messages:      { scalar: (d) => { const ts = Number(d.ts) || Date.parse(d.created_at) || 0; return { direction: d.dir === 'note' ? 'note' : d.dir === 'out' ? 'out' : 'in', sender_type: d.dir === 'in' ? 'customer' : d.dir === 'out' ? 'agent' : 'system', body: d.text || '', message_type: (d.attachments && d.attachments.length) ? 'image' : 'text', attachments: JSON.stringify(d.attachments || []), category: d.category || null, meta_message_id: d.mid || null, sent_at: ts ? new Date(ts).toISOString() : null } }, fk: (d) => ({ conversation_id: ['conversations', d.conversation_id] }) },
   leads:         { scalar: (d) => ({ stage: d.pipeline || 'new_inquiry', status: d.status || 'New', source: d.source || null, score_total: Number(d.score) || 0, estimated_value: Number(d.value) || 0,
     // Updated2 format (Decoinks-Database-Tables-Updated2.xlsx `lead` table). lead_no is
     // NOT written here — the app.assign_lead_no trigger numbers new leads (LEAD-000123).
@@ -113,8 +122,8 @@ async function loadAll() {
 
 // ---- write-through queue (independent writes; never block the caller) ----
 const pending = new Set()
-function enqueue(fn) {
-  const p = Promise.resolve().then(fn).catch((e) => console.error('[db] write error:', e.message)).finally(() => pending.delete(p))
+function enqueue(fn, label = '') {
+  const p = Promise.resolve().then(fn).catch((e) => console.error(`[db] write error${label ? ` (${label})` : ''}:`, e.message, e.detail || '')).finally(() => pending.delete(p))
   pending.add(p); return p
 }
 export function flush(timeoutMs = 600) {
@@ -129,14 +138,19 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
 const upsertRow = (t, doc) => enqueue(() => {
   const L = loc(t)
   if (!L.app) {
-    return pool.query(`INSERT INTO "${L.name}" (id, doc) VALUES ($1, $2::jsonb) ON CONFLICT (id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = now()`, [String(doc.id), JSON.stringify(doc)])
+    return pool.query(`INSERT INTO "${L.name}" (id, doc) VALUES ($1, $2::jsonb) ON CONFLICT (id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = now()`, [String(doc.id), jsonSafe(doc)])
   }
   const map = APP_MAP[L.name] || {}
   const scalar = map.scalar ? map.scalar(doc) : {}
   const fks = map.fk ? map.fk(doc) : {}
-  const cols = ['legacy_id', 'extra'], ph = ['$1', '$2::jsonb'], params = [String(doc.id), JSON.stringify(doc)]
+  const cols = ['legacy_id', 'extra'], ph = ['$1', '$2::jsonb'], params = [String(doc.id), jsonSafe(doc)]
   let i = 3
-  for (const [k, v] of Object.entries(scalar)) { cols.push(k); params.push(v); ph.push(JSONB_COLS.has(k) ? `$${i}::jsonb` : `$${i}`); i++ }
+  for (const [k, v] of Object.entries(scalar)) {
+    cols.push(k)
+    if (JSONB_COLS.has(k)) { params.push(String(v).replace(/\\u0000/g, '').replace(/\\u[dD][89a-fA-F][0-9a-fA-F]{2}/g, '')); ph.push(`$${i}::jsonb`) }
+    else { params.push(strSafe(v)); ph.push(`$${i}`) }
+    i++
+  }
   for (const [k, [refTable, legacyVal]] of Object.entries(fks)) {
     cols.push(k)
     if (legacyVal == null) { ph.push('NULL') }
@@ -144,7 +158,7 @@ const upsertRow = (t, doc) => enqueue(() => {
   }
   const setClause = [...cols.filter((c) => c !== 'legacy_id').map((c) => `${c} = EXCLUDED.${c}`), 'updated_at = now()'].join(', ')
   return pool.query(`INSERT INTO app."${L.name}" (${cols.join(',')}) VALUES (${ph.join(',')}) ON CONFLICT (legacy_id) DO UPDATE SET ${setClause}`, params)
-})
+}, `app.${APP_NAME[t] || t}`)
 const deleteRow = (t, id) => enqueue(() => {
   const L = loc(t)
   return L.app ? pool.query(`DELETE FROM app."${L.name}" WHERE legacy_id = $1`, [String(id)])
@@ -154,7 +168,7 @@ const truncate = (t) => enqueue(() => {
   const L = loc(t)
   return L.app ? pool.query(`DELETE FROM app."${L.name}"`) : pool.query(`DELETE FROM "${L.name}"`)
 })
-const upsertKv = (table, key, value) => enqueue(() => pool.query(`INSERT INTO ${table} (key, value) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [key, JSON.stringify(value ?? null)]))
+const upsertKv = (table, key, value) => enqueue(() => pool.query(`INSERT INTO ${table} (key, value) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [key, jsonSafe(value ?? null)]), `${table}:${key}`)
 const deleteKv = (table, key) => enqueue(() => pool.query(`DELETE FROM ${table} WHERE key = $1`, [key]))
 
 // ---- boot (resilient: retry so a brief remote-DB blip doesn't crash the backend) ----

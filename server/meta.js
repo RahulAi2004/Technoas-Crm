@@ -114,9 +114,9 @@ export class MetaClient {
       query: {
         platform,
         fields: ig
-          ? 'id,updated_time,participants,messages.limit(10){id,message,from,created_time,attachments{mime_type,name,file_url}}'
+          ? 'id,updated_time,participants,messages.limit(3){id,message,from,created_time}'
           : 'id,updated_time,participants,messages.limit(25){id,message,from,created_time,attachments{mime_type,name,image_data,video_data,file_url}}',
-        limit: ig ? 20 : 50,
+        limit: ig ? 8 : 50,
       },
     })
   }
