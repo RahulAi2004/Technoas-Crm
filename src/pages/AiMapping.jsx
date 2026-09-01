@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, memo } from 'react'
 import { Link } from 'react-router-dom'
 import SidebarCrm from '../components/SidebarCrm.jsx'
 import TopBarUser from '../components/TopBarUser.jsx'
@@ -25,6 +25,29 @@ const STATUS_BADGE = {
   pending: { t: 'Pending', c: 'bg-slate-100 text-slate-500' },
 }
 const titleCase = (s) => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+const fmtTs = (ts) => ts ? new Date(ts).toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'
+
+// Memoized navigator row — only the two rows whose `selected` flips re-render on a click,
+// and content-visibility skips off-screen rows so 1000+ messages stay smooth (no freeze).
+const MsgRow = memo(function MsgRow({ msg, n, selected, onSelect }) {
+  const b = STATUS_BADGE[msg.review_status] || STATUS_BADGE.pending
+  const who = msg.direction === 'in' ? (msg.customer_name || 'Customer') : 'Agent'
+  return (
+    <button onClick={() => onSelect(msg.message_id)}
+      style={{ contentVisibility: 'auto', containIntrinsicSize: '0 76px' }}
+      className={`block w-full border-b border-slate-100 px-4 py-3 text-left ${selected ? 'bg-violet-50 ring-1 ring-inset ring-violet-200' : 'hover:bg-slate-50'}`}>
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-2 text-xs font-bold text-slate-700"><span className="grid h-6 w-6 place-items-center rounded-full bg-violet-100 text-[9px] font-bold text-violet-700">{who.slice(0, 2).toUpperCase()}</span>{n}. {who}</span>
+        <span className="text-[10px] text-slate-400">{fmtTs(msg.ts)}</span>
+      </div>
+      <div className="mt-1 line-clamp-1 pl-8 text-xs text-slate-600">{msg.body}</div>
+      <div className="mt-1.5 flex items-center justify-between pl-8">
+        <span className="text-[10px] font-medium"><span className="text-slate-400">AI Intent: </span><span className="text-violet-600">{msg.primary_intent ? titleCase(msg.primary_intent) : '—'}</span></span>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${b.c}`}>{b.t}</span>
+      </div>
+    </button>
+  )
+})
 const inputCls = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-violet-400 focus:outline-none'
 const Field = ({ n, label, req, children }) => (
   <div>
@@ -88,11 +111,15 @@ export default function AiMapping() {
   const [detail, setDetail] = useState(null)
   const [form, setForm] = useState(emptyForm())
   const [busy, setBusy] = useState(false)
+  const [listLoading, setListLoading] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const selectMsg = useCallback((id) => setSelId(id), [])
   const [secVer, setSecVer] = useState(0)   // bump to re-mount sections after expand/collapse all
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const setAllSections = (v) => { try { SEC_IDS.forEach(id => localStorage.setItem('aim-sec-' + id, v ? '1' : '0')) } catch {} ; setSecVer(x => x + 1) }
   const me = useMemo(() => { try { return JSON.parse(atob((localStorage.getItem('tcToken') || sessionStorage.getItem('tcToken') || '..').split('.')[1] || '')) } catch { return {} } }, [])
 
+  const reqIdRef = useRef(0)
   const loadStats = useCallback(() => { api.get('/api/ai-mapping/stats').then(setStats).catch(() => {}) }, [])
   const loadList = useCallback(() => {
     // customer selected → fetch their FULL history in one page (no pagination); else 24/page
@@ -101,8 +128,13 @@ export default function AiMapping() {
     const p = new URLSearchParams({ status: tab, q, sort, limit: String(lim), offset: String(off) })
     if (customer) p.set('customer', customer)
     if (orderFilter) p.set('order', orderFilter)
-    api.get(`/api/ai-mapping/messages?${p}`).then(r => { setList(r.messages || []); setCounts(r.counts || {}) }).catch(() => {})
-  }, [tab, q, sort, page, customer, orderFilter])
+    const rid = ++reqIdRef.current       // race-guard: ignore stale responses that resolve late
+    setListLoading(true)
+    api.get(`/api/ai-mapping/messages?${p}`)
+      .then(r => { if (rid === reqIdRef.current) { setList(r.messages || []); setCounts(r.counts || {}) } })
+      .catch(() => { if (rid === reqIdRef.current) { setList([]); toast('Could not load messages', 'error') } })
+      .finally(() => { if (rid === reqIdRef.current) setListLoading(false) })
+  }, [tab, q, sort, page, customer, orderFilter, toast])
   useEffect(() => { loadStats() }, [loadStats])
   useEffect(() => { api.get('/api/ai-mapping/customers').then(r => setCustomers(r.customers || [])).catch(() => {}) }, [])
   // selected customer → load their orders + show their FULL history from the start (oldest first)
@@ -120,9 +152,13 @@ export default function AiMapping() {
     if (!list.length) setSelId(null)
   }, [list]) // eslint-disable-line
 
+  const detailReqRef = useRef(0)
   useEffect(() => {
-    if (!selId) { setDetail(null); return }
+    if (!selId) { setDetail(null); setDetailLoading(false); return }
+    const rid = ++detailReqRef.current
+    setDetailLoading(true)
     api.get(`/api/ai-mapping/message/${selId}`).then(d => {
+      if (rid !== detailReqRef.current) return   // a newer selection won; drop this stale response
       setDetail(d)
       const a = d.annotation || {}, s = d.signal || {}, st = d.state || {}, fb = d.feedback || {}
       setForm({
@@ -136,8 +172,9 @@ export default function AiMapping() {
         correction_reason: fb.correction_reason || '', supervisor_notes: (fb.human_output && fb.human_output.supervisor_notes) || '',
         order_no: a.order_no || '',
       })
-    }).catch(() => {})
-  }, [selId])
+    }).catch(() => { if (rid === detailReqRef.current) toast('Could not load message', 'error') })
+      .finally(() => { if (rid === detailReqRef.current) setDetailLoading(false) })
+  }, [selId, toast])
   // if the selected customer has exactly ONE order, auto-fill Order No (unless already set)
   useEffect(() => {
     if (orders.length === 1) setForm(f => (f.order_no ? f : { ...f, order_no: orders[0].order_number }))
@@ -153,7 +190,12 @@ export default function AiMapping() {
     try {
       await api.post(`/api/ai-mapping/message/${selId}/save`, { ...form, mode })
       toast(mode === 'approve' ? 'Approved & saved' : 'Draft saved', 'success')
-      loadStats(); loadList()
+      // update just this row in place (no heavy full-list refetch → stays snappy on big customers)
+      const savedId = selId
+      setList(ls => ls.map(x => x.message_id === savedId
+        ? { ...x, review_status: mode === 'approve' ? 'reviewed' : 'needs_review', primary_intent: form.primary_intent || x.primary_intent, order_no: form.order_no || x.order_no }
+        : x))
+      loadStats()
       if (mode === 'approve') goNext()
     } catch (e) { toast(`Save failed: ${e.message}`, 'error') } finally { setBusy(false) }
   }
@@ -171,15 +213,18 @@ export default function AiMapping() {
     } catch (e) { toast(`AI generate failed: ${e.message}`, 'error') } finally { setBusy(false) }
   }
 
+  // keep latest actions in a ref so the keydown listener is registered ONCE (no re-bind per render)
+  const actionsRef = useRef({})
+  actionsRef.current = { goNext, goPrev, save }
   useEffect(() => {
     const h = (e) => {
       if (e.target.matches('input,textarea,select')) return
-      const k = e.key.toLowerCase()
-      if (k === 'n') goNext(); else if (k === 'p') goPrev(); else if (k === 's') save('draft'); else if (k === 'a') save('approve')
+      const k = e.key.toLowerCase(), a = actionsRef.current
+      if (k === 'n') a.goNext(); else if (k === 'p') a.goPrev(); else if (k === 's') a.save('draft'); else if (k === 'a') a.save('approve')
       else if (e.key === '/') { e.preventDefault(); document.getElementById('sup-notes')?.focus() }
     }
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
-  }) // eslint-disable-line
+  }, [])
 
   const m = detail?.message
   const ann = detail?.annotation
@@ -238,28 +283,17 @@ export default function AiMapping() {
               )}
               {customer && orders.length === 0 && <div className="mt-2 text-[11px] text-slate-400">No orders for this customer yet</div>}
             </div>
-            <div className="border-b border-slate-100 px-4 py-2 text-xs font-semibold text-slate-500">{total.toLocaleString()} Messages</div>
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2 text-xs font-semibold text-slate-500">
+              <span>{total.toLocaleString()} Messages</span>
+              {listLoading && <span className="flex items-center gap-1.5 text-violet-500"><span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-300 border-t-violet-600" />Loading…</span>}
+            </div>
             <div className="nice-scroll min-h-0 flex-1 overflow-y-auto">
-              {list.length === 0 && <div className="p-6 text-center text-sm text-slate-400">No messages</div>}
-              {list.map((msg, i) => {
-                const b = STATUS_BADGE[msg.review_status] || STATUS_BADGE.pending
-                const sel = msg.message_id === selId
-                const who = msg.direction === 'in' ? (msg.customer_name || 'Customer') : 'Agent'
-                return (
-                  <button key={msg.message_id} onClick={() => setSelId(msg.message_id)}
-                    className={`block w-full border-b border-slate-100 px-4 py-3 text-left ${sel ? 'bg-violet-50 ring-1 ring-inset ring-violet-200' : 'hover:bg-slate-50'}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2 text-xs font-bold text-slate-700"><span className="grid h-6 w-6 place-items-center rounded-full bg-violet-100 text-[9px] font-bold text-violet-700">{who.slice(0, 2).toUpperCase()}</span>{page * PAGE + i + 1}. {who}</span>
-                      <span className="text-[10px] text-slate-400">{fmt(msg.ts)}</span>
-                    </div>
-                    <div className="mt-1 line-clamp-1 pl-8 text-xs text-slate-600">{msg.body}</div>
-                    <div className="mt-1.5 flex items-center justify-between pl-8">
-                      <span className="text-[10px] font-medium"><span className="text-slate-400">AI Intent: </span><span className="text-violet-600">{msg.primary_intent ? titleCase(msg.primary_intent) : '—'}</span></span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${b.c}`}>{b.t}</span>
-                    </div>
-                  </button>
-                )
-              })}
+              {listLoading && list.length === 0 && <div className="space-y-2 p-4">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-14 animate-pulse rounded-lg bg-slate-100" />)}</div>}
+              {!listLoading && list.length === 0 && <div className="p-6 text-center text-sm text-slate-400">No messages</div>}
+              {list.map((msg, i) => (
+                <MsgRow key={msg.message_id} msg={msg} n={(customer ? 0 : page * PAGE) + i + 1}
+                  selected={msg.message_id === selId} onSelect={selectMsg} />
+              ))}
             </div>
             <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">
               {customer ? (
@@ -278,10 +312,11 @@ export default function AiMapping() {
 
           {/* reviewing + form (collapsible sections) */}
           <main className="nice-scroll min-h-0 overflow-y-auto p-5">
-            {!m ? <div className="grid h-full place-items-center text-slate-400">Select a message to review</div> : (
+            {!m ? <div className="grid h-full place-items-center text-slate-400">{detailLoading ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-600" />Loading message…</span> : 'Select a message to review'}</div> : (
               <>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="text-base font-bold text-slate-800">Reviewing Message #{msgNo} of {total.toLocaleString()} <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-xs font-mono text-slate-500">MSG-{String(m.message_id).slice(0, 4).toUpperCase()}</span>
+                    {detailLoading && <span className="ml-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-violet-300 border-t-violet-600 align-middle" />}
                     <button onClick={() => { navigator.clipboard?.writeText(m.message_id); toast('Message ID copied', 'success') }} title="Copy ID" className="ml-1 text-slate-400 hover:text-slate-600">⧉</button>
                   </div>
                   <div className="flex items-center gap-2">
