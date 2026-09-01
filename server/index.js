@@ -52,6 +52,16 @@ function agentName(req) {
   const u = getAll('users').find(x => x.id === req.user?.id)
   return u?.name || req.user?.email || 'Agent'
 }
+const clientIp = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || null
+
+// Audit log — fire-and-forget insert into app.user_activity (login/logout/message_sent/...).
+// Never throws into the request path.
+function logActivity({ action, userId = null, userName = null, conversationRef = null, customerName = null, detail = null, ip = null }) {
+  dbQuery(`INSERT INTO app.user_activity (user_id, user_name, action, conversation_ref, customer_name, detail, ip)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [userId, userName, action, conversationRef ? String(conversationRef) : null, customerName, detail ? JSON.stringify(detail) : null, ip])
+    .catch((e) => console.warn('[activity] log failed:', e.message))
+}
 
 // ============================================================
 // Real-time push (Server-Sent Events)
@@ -113,7 +123,55 @@ app.post('/api/auth/login', (req, res) => {
   if (!user) return res.status(401).json({ error: 'Invalid email or password' })
   if (!bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({ error: 'Invalid email or password' })
   const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+  logActivity({ action: 'login', userId: user.id, userName: user.name || user.email, ip: clientIp(req) })
   res.json({ token, user: authPayload(user) })
+})
+
+// Logout — client calls this so we can record when the agent signed off.
+app.post('/api/auth/logout', authRequired, (req, res) => {
+  logActivity({ action: 'logout', userId: req.user?.id, userName: agentName(req), ip: clientIp(req) })
+  res.json({ ok: true })
+})
+
+// ============================================================
+// Admin panel — user activity / audit logs (login / logout / messages sent)
+// ============================================================
+app.get('/api/admin/activity', authRequired, requirePerm('cap:manage_users'), async (req, res) => {
+  try {
+    const user = String(req.query.user || '').trim()
+    const action = String(req.query.action || '').trim()
+    const limit = Math.min(1000, Math.max(1, +req.query.limit || 150))
+    const params = []; let where = 'TRUE'
+    if (user) { params.push(user); where += ` AND user_name = $${params.length}` }
+    if (action) { params.push(action); where += ` AND action = $${params.length}` }
+    const rows = (await dbQuery(`SELECT id, user_name, action, conversation_ref, customer_name, detail, ip, created_at
+      FROM app.user_activity WHERE ${where} ORDER BY created_at DESC LIMIT ${limit}`, params)).rows
+    res.json({ activity: rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Per-user rollup: last login/logout, logins today, messages today/total
+app.get('/api/admin/summary', authRequired, requirePerm('cap:manage_users'), async (req, res) => {
+  try {
+    const rows = (await dbQuery(`
+      SELECT user_name,
+        max(created_at) FILTER (WHERE action='login')  AS last_login,
+        max(created_at) FILTER (WHERE action='logout') AS last_logout,
+        count(*) FILTER (WHERE action='login'  AND created_at::date=current_date) AS logins_today,
+        count(*) FILTER (WHERE action='message_sent' AND created_at::date=current_date) AS msgs_today,
+        count(*) FILTER (WHERE action='message_sent') AS msgs_total,
+        max(created_at) AS last_activity
+      FROM app.user_activity WHERE user_name IS NOT NULL
+      GROUP BY user_name ORDER BY max(created_at) DESC NULLS LAST`)).rows
+    // include CRM users that have no activity yet (so they still appear)
+    const users = getAll('users').map(u => ({ name: u.name, email: u.email, role: u.role }))
+    const overall = (await dbQuery(`SELECT
+        count(*) FILTER (WHERE action='login' AND created_at::date=current_date) AS logins_today,
+        count(*) FILTER (WHERE action='message_sent' AND created_at::date=current_date) AS msgs_today,
+        count(DISTINCT user_name) FILTER (WHERE action='login' AND created_at::date=current_date) AS active_users_today
+      FROM app.user_activity`)).rows[0]
+    res.json({ summary: rows, users, overall })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.post('/api/auth/sso', async (req, res) => {
@@ -2242,6 +2300,12 @@ function saveMessage(row) {
   if (t) { const c = findById('conversations', m.conversation_id); if (c && (!c.first_ts || t < c.first_ts)) update('conversations', m.conversation_id, { first_ts: t }) }
   // customer ke bheje artworks auto-capture → app.customer_artwork (SRC-ART-YY-NNNN), fire-and-forget
   captureSourceArtworks(m).catch(() => {})
+  // audit: agent ne customer ko reply bheja (dir='out' + agent stamped). Notes/incoming skip.
+  if (m.dir === 'out' && m.agent) {
+    const c = findById('conversations', m.conversation_id)
+    const u = getAll('users').find(x => x.name === m.agent)
+    logActivity({ action: 'message_sent', userId: u?.id || null, userName: m.agent, conversationRef: m.conversation_id, customerName: c?.name || null, detail: { preview: String(m.text || '').slice(0, 120), via: m.via || 'crm' } })
+  }
   return m
 }
 

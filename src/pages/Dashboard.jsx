@@ -1328,7 +1328,6 @@ export default function Dashboard() {
                     const sending = m._status === 'sending'
                     return (
                       <div key={m.id || i} className="group mt-4 flex flex-col items-end">
-                        {m.agent && <div className="mb-0.5 mr-10 text-[10px] font-semibold text-slate-500">{m.agent}</div>}
                         <div className="flex items-start justify-end gap-2">
                           {msgTools(m)}
                           <div className={`max-w-[min(90%,42rem)] rounded-2xl rounded-tr-md px-4 py-2.5 text-sm shadow-sm ${failed ? 'bg-rose-50 text-rose-900 ring-1 ring-rose-200' : 'bg-brand-600 text-white'}`}>
@@ -1346,6 +1345,7 @@ export default function Dashboard() {
                             {m.agent ? m.agent.split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase() : 'M'}
                           </span>
                         </div>
+                        {m.agent && <div className="mr-10 mt-0.5 text-[10px] font-semibold text-slate-500">Sent by {m.agent}</div>}
                         <ReactionChips reactions={m.reactions} />
                         {failed && (
                           <div className="mr-10 mt-0.5 flex items-center gap-2 text-[10px] font-semibold text-rose-600">

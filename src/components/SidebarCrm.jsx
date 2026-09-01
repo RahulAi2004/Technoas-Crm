@@ -174,6 +174,10 @@ export default function SidebarCrm({ active }) {
 
         <p className="sb-txt mt-6 mb-2 px-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">Settings</p>
         <ul className="space-y-1">
+          {can('cap:manage_users') && <li><Link to="/admin" title="Admin Panel" className={itemCls('admin')}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 4 5v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V5z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+            <span className="sb-txt">Admin Panel</span>
+          </Link></li>}
           {can('page:team') && <li><Link to="/team" title="Users" className={itemCls('team')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
             <span className="sb-txt">Users</span>

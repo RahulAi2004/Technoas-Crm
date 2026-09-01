@@ -21,6 +21,8 @@ export async function signInWithSso() {
 }
 
 export function signOut() {
+  // best-effort: record the logout on the server before clearing the token (fire-and-forget)
+  try { api.post('/api/auth/logout').catch(() => {}) } catch { /* ignore */ }
   clearToken()
   localStorage.removeItem('tcUser')
   sessionStorage.removeItem('tcUser')

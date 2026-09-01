@@ -17,6 +17,7 @@ import LeadDetails from './pages/LeadDetails.jsx'
 import AiTraining from './pages/AiTraining.jsx'
 import AiMapping from './pages/AiMapping.jsx'
 import ArtworkDedup from './pages/ArtworkDedup.jsx'
+import Admin from './pages/Admin.jsx'
 import Receipts from './pages/Receipts.jsx'
 import ArtworkVault from './pages/ArtworkVault.jsx'
 import Integrations from './pages/Integrations.jsx'
@@ -59,6 +60,7 @@ export default function App() {
       <Route path="/ai-training" element={<RequireAuth><AiTraining /></RequireAuth>} />
       <Route path="/ai-mapping" element={<RequireAuth><AiMapping /></RequireAuth>} />
       <Route path="/artwork-dedup" element={<RequireAuth><ArtworkDedup /></RequireAuth>} />
+      <Route path="/admin" element={<RequireAuth><Perm perm="cap:manage_users"><Admin /></Perm></RequireAuth>} />
       <Route path="/after-session" element={<RequireAuth><AfterSession /></RequireAuth>} />
       <Route path="/artwork-vault" element={<RequireAuth><ArtworkVault /></RequireAuth>} />
       <Route path="/connect-meta" element={<RequireAuth><MetaConnect /></RequireAuth>} />
