@@ -1474,7 +1474,23 @@ export default function LeadPanel({ conv, onClose }) {
                 <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Latest Order Summary</span>
                 <button onClick={() => { navigator.clipboard?.writeText(ohSummary) }} className="text-[11px] font-semibold text-slate-400 hover:text-slate-600">Copy</button>
               </div>
-              <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-slate-800">{ohSummary}</div>
+              <div className="space-y-0.5 text-[12.5px] leading-relaxed text-slate-800">
+                {ohSummary.split('\n').map((raw, i) => {
+                  const bullet = /^\s*[-•*]\s+/.test(raw)
+                  const line = raw.replace(/\*\*/g, '').replace(/`/g, '').replace(/^\s*#+\s*/, '').replace(/^\s*[-•*]\s+/, '').replace(/\*/g, '').trim()
+                  if (!line) return <div key={i} className="h-1.5" />
+                  const ci = line.indexOf(':')
+                  const isLabel = !bullet && ci > 0 && ci <= 26
+                  return (
+                    <div key={i} className={bullet ? 'pl-4' : ''}>
+                      {bullet && <span className="text-slate-400">• </span>}
+                      {isLabel
+                        ? <><span className="font-semibold text-slate-900">{line.slice(0, ci)}:</span>{line.slice(ci + 1)}</>
+                        : line}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
           {!ohBusy && !ohSummary && <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-[12px] text-slate-400">Abhi tak koi summary nahi — upar "Generate" dabao.</div>}

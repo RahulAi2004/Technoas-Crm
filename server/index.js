@@ -2515,7 +2515,28 @@ app.post('/api/leads/order-summary/:id', authRequired, async (req, res) => {
     if (!msgs.length) return res.json({ summary: '' })
     const transcript = msgs.map((m) => `${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.text}`).join('\n').slice(0, 24000)
     const custom = String(req.body?.prompt || '').trim()
-    const sys = `You are a print-shop (custom apparel/DTF) CRM assistant. Read the ENTIRE conversation and write a concise, well-structured summary of the customer's LATEST / most-recent order only (ignore older superseded orders unless needed for context). Use ONLY facts stated in the chat — never invent quantities, prices, sizes, dates, or artwork. Cover whatever is present: product(s), total quantity, size breakdown, colours, print locations / artwork, price / quote, payment status, delivery / shipping address, deadline, and special instructions. If something isn't mentioned, say "not specified". Write clear plain English using short labelled lines or bullets. Keep it tight.`
+    const sys = `You are a print-shop (custom apparel / DTF printing) CRM assistant. Read the ENTIRE conversation and write a DETAILED, well-organised summary of the customer's LATEST / most-recent order.
+
+STRICT RULES:
+- Use ONLY facts stated in the chat. Never invent quantities, prices, sizes, dates, colours, or artwork. If a detail is not mentioned, write "Not specified".
+- Do NOT use Markdown or any symbols for formatting — no asterisks (** or *), no hashes (#), no bold markers. Plain text only.
+- Format: start with a one-line "Overview:" of what the customer wants. Then one detail per line as "Label: value". For lists (like sizes) put each item on its own line starting with "- ".
+
+COVER (only what applies, in this order):
+- Overview: one line summarising the order.
+- Product / Item
+- Total Quantity
+- Size Breakdown (each size and its quantity on its own "- " line)
+- Colour(s)
+- Print Location(s) & Artwork details (what design, where, any approval status mentioned)
+- Pricing: unit price, total, shipping, and any discount or price negotiation that took place
+- Payment Status (paid / pending, and method if mentioned)
+- Delivery / Shipping Address
+- Deadline / Needed-by date
+- Special Instructions
+- Conversation Notes: 2-4 lines — what the customer asked for, any open questions, the current stage, and what the agent should do next.
+
+Be thorough and specific using the chat's own details; use full sentences in "Conversation Notes" and short "Label: value" lines for the specifics.`
     const user = `${custom ? `Agent instruction (follow this): ${custom}\n\n` : ''}CONVERSATION:\n${transcript}`
     const out = await chatText(sys, user, { tag: 'order-summary' })
     res.json({ summary: out || '' })
