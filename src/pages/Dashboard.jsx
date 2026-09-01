@@ -104,6 +104,32 @@ function ChatImage({ att, className = 'max-h-64 max-w-full rounded-lg object-cov
   )
 }
 
+// Non-Latin scripts (Urdu/Arabic, Hindi/Devanagari/Bengali, Chinese, Cyrillic) → offer inline English translate.
+// script blocks: Arabic/Urdu, Devanagari, Bengali, CJK, Cyrillic (char-code ranges — no \u literals)
+const NL_RANGES = [[0x0600, 0x06FF], [0x0750, 0x077F], [0x0900, 0x097F], [0x0980, 0x09FF], [0x4E00, 0x9FFF], [0x0400, 0x04FF]]
+const hasNonLatin = (s) => { for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (NL_RANGES.some(([a, b]) => c >= a && c <= b)) return true } return false }
+// On-demand per-message "Translate to English" — cost-safe: only calls AI when clicked, cached in state.
+function TranslateLine({ text }) {
+  const [en, setEn] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [show, setShow] = useState(false)
+  if (!text || !hasNonLatin(text)) return null
+  const run = async () => {
+    if (en) { setShow((s) => !s); return }
+    setBusy(true)
+    try { const r = await api.post('/api/translate', { text, to: 'en' }); setEn(r.translated || ''); setShow(true) }
+    catch { /* leave as-is */ } finally { setBusy(false) }
+  }
+  return (
+    <div className="mt-1">
+      <button onClick={run} disabled={busy} className="text-[10px] font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50">
+        {busy ? 'Translating…' : en ? (show ? '🌐 Hide English' : '🌐 Show English') : '🌐 Translate to English'}
+      </button>
+      {show && en && <div className="mt-1 rounded-lg bg-brand-50/60 px-2.5 py-1.5 text-[12.5px] leading-snug text-slate-700 ring-1 ring-brand-100"><span className="mr-1 text-[9px] font-bold uppercase text-brand-500">EN</span>{en}</div>}
+    </div>
+  )
+}
+
 // Render image/video/file attachments inside a chat bubble.
 function MsgAttachments({ items }) {
   if (!Array.isArray(items) || !items.length) return null
@@ -1310,6 +1336,7 @@ export default function Dashboard() {
                             <ReplyQuote q={m.reply_to} tone="in" /><MsgAttachments items={m.attachments} />{m.text}
                             <div className="mt-1 text-[10px] text-slate-400">{fmtClock(m.ts, m.time)}</div>
                           </div>
+                          <TranslateLine text={m.text} />
                           <ReactionChips reactions={m.reactions} />
                         </div>
                         {msgTools(m)}
