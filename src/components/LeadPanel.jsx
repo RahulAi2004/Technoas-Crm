@@ -1458,16 +1458,16 @@ export default function LeadPanel({ conv, onClose }) {
         {tab === 'orderhistory' && (<div className="space-y-3">
           <div>
             <h3 className="text-sm font-bold text-slate-800">Order History</h3>
-            <p className="text-[11px] leading-snug text-slate-500">Poori chat ko padh kar customer ke <b>latest order</b> ki summary AI generate karega — products, qty, sizes, colors, artwork, price, payment &amp; delivery. Custom instruction likh sakte ho (optional).</p>
+            <p className="text-[11px] leading-snug text-slate-500">AI reads the whole chat and generates a summary of the customer's <b>latest order</b> — products, qty, sizes, colors, artwork, price, payment &amp; delivery. You can add a custom instruction (optional).</p>
           </div>
           <textarea value={ohPrompt} onChange={(e) => setOhPrompt(e.target.value)} rows={2}
-            placeholder="Optional: kya focus karna hai likho (e.g. 'sirf pricing aur payment', ya 'pichle 2 orders compare karo')…"
+            placeholder="Optional: what to focus on (e.g. 'only pricing and payment', or 'compare the last 2 orders')…"
             className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] outline-none focus:border-brand-500" />
           <button onClick={generateOrderHistory} disabled={ohBusy || !cid}
             className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
             {ohBusy ? 'Generating…' : (ohSummary ? '↻ Regenerate' : '✨ Generate order summary')}
           </button>
-          {ohBusy && <div className="rounded-lg border border-dashed border-brand-200 bg-brand-50/40 p-4 text-center text-[12px] text-brand-700">🧾 Chat padh ke latest order ki summary bana rahe hain…</div>}
+          {ohBusy && <div className="rounded-lg border border-dashed border-brand-200 bg-brand-50/40 p-4 text-center text-[12px] text-brand-700">🧾 Reading the chat and building the latest order summary…</div>}
           {!ohBusy && ohSummary && (
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="mb-1.5 flex items-center justify-between">
@@ -1493,7 +1493,7 @@ export default function LeadPanel({ conv, onClose }) {
               </div>
             </div>
           )}
-          {!ohBusy && !ohSummary && <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-[12px] text-slate-400">Abhi tak koi summary nahi — upar "Generate" dabao.</div>}
+          {!ohBusy && !ohSummary && <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-[12px] text-slate-400">No summary yet — click "Generate" above.</div>}
         </div>)}
 
         {tab === 'product' && (<div className="space-y-3">
