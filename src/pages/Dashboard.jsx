@@ -738,7 +738,7 @@ export default function Dashboard() {
 
   // Middle + AI tabs
   const [midTab, setMidTab] = useState('conversation')
-  const [aiTab, setAiTab] = useState('responses')
+  const [aiTab, setAiTab] = useState('instant')
 
   // AI Supervisor analysis (real, from OpenAI). Reset when conversation changes.
   const [ai, setAi] = useState({ loading: false, error: null, analysis: null })
@@ -1509,12 +1509,13 @@ export default function Dashboard() {
             {ai.error && <div className="border-b border-rose-100 bg-rose-50 px-5 py-2 text-xs text-rose-700">{ai.error}</div>}
 
             <nav className="nice-scroll flex items-center gap-3.5 overflow-x-auto border-b border-slate-200 px-4 text-[13px]">
-              {[['responses','Responses'],['translate','Translation'],['summary','Summary'],['actions','Actions'],['designer','Designer Jobs'],['intent','Intent & Insights']].map(([id, lbl]) => (
+              {[['instant','Instant Replies'],['responses','Responses'],['translate','Translation'],['summary','Summary'],['actions','Actions'],['designer','Designer Jobs'],['intent','Intent & Insights']].map(([id, lbl]) => (
                 <button key={id} onClick={() => setAiTab(id)} className={`shrink-0 whitespace-nowrap border-b-2 py-2.5 ${aiTab === id ? 'border-brand-500 text-brand-600 font-semibold' : 'border-transparent text-slate-500 font-medium hover:text-slate-700'}`}>{lbl}</button>
               ))}
             </nav>
 
             <div className="nice-scroll flex-1 overflow-y-auto px-5 py-4">
+              {aiTab === 'instant' && <InstantRepliesTab onSendReply={(text) => sendMessage(text, 'reply')} />}
               {aiTab === 'responses' && <ResponsesTab onSendReply={(text) => sendMessage(text, 'reply')} onSendImage={sendAssetImage} conv={conv} reply={aiReply.text} setReply={(t) => setAiReply((s) => ({ ...s, text: t }))} info={aiReply.info} loading={aiReply.loading} onGenerate={genAiReply} />}
               {aiTab === 'translate' && <TranslationTab onSendReply={(text) => sendMessage(text, 'reply')} incoming={incomingList} />}
               {aiTab === 'summary' && <SummaryTab conv={conv} msgCount={messages.length} />}
@@ -1749,6 +1750,114 @@ function SendPanel({ title, hint, items, onSendReply, onSendImage }) {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
         {busy ? 'Sending…' : 'Send to Chat'}
       </button>
+    </div>
+  )
+}
+
+// Instant Replies — team's most-used canned replies (seeded from repeated past-chat replies).
+function InstantRepliesTab({ onSendReply }) {
+  const toast = useToast()
+  const [replies, setReplies] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editId, setEditId] = useState(null)
+  const [editText, setEditText] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [newText, setNewText] = useState('')
+  const [sugs, setSugs] = useState(null)
+  const [sugBusy, setSugBusy] = useState(false)
+
+  useEffect(() => {
+    (async () => {
+      try {
+        let r = await api.get('/api/quick-replies')
+        if (!r.replies || !r.replies.length) { const s = await api.post('/api/quick-replies/seed', {}); r = { replies: s.replies || [] } }
+        setReplies(r.replies || [])
+      } catch (e) { toast('Load failed: ' + e.message, 'error') } finally { setLoading(false) }
+    })()
+  }, []) // eslint-disable-line
+
+  const save = async () => {
+    if (!newText.trim()) return
+    try { const r = await api.post('/api/quick-replies', { body: newText.trim() }); setReplies((x) => [...x, r]); setNewText(''); setAdding(false) } catch (e) { toast(e.message, 'error') }
+  }
+  const saveEdit = async (id) => {
+    try { const r = await api.patch(`/api/quick-replies/${id}`, { body: editText, label: editText.slice(0, 40) }); setReplies((x) => x.map((q) => q.id === id ? r : q)); setEditId(null) } catch (e) { toast(e.message, 'error') }
+  }
+  const del = async (id) => {
+    if (!window.confirm('Delete this instant reply?')) return
+    try { await api.delete(`/api/quick-replies/${id}`); setReplies((x) => x.filter((q) => q.id !== id)) } catch (e) { toast(e.message, 'error') }
+  }
+  const suggest = async () => {
+    setSugBusy(true)
+    try { const r = await api.post('/api/quick-replies/suggest', { limit: 15 }); setSugs(r.suggestions || []) } catch (e) { toast(e.message, 'error') } finally { setSugBusy(false) }
+  }
+  const addSug = async (body) => {
+    try { const r = await api.post('/api/quick-replies', { body, source: 'suggested' }); setReplies((x) => [...x, r]); setSugs((s) => s.filter((z) => z.body !== body)) } catch (e) { toast(e.message, 'error') }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h4 className="text-sm font-bold text-slate-800">⚡ Instant Replies</h4>
+          <p className="text-[11px] text-slate-500">Your most-used replies — one click to send. Edit or add your own.</p>
+        </div>
+        <button onClick={() => setAdding((a) => !a)} className="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">＋ Add</button>
+      </div>
+
+      {adding && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+          <textarea value={newText} onChange={(e) => setNewText(e.target.value)} rows={3} placeholder="Type a reply you send often…" className="w-full resize-none rounded-lg border border-slate-200 px-2.5 py-2 text-[13px] outline-none focus:border-brand-500" />
+          <div className="mt-1.5 flex justify-end gap-2">
+            <button onClick={() => { setAdding(false); setNewText('') }} className="text-xs font-semibold text-slate-500">Cancel</button>
+            <button onClick={save} className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-bold text-white">Save</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? <div className="py-8 text-center text-sm text-slate-400">Loading…</div> : replies.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-6 text-center text-[12px] text-slate-400">No instant replies yet — add one, or use "Suggest from past chats".</div>
+      ) : replies.map((q) => (
+        <div key={q.id} className="rounded-lg border border-slate-200 bg-white p-2.5">
+          {editId === q.id ? (
+            <>
+              <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={3} className="w-full resize-none rounded-lg border border-slate-200 px-2.5 py-2 text-[13px] outline-none focus:border-brand-500" />
+              <div className="mt-1.5 flex justify-end gap-2">
+                <button onClick={() => setEditId(null)} className="text-xs font-semibold text-slate-500">Cancel</button>
+                <button onClick={() => saveEdit(q.id)} className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-bold text-white">Save</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="whitespace-pre-wrap text-[13px] leading-snug text-slate-800">{q.body}</p>
+              <div className="mt-2 flex items-center gap-2">
+                <button onClick={() => onSendReply(q.body)} className="rounded-md bg-brand-600 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-700">Send to Chat</button>
+                <button onClick={() => { setEditId(q.id); setEditText(q.body) }} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">Edit</button>
+                <button onClick={() => del(q.id)} className="ml-auto text-xs font-semibold text-slate-400 hover:text-rose-600">Delete</button>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+
+      <div className="border-t border-slate-100 pt-3">
+        <button onClick={suggest} disabled={sugBusy} className="rounded-lg border border-violet-200 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">
+          {sugBusy ? 'Scanning chats…' : '🔎 Suggest from past chats'}
+        </button>
+        {sugs && sugs.length === 0 && <p className="mt-2 text-[11px] text-slate-400">No more repeated replies found.</p>}
+        {sugs && sugs.length > 0 && (
+          <div className="mt-2 space-y-2">
+            <p className="text-[11px] text-slate-500">Most-repeated replies in your chats — click ＋ to add:</p>
+            {sugs.map((s, i) => (
+              <div key={i} className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                <span className="mt-0.5 shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">{s.count}×</span>
+                <p className="flex-1 text-[12px] text-slate-700">{s.body}</p>
+                <button onClick={() => addSug(s.body)} title="Add" className="shrink-0 rounded-md bg-emerald-600 px-2 py-0.5 text-xs font-bold text-white">＋</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

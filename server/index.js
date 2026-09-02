@@ -2543,6 +2543,67 @@ Be thorough and specific using the chat's own details; use full sentences in "Co
   } catch (e) { res.status(e.status || 500).json({ error: e.message, hint: e.hint }) }
 })
 
+// ============================================================
+// Instant Replies (quick / canned responses) — AI Supervisor tab.
+// Seeded from the most-repeated agent replies across past chats; editable + add.
+// ============================================================
+const QR_SUGGEST_SQL = `
+  SELECT (array_agg(body ORDER BY length(body)))[1] AS body, count(*) AS c
+  FROM app.messages
+  WHERE direction='out' AND body IS NOT NULL AND length(trim(body)) BETWEEN 20 AND 400
+  GROUP BY lower(regexp_replace(trim(body), '\\s+', ' ', 'g'))
+  HAVING count(*) >= 3
+  ORDER BY count(*) DESC LIMIT $1`
+const shortLabel = (s) => { const t = String(s || '').replace(/\s+/g, ' ').trim(); return t.length > 40 ? t.slice(0, 40) + '…' : t }
+
+app.get('/api/quick-replies', authRequired, async (req, res) => {
+  try { res.json({ replies: (await dbQuery(`SELECT id,label,body,category,sort,usage_count,source FROM app.quick_replies WHERE active ORDER BY sort ASC, usage_count DESC, created_at ASC`)).rows }) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.post('/api/quick-replies', authRequired, async (req, res) => {
+  try {
+    const b = req.body || {}
+    if (!b.body || !String(b.body).trim()) return res.status(400).json({ error: 'body required' })
+    const r = (await dbQuery(`INSERT INTO app.quick_replies (label,body,category,source,created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id,label,body,category,sort,usage_count,source`,
+      [b.label || shortLabel(b.body), String(b.body).trim(), b.category || null, b.source || 'manual', agentName(req)])).rows[0]
+    res.json(r)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.patch('/api/quick-replies/:id', authRequired, async (req, res) => {
+  try {
+    const b = req.body || {}
+    const r = (await dbQuery(`UPDATE app.quick_replies SET
+      label=COALESCE($2,label), body=COALESCE($3,body), category=COALESCE($4,category), sort=COALESCE($5,sort), updated_at=now()
+      WHERE id=$1 RETURNING id,label,body,category,sort,usage_count,source`,
+      [req.params.id, b.label ?? null, b.body != null ? String(b.body).trim() : null, b.category ?? null, b.sort ?? null])).rows[0]
+    if (!r) return res.status(404).json({ error: 'not found' })
+    res.json(r)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.delete('/api/quick-replies/:id', authRequired, async (req, res) => {
+  try { await dbQuery(`UPDATE app.quick_replies SET active=false, updated_at=now() WHERE id=$1`, [req.params.id]); res.json({ ok: true }) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+// Analyze past chats → most-repeated agent replies (candidates to add). No AI cost (pure SQL).
+app.post('/api/quick-replies/suggest', authRequired, async (req, res) => {
+  try {
+    const limit = Math.min(50, Math.max(1, +req.body?.limit || 15))
+    const rows = (await dbQuery(QR_SUGGEST_SQL, [limit])).rows
+    res.json({ suggestions: rows.map(r => ({ body: r.body, count: +r.c, label: shortLabel(r.body) })) })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+// One-time seed: if there are no quick replies yet, insert the top-5 most-repeated replies.
+app.post('/api/quick-replies/seed', authRequired, async (req, res) => {
+  try {
+    const have = +(await dbQuery(`SELECT count(*) c FROM app.quick_replies WHERE active`)).rows[0].c
+    if (have > 0) return res.json({ seeded: 0, replies: (await dbQuery(`SELECT id,label,body,category,sort,usage_count,source FROM app.quick_replies WHERE active ORDER BY sort,usage_count DESC`)).rows })
+    const cands = (await dbQuery(QR_SUGGEST_SQL, [5])).rows
+    let i = 0
+    for (const c of cands) { await dbQuery(`INSERT INTO app.quick_replies (label,body,source,sort,created_by) VALUES ($1,$2,'suggested',$3,$4)`, [shortLabel(c.body), c.body, i, agentName(req)]); i++ }
+    res.json({ seeded: cands.length, replies: (await dbQuery(`SELECT id,label,body,category,sort,usage_count,source FROM app.quick_replies WHERE active ORDER BY sort,usage_count DESC`)).rows })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Agent ne ek field pe Validate dabaya -> wahi ek field DB me save.
 app.post('/api/leads/field/:id', authRequired, async (req, res) => {
   try {
