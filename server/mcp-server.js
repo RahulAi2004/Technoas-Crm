@@ -125,15 +125,17 @@ server.tool('get_customer', 'Everything known about ONE customer: stats plus the
     })
   })
 
-server.tool('get_chat', 'The actual chat transcript with a customer (exact words). Returns the most recent messages — raise limit for more.',
-  { name: z.string().describe('Customer name (partial ok)'), limit: z.number().optional().default(60).describe('How many recent messages (default 60)') },
+server.tool('get_chat', 'The FULL chat transcript with a customer (exact words), oldest→newest. By default returns the whole conversation.',
+  { name: z.string().describe('Customer name (partial ok)'), limit: z.number().optional().default(500).describe('Max messages to return (default 500 = usually the whole chat)') },
   async ({ name, limit }) => {
-    const c = (await q(`SELECT customer_id, full_name FROM app.customers WHERE full_name ILIKE $1 LIMIT 1`, [`%${name}%`])).rows[0]
+    const c = (await q(`SELECT customer_id, full_name FROM app.customers WHERE full_name ILIKE $1 ORDER BY total_spent DESC NULLS LAST LIMIT 1`, [`%${name}%`])).rows[0]
     if (!c) return text(`No customer matching "${name}".`)
-    const r = await q(`SELECT direction, message_type, body, to_char(created_at,'YYYY-MM-DD HH24:MI') ts
+    // order by real send time (sent_at), falling back to insert time for old/backfilled rows,
+    // and default to the WHOLE conversation so summaries never miss the latest updates.
+    const r = await q(`SELECT direction, message_type, body, to_char(COALESCE(sent_at, created_at),'YYYY-MM-DD HH24:MI') ts
        FROM app.messages WHERE conversation_id IN (SELECT conversation_id FROM app.conversations WHERE customer_id=$1)
          AND direction IN ('in','out') AND (body <> '' OR message_type='image')
-       ORDER BY created_at DESC LIMIT $2`, [c.customer_id, Math.min(limit || 60, 400)])
+       ORDER BY COALESCE(sent_at, created_at) DESC LIMIT $2`, [c.customer_id, Math.min(limit || 500, 3000)])
     const lines = r.rows.reverse().map((m) => m.message_type === 'image'
       ? `[${m.ts}] ${m.direction === 'in' ? 'Customer' : 'Agent'}: (shared an image)`
       : `[${m.ts}] ${m.direction === 'in' ? 'Customer' : 'Agent'}: ${m.body}`)
