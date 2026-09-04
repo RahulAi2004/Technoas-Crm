@@ -2513,7 +2513,10 @@ app.post('/api/leads/order-summary/:id', authRequired, async (req, res) => {
       .filter((m) => m.conversation_id === id && (m.text || '').trim() && m.dir !== 'note')
       .sort((a, b) => (Number(a.ts) || 0) - (Number(b.ts) || 0))
     if (!msgs.length) return res.json({ summary: '' })
-    const transcript = msgs.map((m) => `${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.text}`).join('\n').slice(0, 24000)
+    // Keep the NEWEST messages when a chat is very long — the latest order lives at the end,
+    // so slice from the tail (old code kept the oldest 24k and dropped recent updates).
+    const full = msgs.map((m) => `${m.dir === 'in' ? 'Customer' : 'Agent'}: ${m.text}`).join('\n')
+    const transcript = full.length > 60000 ? full.slice(-60000) : full
     const custom = String(req.body?.prompt || '').trim()
     const sys = `You are a print-shop (custom apparel / DTF printing) CRM assistant. Read the ENTIRE conversation and write a DETAILED, well-organised summary of the customer's LATEST / most-recent order.
 
