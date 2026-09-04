@@ -14,7 +14,7 @@ import { aiConfigured, anthropicConfigured, groqConfigured, aiModels, chatModels
 // Override with REPLY_MODEL in server/.env (e.g. groq/llama-3.3-70b-versatile).
 const REPLY_MODEL = () => process.env.REPLY_MODEL || (groqConfigured() ? 'groq/openai/gpt-oss-120b' : 'gpt-5.5')
 import { profileFromTranscript } from './build-profiles.js'
-import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
+import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker, startAutoClassifier } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
 import { listStyles, getStyle } from './catalog.js'
 import { generateDocument, documentStatus } from './documents.js'
@@ -3921,6 +3921,15 @@ app.listen(PORT, () => {
   startUploadWorker()          // NextCloud file upload (fast)
   startShareWorker()           // NextCloud share-links (slow, rate-limit-safe)
   startBackfillWorker()        // missing image bytes ko source_url se dobara download (broken images fix)
+  // Free/local image auto-classifier: complete artwork→SRC, payment/doc→DOCS (suggest), else→agent.
+  // Unsure files ka chat me review-notification bhejo (SSE) taaki agent Files tab me mark kare.
+  startAutoClassifier((ev) => {
+    try {
+      broadcast({ type: 'file_review', conversationId: ev.conversationId, artwork_no: ev.artwork_no,
+        suggestion: ev.suggestion, reason: ev.reason,
+        text: ev.suggestion ? `🖼️ New file — looks like ${ev.suggestion}. Confirm in Files tab.` : '🖼️ New file needs filing — open Files tab.' })
+    } catch { /* ignore */ }
+  })
   startChatwootReconcile()     // Chatwoot: webhook ke gaps API se bharo (server-down safety)
   startInstagramPromote()      // Chatwoot IG messages ko CRM inbox conversations (ig:) me laao
   startDecoinksEventBridge()   // decoinks_db ke naye artworks -> Task Management ARTWORK_CREATED event

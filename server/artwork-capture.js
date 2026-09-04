@@ -4,7 +4,9 @@
 // NextCloud mein customer ke bheje files `references/` mein, hamare bheje mockups `sent/` mein.
 // Local disk par koi copy nahi.
 import pg from 'pg'
+import { createHash } from 'node:crypto'
 import { ncConfigured, ncUploadAndShare, ncShareLink, ncRemotePath, ncEnsureCustomerFolders, ncEnsureFolder, ncGet, ncPut, ncMove, NC_ROOT } from './nextcloud.js'
+import { classifyImage } from './artwork-classify.js'
 
 // Client ke bheje (SRC) images ka NextCloud auto-upload DEFAULT band hai — pehle sab
 // apne-aap references/ me chale jate the (stickers/junk bhi), jise agent ab Files tab se
@@ -514,10 +516,65 @@ export async function routeFile({ artworkNo, name, bucket, by }) {
   } else if (curPath !== target) {
     if (!(await ncMove(curPath, target))) throw new Error('move failed')
   }
+  // remember this decision by content hash → identical files auto-file next time (learning)
+  if (row.image_data) {
+    try {
+      const sha = createHash('sha256').update(row.image_data).digest('hex')
+      await pool.query(`INSERT INTO app.artwork_route_memory (sha256,bucket,decided_by) VALUES ($1,$2,$3)
+        ON CONFLICT (sha256) DO UPDATE SET bucket=EXCLUDED.bucket, decided_by=EXCLUDED.decided_by, decided_at=now()`,
+        [sha, bucket, by || null])
+    } catch { /* non-fatal */ }
+  }
   await pool.query(
     `UPDATE app.customer_artwork SET routed_bucket=$2, routed_sub=$3, file_name=$5, routed_at=now(),
             routed_by=$4, upload_status='nextcloud_ok', image_data=NULL WHERE artwork_id=$1`,
     [row.artwork_id, bucket, sub, by || null, newFileName])
   ncCache.delete(row.artwork_no)
   return { ok: true, bucket, remote: target, file_name: newFileName }
+}
+
+// ── Auto-classifier worker ───────────────────────────────────────────────────
+// New un-routed customer images (bytes held in PG) → classify locally (free):
+//   1) exact content seen before (route memory) → auto-file to the remembered bucket
+//   2) high-confidence complete artwork → auto-file to SRC (Artworks)
+//   3) anything else → save a SUGGESTION only; the agent confirms in the Files tab
+//      (never auto-misfiles). `notify` (from index.js) pings the chat for review.
+export async function classifyNewArtworks(notify, limit = 8) {
+  if (!ncConfigured()) return { done: 0 }
+  const { rows } = await pool.query(
+    `SELECT artwork_id, artwork_no, conversation_id, image_data
+       FROM app.customer_artwork
+      WHERE routed_bucket IS NULL AND classified_at IS NULL AND image_data IS NOT NULL
+      ORDER BY created_at DESC LIMIT $1`, [limit])
+  let auto = 0, review = 0
+  for (const r of rows) {
+    let suggestion = null, reason = '', decided = null
+    try {
+      const sha = createHash('sha256').update(r.image_data).digest('hex')
+      const mem = (await pool.query(`SELECT bucket FROM app.artwork_route_memory WHERE sha256=$1`, [sha])).rows[0]
+      if (mem) { decided = mem.bucket; reason = 'seen before (memory)' }
+      else {
+        const c = await classifyImage(r.image_data)
+        suggestion = c.type === 'UNSURE' ? null : c.type
+        reason = c.reason
+        if (c.type === 'SRC' && c.confidence >= 0.85) decided = 'SRC'   // only auto-file near-certain artwork
+      }
+    } catch (e) { reason = 'classify error: ' + e.message }
+
+    if (decided) {
+      try { await routeFile({ artworkNo: r.artwork_no, bucket: decided, by: 'auto-classifier' }); auto++; continue }
+      catch { /* fall back to suggestion */ }
+    }
+    // save suggestion, mark classified so we don't reprocess; ping chat for the agent
+    await pool.query(`UPDATE app.customer_artwork SET suggested_bucket=$2, class_reason=$3, classified_at=now() WHERE artwork_id=$1`,
+      [r.artwork_id, suggestion, reason])
+    review++
+    try { notify && notify({ conversationId: r.conversation_id, artwork_no: r.artwork_no, suggestion, reason }) } catch { /* ignore */ }
+  }
+  return { done: rows.length, auto, review }
+}
+
+export function startAutoClassifier(notify, intervalMs = 45 * 1000) {
+  setInterval(() => classifyNewArtworks(notify).catch((e) => console.warn('[auto-classify]', e.message)), intervalMs)
+  console.log('🎨 Artwork auto-classifier started (free/local — SRC/DOCS/REF suggest + learn)')
 }
