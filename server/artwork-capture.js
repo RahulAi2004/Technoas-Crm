@@ -481,15 +481,15 @@ export async function routeFile({ artworkNo, name, bucket, by }) {
   if (!row.folder) throw new Error('file has no client folder')
 
   const ext = row.file_type || 'jpg'
-  const fileName = `${row.artwork_no}.${ext}`
+  const curFileName = `${row.artwork_no}.${ext}`   // existing name in NextCloud (capture-time, e.g. -SRC)
   const curSub = row.routed_sub || subfolderForRef(row.message_ref)
-  const curPath = ncRemotePath(row.folder, curSub, fileName)   // NC_ROOT/<folder>/<sub>/<file>
+  const curPath = ncRemotePath(row.folder, curSub, curFileName)   // NC_ROOT/<folder>/<sub>/<file>
   const rootParts = NC_ROOT.split('/').filter(Boolean)
 
   // TRASH -> top-level `trash/` folder (Leads 2.0 ke bahar), file naam client-prefixed.
   if (bucket === 'TRASH') {
     await ncEnsureFolder(['trash'])
-    const target = `trash/${row.folder}__${fileName}`
+    const target = `trash/${row.folder}__${curFileName}`
     const ok = row.has_bytes ? await ncPut(target, row.image_data) : await ncMove(curPath, target)
     if (!ok) throw new Error('trash move failed')
     await pool.query(
@@ -501,18 +501,23 @@ export async function routeFile({ artworkNo, name, bucket, by }) {
   }
 
   // SRC/REF/DOCS -> Leads 2.0/<folder>/<Artworks|references|Documents>/<file>
+  // Rename the file's suffix to MATCH the chosen bucket so the Vault shows the right type.
+  // (Bug: every file was named '-SRC' at capture, so files routed to references stayed '-SRC'.)
+  const SUFFIX = { SRC: 'SRC', REF: 'REF', DOCS: 'DOC' }
+  const baseNo = String(row.artwork_no).replace(/-(SRC|OUT|CMB|REF|DOC)$/i, '')
+  const newFileName = `${baseNo}-${SUFFIX[bucket]}.${ext}`
   const sub = BUCKET_SUB[bucket]
   await ncEnsureFolder([...rootParts, row.folder, sub])
-  const target = ncRemotePath(row.folder, sub, fileName)
+  const target = ncRemotePath(row.folder, sub, newFileName)
   if (row.has_bytes) {
     if (!(await ncPut(target, row.image_data))) throw new Error('upload failed')
   } else if (curPath !== target) {
     if (!(await ncMove(curPath, target))) throw new Error('move failed')
   }
   await pool.query(
-    `UPDATE app.customer_artwork SET routed_bucket=$2, routed_sub=$3, routed_at=now(),
+    `UPDATE app.customer_artwork SET routed_bucket=$2, routed_sub=$3, file_name=$5, routed_at=now(),
             routed_by=$4, upload_status='nextcloud_ok', image_data=NULL WHERE artwork_id=$1`,
-    [row.artwork_id, bucket, sub, by || null])
+    [row.artwork_id, bucket, sub, by || null, newFileName])
   ncCache.delete(row.artwork_no)
-  return { ok: true, bucket, remote: target }
+  return { ok: true, bucket, remote: target, file_name: newFileName }
 }
