@@ -2329,7 +2329,7 @@ const BUCKET_STYLE = {
   TRASH: 'bg-rose-50 text-rose-700 ring-rose-200',
 }
 
-function FileCard({ f, onRoute }) {
+function FileCard({ f, onRoute, selected, onToggle }) {
   const [busy, setBusy] = useState(false)
   const pick = async (bucket) => {
     if (busy || bucket === f.bucket) return
@@ -2337,8 +2337,11 @@ function FileCard({ f, onRoute }) {
     try { await onRoute(f, bucket) } finally { setBusy(false) }
   }
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className={`flex flex-col overflow-hidden rounded-xl border bg-white ${selected ? 'border-brand-500 ring-2 ring-brand-400' : 'border-slate-200'}`}>
       <div className="relative grid aspect-square place-items-center bg-slate-50">
+        <label className="absolute right-1.5 top-1.5 z-10 grid h-6 w-6 cursor-pointer place-items-center rounded-md bg-white/90 ring-1 ring-slate-300">
+          <input type="checkbox" checked={!!selected} onChange={() => onToggle(f)} className="h-4 w-4 accent-brand-600" />
+        </label>
         <ChatImage att={{ name: f.name }} className="h-full w-full object-contain" />
         {f.bucket && (
           <span className={`absolute left-1.5 top-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ring-1 ${BUCKET_STYLE[f.bucket] || 'bg-slate-100 text-slate-600 ring-slate-200'}`}>{f.bucket}</span>
@@ -2365,11 +2368,13 @@ function FilesTab({ conv }) {
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
+  const [sel, setSel] = useState(() => new Set())   // selected artwork_no for bulk routing
+  const [bulkBusy, setBulkBusy] = useState(false)
   const cid = conv?.id
 
   useEffect(() => {
     let cancelled = false
-    setFiles([]); setErr(null)
+    setFiles([]); setErr(null); setSel(new Set())
     if (!cid) return
     setLoading(true)
     api.get(`/api/files?conversation_id=${encodeURIComponent(cid)}`)
@@ -2378,17 +2383,29 @@ function FilesTab({ conv }) {
       .finally(() => { if (!cancelled) setLoading(false) })
   }, [cid])
 
+  // core route (no toast) — used by single + bulk
+  const applyRoute = async (f, bucket) => {
+    await api.post('/api/files/route', { conversation_id: cid, artwork_no: f.artwork_no, name: f.name, bucket })
+    if (bucket === 'TRASH') setFiles((xs) => xs.filter((x) => x.artwork_no !== f.artwork_no))
+    else setFiles((xs) => xs.map((x) => x.artwork_no === f.artwork_no ? { ...x, bucket } : x))
+  }
   const onRoute = async (f, bucket) => {
-    try {
-      await api.post('/api/files/route', { conversation_id: cid, artwork_no: f.artwork_no, name: f.name, bucket })
-      if (bucket === 'TRASH') {
-        setFiles((xs) => xs.filter((x) => x.artwork_no !== f.artwork_no))
-        toast('Moved to trash', 'success')
-      } else {
-        setFiles((xs) => xs.map((x) => x.artwork_no === f.artwork_no ? { ...x, bucket } : x))
-        toast(`Saved to ${bucket}`, 'success')
-      }
-    } catch (e) { toast(e.message || 'Routing failed', 'error') }
+    try { await applyRoute(f, bucket); toast(bucket === 'TRASH' ? 'Moved to trash' : `Saved to ${bucket}`, 'success') }
+    catch (e) { toast(e.message || 'Routing failed', 'error') }
+  }
+
+  const toggle = (f) => setSel((s) => { const n = new Set(s); n.has(f.artwork_no) ? n.delete(f.artwork_no) : n.add(f.artwork_no); return n })
+  const allShown = files.map((f) => f.artwork_no)
+  const selectAll = () => setSel(new Set(allShown))
+  const clearSel = () => setSel(new Set())
+  const bulkRoute = async (bucket) => {
+    const picks = files.filter((f) => sel.has(f.artwork_no))
+    if (!picks.length) return
+    setBulkBusy(true)
+    let ok = 0, fail = 0
+    for (const f of picks) { try { await applyRoute(f, bucket); ok++ } catch { fail++ } }
+    setBulkBusy(false); clearSel()
+    toast(`${ok} filed to ${bucket}${fail ? ` · ${fail} failed` : ''}`, fail ? 'error' : 'success')
   }
 
   const routed = files.filter((f) => f.bucket).length
@@ -2398,7 +2415,27 @@ function FilesTab({ conv }) {
         <div className="text-lg font-bold">Files</div>
         {files.length > 0 && <div className="text-xs text-slate-500">{routed}/{files.length} filed</div>}
       </div>
-      <p className="mb-3 text-xs text-slate-500">New files the client sent that still need filing. Check each preview, then file it to <b>SRC</b>, <b>REF</b>, <b>DOCS</b> or send junk to <b>TRASH</b> — it saves straight into this client's NextCloud folder and leaves this list.</p>
+      <p className="mb-3 text-xs text-slate-500">New files the client sent that still need filing. File each to <b>SRC</b>, <b>REF</b>, <b>DOCS</b> or <b>TRASH</b> — or tick multiple and file them together.</p>
+      {files.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          {sel.size === 0 ? (
+            <button onClick={selectAll} className="text-xs font-semibold text-brand-600 hover:text-brand-700">Select all ({files.length})</button>
+          ) : (
+            <>
+              <span className="text-xs font-bold text-slate-700">{sel.size} selected</span>
+              <button onClick={clearSel} className="text-xs font-semibold text-slate-400 hover:text-slate-600">Clear</button>
+              <span className="ml-1 text-[11px] text-slate-400">→ file all to:</span>
+              {FILE_BUCKETS.map((b) => (
+                <button key={b.id} onClick={() => bulkRoute(b.id)} disabled={bulkBusy} title={b.hint}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-bold ring-1 transition disabled:opacity-50 ${BUCKET_STYLE[b.id] || 'bg-white text-slate-500 ring-slate-200'} hover:brightness-95`}>
+                  {b.label}
+                </button>
+              ))}
+              {bulkBusy && <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500" />}
+            </>
+          )}
+        </div>
+      )}
       {loading ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">Loading files…</div>
       ) : err ? (
@@ -2407,7 +2444,7 @@ function FilesTab({ conv }) {
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No new files to sort. New files the client sends will appear here for filing.</div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {files.map((f) => <FileCard key={f.artwork_no} f={f} onRoute={onRoute} />)}
+          {files.map((f) => <FileCard key={f.artwork_no} f={f} onRoute={onRoute} selected={sel.has(f.artwork_no)} onToggle={toggle} />)}
         </div>
       )}
     </div>

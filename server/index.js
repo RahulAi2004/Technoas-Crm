@@ -3921,15 +3921,7 @@ app.listen(PORT, () => {
   startUploadWorker()          // NextCloud file upload (fast)
   startShareWorker()           // NextCloud share-links (slow, rate-limit-safe)
   startBackfillWorker()        // missing image bytes ko source_url se dobara download (broken images fix)
-  // Free/local image auto-classifier: complete artwork→SRC, payment/doc→DOCS (suggest), else→agent.
-  // Unsure files ka chat me review-notification bhejo (SSE) taaki agent Files tab me mark kare.
-  startAutoClassifier((ev) => {
-    try {
-      broadcast({ type: 'file_review', conversationId: ev.conversationId, artwork_no: ev.artwork_no,
-        suggestion: ev.suggestion, reason: ev.reason,
-        text: ev.suggestion ? `🖼️ New file — looks like ${ev.suggestion}. Confirm in Files tab.` : '🖼️ New file needs filing — open Files tab.' })
-    } catch { /* ignore */ }
-  })
+  // (auto-classifier hataya — agent Files tab se manually route karta hai, multi-select ke saath)
   startChatwootReconcile()     // Chatwoot: webhook ke gaps API se bharo (server-down safety)
   startInstagramPromote()      // Chatwoot IG messages ko CRM inbox conversations (ig:) me laao
   startDecoinksEventBridge()   // decoinks_db ke naye artworks -> Task Management ARTWORK_CREATED event
