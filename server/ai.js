@@ -2,11 +2,13 @@
 // Uses the REST APIs directly (no SDK). OpenAI + Anthropic (Claude).
 const KEY = process.env.OPENAI_API_KEY
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY
+const GROQ_KEY = process.env.GROQ_API_KEY               // Groq (OpenAI-compatible, fast + cheap)
 const CHAT_MODEL  = process.env.OPENAI_CHAT_MODEL  || 'gpt-4o-mini'
 const EMBED_MODEL = process.env.OPENAI_EMBED_MODEL || 'text-embedding-3-small'
 
 export const aiConfigured = () => !!KEY                  // OpenAI (chat + embeddings)
 export const anthropicConfigured = () => !!ANTHROPIC_KEY // Claude
+export const groqConfigured = () => !!GROQ_KEY           // Groq
 export const aiModels = () => ({ chat: CHAT_MODEL, embed: EMBED_MODEL })
 
 // ---- AI usage / cost tracking ------------------------------------------------
@@ -15,6 +17,9 @@ const PRICE = {
   'gpt-4o-mini': [0.15, 0.60], 'gpt-4o': [2.50, 10.00],
   'gpt-5.5': [5.00, 25.00], 'gpt-5': [5.00, 25.00],
   'text-embedding-3-small': [0.02, 0], 'text-embedding-3-large': [0.13, 0],
+  // Groq (approx public rates — verify at groq.com/pricing)
+  'llama-3.3-70b-versatile': [0.59, 0.79], 'llama-3.1-8b-instant': [0.05, 0.08],
+  'llama-3.1-70b': [0.59, 0.79], 'mixtral-8x7b': [0.24, 0.24], 'gemma2-9b-it': [0.20, 0.20], 'llama': [0.59, 0.79],
 }
 const priceOf = (m) => PRICE[m] || PRICE[Object.keys(PRICE).find((k) => String(m || '').startsWith(k))] || [0, 0]
 // Live, in-memory usage since server start (resets on restart). Exposed via /api/ai/usage.
@@ -40,13 +45,21 @@ export const CHAT_MODELS = [
   { id: 'gpt-5.5',          label: 'GPT-5.5',           provider: 'openai' },
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'anthropic' },
   { id: 'claude-opus-4-8',   label: 'Claude Opus 4.8',   provider: 'anthropic' },
+  { id: 'groq/llama-3.3-70b-versatile', label: 'Groq Llama 3.3 70B', provider: 'groq' },
+  { id: 'groq/llama-3.1-8b-instant',    label: 'Groq Llama 3.1 8B (fastest)', provider: 'groq' },
 ]
-export const providerOf = (model) => (String(model || '').startsWith('claude') ? 'anthropic' : 'openai')
+export const providerOf = (model) => {
+  const m = String(model || '')
+  if (m.startsWith('claude')) return 'anthropic'
+  if (m.startsWith('groq/')) return 'groq'
+  return 'openai'
+}
+const stripGroq = (m) => String(m).replace(/^groq\//, '')
 
 // The model list with a `ready` flag (is the provider's API key configured?).
 export const chatModels = () => CHAT_MODELS.map((m) => ({
   ...m,
-  ready: m.provider === 'anthropic' ? anthropicConfigured() : aiConfigured(),
+  ready: m.provider === 'anthropic' ? anthropicConfigured() : m.provider === 'groq' ? groqConfigured() : aiConfigured(),
 }))
 
 async function openai(path, body, tag = 'other') {
@@ -85,6 +98,25 @@ async function anthropic(path, body) {
     err.code = data?.error?.type
     throw err
   }
+  return data
+}
+
+// Groq — OpenAI-compatible chat completions (fast + cheap). Model passed with 'groq/' prefix.
+async function groq(path, body, tag = 'other') {
+  if (!GROQ_KEY) { const e = new Error('GROQ_API_KEY not set'); e.status = 400; throw e }
+  const res = await fetch('https://api.groq.com/openai/v1' + path, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok || data?.error) {
+    const err = new Error(data?.error?.message || `Groq HTTP ${res.status}`)
+    err.status = res.status; err.code = data?.error?.code
+    err.hint = res.status === 429 ? 'Groq rate limit / out of credits — check console.groq.com.' : undefined
+    throw err
+  }
+  trackUsage(tag, data?.model || stripGroq(body?.model), data?.usage)
   return data
 }
 
@@ -140,6 +172,14 @@ export async function chatJSON(system, user, { model = CHAT_MODEL, temperature =
       { model })
     return JSON.parse(stripFences(txt) || '{}')
   }
+  if (providerOf(model) === 'groq') {
+    const d = await groq('/chat/completions', {
+      model: stripGroq(model),
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      response_format: { type: 'json_object' }, temperature,
+    }, tag)
+    return JSON.parse(d.choices?.[0]?.message?.content || '{}')
+  }
   const d = await openai('/chat/completions', {
     model,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
@@ -154,12 +194,20 @@ export async function chatJSON(system, user, { model = CHAT_MODEL, temperature =
 // Routes to OpenAI or Anthropic based on the model id.
 export async function chatMessages(messages, { model = CHAT_MODEL, temperature = 0.4, tag = 'assistant' } = {}) {
   if (providerOf(model) === 'anthropic') return anthropicChat(messages, { model })
+  if (providerOf(model) === 'groq') {
+    const d = await groq('/chat/completions', { model: stripGroq(model), messages, temperature }, tag)
+    return d.choices?.[0]?.message?.content?.trim() || ''
+  }
   const d = await openai('/chat/completions', { model, messages, ...(isGpt5(model) ? {} : { temperature }) }, tag)
   return d.choices?.[0]?.message?.content?.trim() || ''
 }
 
 // Plain text completion (e.g. translations, freeform replies).
 export async function chatText(system, user, { model = CHAT_MODEL, temperature = 0.4, tag = 'chatText' } = {}) {
+  if (providerOf(model) === 'groq') {
+    const d = await groq('/chat/completions', { model: stripGroq(model), messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature }, tag)
+    return d.choices?.[0]?.message?.content?.trim() || ''
+  }
   const d = await openai('/chat/completions', {
     model,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],

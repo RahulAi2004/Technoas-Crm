@@ -9,7 +9,10 @@ import { spawn } from 'node:child_process'
 import { ManyChatClient } from './manychat.js'
 import { MetaClient } from './meta.js'
 import { QdrantClient, qdrantConfigured } from './qdrant.js'
-import { aiConfigured, anthropicConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages, getUsageStats } from './ai.js'
+import { aiConfigured, anthropicConfigured, groqConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages, getUsageStats } from './ai.js'
+// Model used for AI-generated customer replies. Groq (fast+cheap) if configured, else gpt-5.5.
+// Override with REPLY_MODEL in server/.env (e.g. groq/llama-3.3-70b-versatile).
+const REPLY_MODEL = () => process.env.REPLY_MODEL || (groqConfigured() ? 'groq/llama-3.3-70b-versatile' : 'gpt-5.5')
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
@@ -3088,7 +3091,7 @@ GROUNDING RULE (critical — do not violate): Base your reply ONLY on what the c
 Be professional, helpful and concise. Use the full conversation only as background context.
 Respond with ONLY a JSON object: { "detectedLanguage": string, "reply": string }`
     const user = `${kb ? `Knowledge base (use if relevant):\n${kb}\n\n` : ''}Customer: ${conv.name} · Channel: ${conv.channel}\n\nFull conversation (BACKGROUND CONTEXT ONLY — do not copy its language):\n${msgs.map(fmtMsg).join('\n')}\n\n>>> UNANSWERED customer message(s) you must reply to (detect THEIR language, answer ALL of them):\n${targetText}`
-    const out = await chatJSON(sys, user, { tag: 'recommend-reply', model: 'gpt-5.5' })
+    const out = await chatJSON(sys, user, { tag: 'recommend-reply', model: REPLY_MODEL() })
     res.json({
       ok: true,
       pending: pendingMsgs.length > 0,
