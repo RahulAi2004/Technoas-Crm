@@ -3088,7 +3088,7 @@ GROUNDING RULE (critical — do not violate): Base your reply ONLY on what the c
 Be professional, helpful and concise. Use the full conversation only as background context.
 Respond with ONLY a JSON object: { "detectedLanguage": string, "reply": string }`
     const user = `${kb ? `Knowledge base (use if relevant):\n${kb}\n\n` : ''}Customer: ${conv.name} · Channel: ${conv.channel}\n\nFull conversation (BACKGROUND CONTEXT ONLY — do not copy its language):\n${msgs.map(fmtMsg).join('\n')}\n\n>>> UNANSWERED customer message(s) you must reply to (detect THEIR language, answer ALL of them):\n${targetText}`
-    const out = await chatJSON(sys, user, { tag: 'recommend-reply' })
+    const out = await chatJSON(sys, user, { tag: 'recommend-reply', model: 'gpt-5.5' })
     res.json({
       ok: true,
       pending: pendingMsgs.length > 0,
