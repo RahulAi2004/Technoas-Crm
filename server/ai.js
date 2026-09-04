@@ -18,8 +18,9 @@ const PRICE = {
   'gpt-5.5': [5.00, 25.00], 'gpt-5': [5.00, 25.00],
   'text-embedding-3-small': [0.02, 0], 'text-embedding-3-large': [0.13, 0],
   // Groq (approx public rates — verify at groq.com/pricing)
-  'llama-3.3-70b-versatile': [0.59, 0.79], 'llama-3.1-8b-instant': [0.05, 0.08],
-  'llama-3.1-70b': [0.59, 0.79], 'mixtral-8x7b': [0.24, 0.24], 'gemma2-9b-it': [0.20, 0.20], 'llama': [0.59, 0.79],
+  'openai/gpt-oss-120b': [0.15, 0.75], 'openai/gpt-oss-20b': [0.10, 0.50],
+  'qwen/qwen3.8-27b': [0.29, 0.59], 'qwen/qwen3.6-27b': [0.29, 0.59], 'groq/compound': [0.15, 0.75],
+  'llama-3.3-70b-versatile': [0.59, 0.79], 'llama-3.1-8b-instant': [0.05, 0.08], 'llama': [0.59, 0.79],
 }
 const priceOf = (m) => PRICE[m] || PRICE[Object.keys(PRICE).find((k) => String(m || '').startsWith(k))] || [0, 0]
 // Live, in-memory usage since server start (resets on restart). Exposed via /api/ai/usage.
@@ -45,8 +46,9 @@ export const CHAT_MODELS = [
   { id: 'gpt-5.5',          label: 'GPT-5.5',           provider: 'openai' },
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'anthropic' },
   { id: 'claude-opus-4-8',   label: 'Claude Opus 4.8',   provider: 'anthropic' },
-  { id: 'groq/llama-3.3-70b-versatile', label: 'Groq Llama 3.3 70B', provider: 'groq' },
-  { id: 'groq/llama-3.1-8b-instant',    label: 'Groq Llama 3.1 8B (fastest)', provider: 'groq' },
+  { id: 'groq/openai/gpt-oss-120b', label: 'Groq GPT-OSS 120B', provider: 'groq' },
+  { id: 'groq/openai/gpt-oss-20b',  label: 'Groq GPT-OSS 20B (faster)', provider: 'groq' },
+  { id: 'groq/qwen/qwen3.8-27b',    label: 'Groq Qwen3 27B', provider: 'groq' },
 ]
 export const providerOf = (model) => {
   const m = String(model || '')

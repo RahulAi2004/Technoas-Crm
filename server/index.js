@@ -12,7 +12,7 @@ import { QdrantClient, qdrantConfigured } from './qdrant.js'
 import { aiConfigured, anthropicConfigured, groqConfigured, aiModels, chatModels, providerOf, embed, chatJSON, chatText, chatMessages, getUsageStats } from './ai.js'
 // Model used for AI-generated customer replies. Groq (fast+cheap) if configured, else gpt-5.5.
 // Override with REPLY_MODEL in server/.env (e.g. groq/llama-3.3-70b-versatile).
-const REPLY_MODEL = () => process.env.REPLY_MODEL || (groqConfigured() ? 'groq/llama-3.3-70b-versatile' : 'gpt-5.5')
+const REPLY_MODEL = () => process.env.REPLY_MODEL || (groqConfigured() ? 'groq/openai/gpt-oss-120b' : 'gpt-5.5')
 import { profileFromTranscript } from './build-profiles.js'
 import { captureSourceArtworks, storeArtworkBytes, listArtworks, getArtworkFile, getArtworkFileByName, listClientFiles, routeFile, startUploadWorker, startShareWorker, startBackfillWorker } from './artwork-capture.js'
 import { getLeadBundle, saveField as saveLeadField, extractFields as extractLeadFields, backfillOrderConversations, getLeadScore, completeLead, FIELD_SECTION, saveFieldAudit } from './lead-panel.js'
