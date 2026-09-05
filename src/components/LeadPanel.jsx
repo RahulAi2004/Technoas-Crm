@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api.js'
 import { can, currentUser } from '../lib/auth.js'
 import { buildDocHtml } from '../lib/quoteDoc.js'
+import { useToast } from './ToastContext.jsx'
+import { usePrintshopLead, PrintshopCustomerTab, PrintshopQuoteTab, PrintshopInvoiceTab, PrintshopPaymentTab, PrintshopSalesOrderTab } from './printshop/PrintshopFlow.jsx'
 
 // Field audit tag — kis user ne KAB validate/update kiya.
 const fmtAudit = (at) => { try { return new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) } catch { return '' } }
@@ -147,8 +149,13 @@ const ORDER_FIELDS = [
 // Har tab ke saare field keys — "Confirm all" + unsaved-count ke liye.
 const TAB_KEYS = {
   lead: [...LEAD_FIELDS.map((f) => f[0]), 'lost_reason'],
-  customer: [...CUST_FIELDS.map((f) => f[0]), 'shipping_address', 'billing_address'],
-  product: [...PROD_FIELDS.map((f) => f[0]), 'size_breakdown', 'print_locations', 'special_instructions', ...ART_FIELDS.map((f) => f[0])],
+  // No 'customer' entry either — the Customer tab is Printshop's form now, so
+  // these fields have no row to jump to. They stay in FIELD_MAP, so the AI still
+  // extracts them and Submit/Complete still carries them.
+
+  // No 'product' tab any more — see TABS below. The keys stay out of TAB_KEYS so
+  // nothing in the Pending list can link to a tab that is not there.
+
   shipping: [...SHIP_FIELDS.map((f) => f[0])],
   quote: [...QUOTE_FIELDS.map((f) => f[0]), 'line_items', 'quote_notes'],
   invoice: [...INVOICE_FIELDS.map((f) => f[0]), 'invoice_lines', 'invoice_notes'],
@@ -233,32 +240,6 @@ function Field({ k, label, type, val, filled, state, onChange, onValidate, locke
           : <Validate k={k} state={state} filled={filled} val={val} onClick={onValidate} />}
       </div>
       {auditInfo?.at && <div className="mt-0.5 text-right"><AuditTag info={auditInfo} /></div>}
-    </div>
-  )
-}
-
-function AddressBlock({ title, addr, filled, state, sameAs, onSame, onChange, onValidate, auditInfo }) {
-  const a = addr || {}
-  const set = (kk, v) => onChange({ ...a, [kk]: v })
-  return (
-    <div className="rounded-lg border border-slate-200 p-2.5">
-      <div className="mb-1.5 flex items-center justify-between">
-        <h4 className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700">{title}{filled && <span className="rounded bg-violet-50 px-1 text-[8px] font-bold text-violet-600">AI</span>}</h4>
-        <span className="flex items-center gap-1.5">{auditInfo?.at && <AuditTag info={auditInfo} />}<Validate state={state} val={a} filled={filled} onClick={onValidate} /></span>
-      </div>
-      {onSame && (
-        <label className="mb-1.5 flex items-center gap-1.5 text-[11px] text-slate-600">
-          <input type="checkbox" checked={!!sameAs} onChange={(e) => onSame(e.target.checked)} /> Same as Shipping Address
-        </label>
-      )}
-      {!sameAs && (
-        <div className="grid grid-cols-2 gap-1.5">
-          <input key="contact" placeholder="Contact Person" value={a.contact || ''} onChange={(e) => set('contact', e.target.value)} className={`${INPUT} col-span-2`} />
-          {[['line1', 'Address Line 1'], ['line2', 'Address Line 2'], ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['country', 'Country']].map(([kk, ph]) => (
-            <input key={kk} placeholder={ph} value={a[kk] || ''} onChange={(e) => set(kk, e.target.value)} className={INPUT} />
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -1065,15 +1046,15 @@ function DocPreview({ html, title, onClose }) {
 }
 
 // derived "missing / blocking" for the bottom strip
+// The strip along the bottom. Product type, Quantity and Artwork used to be
+// listed here and to link to the Product & Artwork tab; that tab is gone and the
+// product detail lives on the quotation now, so a chip for them would point at
+// nothing and could never be cleared.
 function computeMissing(vals, hasQuote) {
   const items = []
-  if (!hasVal(vals.product_type)) items.push({ label: 'Product type', level: 'block' })
-  if (!hasVal(vals.total_quantity)) items.push({ label: 'Quantity', level: 'block' })
-  const arts = String(vals.artwork_status || '')
-  if (!/received|review|approved|changes/i.test(arts)) items.push({ label: 'Artwork', level: 'block' })
   if (!hasVal(vals.shipping_address?.zip)) items.push({ label: 'Shipping ZIP', level: 'warn' })
   if (!hasVal(vals.required_delivery_date) && !hasVal(vals.event_date)) items.push({ label: 'Delivery date', level: 'warn' })
-  if (!hasQuote) items.push({ label: 'Quote', level: 'warn' })
+  if (!hasQuote) items.push({ label: 'Quote', level: 'block' })
   return items
 }
 
@@ -1088,28 +1069,67 @@ export default function LeadPanel({ conv, onClose }) {
   const [savingAll, setSavingAll] = useState(false)
   const [err, setErr] = useState('')
   const [completed, setCompleted] = useState(false)
-  const [sameBilling, setSameBilling] = useState(false)
   const [genBusy, setGenBusy] = useState('')    // kaunsa document generate ho raha hai
   const [genMsg, setGenMsg] = useState('')
   const [preview, setPreview] = useState(null)  // { kind, title, html } — quote/invoice preview modal
   const [ai, setAi] = useState(null)            // AI-enriched read-only insights (Leads dashboard wale fields)
   const [audit, setAudit] = useState({})        // field -> { by, byId, at }  (kaun-kab validate)
-  const [ohSummary, setOhSummary] = useState('')   // Order History — AI-generated latest-order summary
+  const [ohSummary, setOhSummary] = useState('')   // Order Summary — AI-generated latest-order summary
   const [ohPrompt, setOhPrompt] = useState('')     // optional custom instruction
   const [ohBusy, setOhBusy] = useState(false)
+  const [ohEditing, setOhEditing] = useState(false)   // Order Summary — agent editing the summary
+  const [ohDraft, setOhDraft] = useState('')          // editable copy while editing
+  const [ohSending, setOhSending] = useState(false)   // Order Summary — sending summary to chat
+  const [ohFilledQuote, setOhFilledQuote] = useState(false)   // Order Summary — auto-filled the Quote form
 
   const cid = conv?.id
+  const toast = useToast()
+  // Printshop: what this conversation has already produced there (customer,
+  // quotation) plus the values its forms open with. Loaded once here so the
+  // Customer and Quote tabs agree — saving the customer on one is immediately
+  // what the other auto-fills from.
+  const psLead = usePrintshopLead(cid)
   // load any previously generated order-history summary for this conversation (per-browser)
-  useEffect(() => { try { setOhSummary(cid ? (localStorage.getItem('oh-' + cid) || '') : '') } catch { setOhSummary('') }; setOhPrompt('') }, [cid])
+  useEffect(() => { try { setOhSummary(cid ? (localStorage.getItem('oh-' + cid) || '') : '') } catch { setOhSummary('') }; setOhPrompt(''); setOhEditing(false); setOhFilledQuote(false) }, [cid])
   const generateOrderHistory = async () => {
     if (!cid) return
-    setOhBusy(true)
+    setOhBusy(true); setOhFilledQuote(false)
     try {
       const r = await api.post(`/api/leads/order-summary/${encodeURIComponent(cid)}`, { prompt: ohPrompt })
       const s = r?.summary || ''
       setOhSummary(s)
       try { if (s) localStorage.setItem('oh-' + cid, s) } catch { /* ignore */ }
+      // The structured details of this latest order go straight into the Quote
+      // form's prefill — so the Quote tab opens already filled (auto-fill on
+      // generate). The overlay keys are the panel's own field names, which is
+      // exactly what refreshPrefill overlays onto the Printshop mapping.
+      const q = r?.quote
+      if (q && typeof q === 'object') {
+        const overlay = { ...q }
+        // An empty rows array would wipe any line items already captured — only
+        // push rows when the AI actually found some in the chat.
+        if (!Array.isArray(overlay.line_items) || overlay.line_items.length === 0) delete overlay.line_items
+        try { await psLead.refreshPrefill(overlay); setOhFilledQuote(true) }
+        catch { /* keep the summary; the quote just won't auto-fill this time */ }
+      }
     } catch (e) { setErr(e.message || 'Order summary failed') } finally { setOhBusy(false) }
+  }
+
+  // The summary is the AI's draft; the agent can change it before it goes out.
+  const saveOhEdit = () => {
+    const v = ohDraft.trim()
+    setOhSummary(v); setOhEditing(false)
+    try { if (cid) { v ? localStorage.setItem('oh-' + cid, v) : localStorage.removeItem('oh-' + cid) } } catch { /* ignore */ }
+  }
+  // Send the order summary into the customer's conversation as a message.
+  const sendOhToChat = async () => {
+    if (!cid || !ohSummary.trim()) return
+    setOhSending(true)
+    try {
+      await api.post('/api/meta/send', { conversationId: cid, text: ohSummary.trim(), clientTs: Date.now(), clientId: `ordsum-${Date.now()}` })
+      toast('Order summary sent to the chat', 'success')
+    } catch (e) { toast(e?.message || 'Could not send the summary', 'error') }
+    finally { setOhSending(false) }
   }
 
   // gpt-4o extract 10-40s lamba hota hai; is dauran network blip / backend-restart se browser
@@ -1141,6 +1161,10 @@ export default function LeadPanel({ conv, onClose }) {
             if (Object.keys(changed).length) setFs((s) => ({ ...s, ...changed }))
             return next
           })
+          // The Customer and Quote tabs are Printshop's forms now, so there is no
+          // grid of CRM boxes for these to appear in. Hand them to Printshop's
+          // prefill and the forms re-open filled with what the AI just read.
+          psLead.refreshPrefill({ ...vals, ...ai })
         }
         setExtracting(false)
       })
@@ -1158,7 +1182,7 @@ export default function LeadPanel({ conv, onClose }) {
   useEffect(() => {
     if (!cid) return
     let cancelled = false
-    setVals({}); setFilled({}); setFs({}); setErr(''); setCompleted(false); setScore(null); setSameBilling(false); setTab('pending'); setAi(null); setAudit({})
+    setVals({}); setFilled({}); setFs({}); setErr(''); setCompleted(false); setScore(null); setTab('pending'); setAi(null); setAudit({})
     api.get(`/api/leads/panel/${encodeURIComponent(cid)}`)
       .then((b) => {
         if (cancelled) return
@@ -1269,7 +1293,14 @@ export default function LeadPanel({ conv, onClose }) {
     return 'Cold'
   }, [score, vals.purchase_intent])
 
-  const missing = useMemo(() => computeMissing(vals, hasVal(vals.grand_total) || (Array.isArray(vals.line_items) && vals.line_items.length > 0)), [vals])
+  // A quotation now counts as done when Printshop has one for this conversation,
+  // not only when the panel's own captured figures are filled — otherwise the
+  // strip below reads "Quote missing" beside a quote that exists and has been
+  // sent to the customer.
+  const hasQuote = (psLead.quotations?.length || 0) > 0
+    || hasVal(vals.grand_total)
+    || (Array.isArray(vals.line_items) && vals.line_items.length > 0)
+  const missing = useMemo(() => computeMissing(vals, hasQuote), [vals, hasQuote])
 
   const canValidate = (section) => can('validate:' + section)   // role permission per Lead Panel section
   // PENDING — woh fields jinme value hai par abhi tak "Saved" nahi (validate baaki), AUR jinhe
@@ -1320,7 +1351,14 @@ export default function LeadPanel({ conv, onClose }) {
     api.get(`/api/leads/score/${encodeURIComponent(cid)}`).then((s) => s?.qualification && setScore(s.qualification)).catch(() => {})
   }
 
-  const TABS = [['pending', 'Pending'], ['lead', 'Lead'], ['customer', 'Customer'], ['orderhistory', 'Order History'], ['product', 'Product & Artwork'], ['shipping', 'Delivery'], ['quote', 'Quote'], ['invoice', 'Invoice'], ['payment', 'Payment'], ['order', 'Sales Order']]
+  // The order the work actually happens in: a lead becomes a customer, the
+  // customer gets a quote, the quote becomes an invoice, the invoice becomes a
+  // sales order, and the order gets paid. Order Summary and Delivery are
+  // reference, not steps, so they sit after it.
+  // Product & Artwork is gone: the product detail is now captured on the
+  // quotation itself (category, style, colour, size, qty), which is where
+  // Printshop keeps it, so a second place to type it only invited disagreement.
+  const TABS = [['pending', 'Pending'], ['lead', 'Lead'], ['customer', 'Customer'], ['orderhistory', 'Order Summary'], ['quote', 'Quote'], ['invoice', 'Invoice'], ['payment', 'Payment'], ['order', 'Sales Order'], ['shipping', 'Delivery']]
   // Readable columns: panel ki chaudai ke hisaab se (chhote panel me 1-2, wide me 3). Cramped nahi.
   const grid = wide
     ? 'grid gap-3 grid-cols-2 lg:grid-cols-3'
@@ -1445,20 +1483,19 @@ export default function LeadPanel({ conv, onClose }) {
           {vals.ai_summary && <div className="rounded-lg bg-violet-50 p-2.5 text-[11px] text-violet-800"><b>✨ AI Summary:</b> {vals.ai_summary}</div>}
         </div>)}
 
-        {tab === 'customer' && (<div className="space-y-3">
-          <div className={grid}>{renderFields(CUST_FIELDS)}</div>
-          <div id="fld-shipping_address" className="scroll-mt-4"><AddressBlock title="Shipping Address" addr={vals.shipping_address} filled={filled.shipping_address} state={fs.shipping_address} auditInfo={audit['shipping_address']}
-            onChange={(v) => setVal('shipping_address', v)} onValidate={validate('shipping_address')} /></div>
-          <div id="fld-billing_address" className="scroll-mt-4"><AddressBlock title="Billing Address" addr={sameBilling ? vals.shipping_address : vals.billing_address} filled={filled.billing_address} state={fs.billing_address} auditInfo={audit['billing_address']}
-            sameAs={sameBilling} onSame={setSameBilling}
-            onChange={(v) => setVal('billing_address', v)}
-            onValidate={() => saveOne('billing_address', sameBilling ? vals.shipping_address : vals.billing_address)} /></div>
-        </div>)}
+        {/* Printshop's New Customer form, and only that. The panel used to show
+            its own grid of the same fields above it — two forms for one customer,
+            which is what let them disagree. What the chat and the AI captured
+            still arrives here, as the values this form opens with. */}
+        {tab === 'customer' && (
+          <PrintshopCustomerTab conversationId={cid} lead={psLead} notify={toast}
+            onGoToQuote={() => setTab('quote')} />
+        )}
 
         {tab === 'orderhistory' && (<div className="space-y-3">
           <div>
-            <h3 className="text-sm font-bold text-slate-800">Order History</h3>
-            <p className="text-[11px] leading-snug text-slate-500">AI reads the whole chat and generates a summary of the customer's <b>latest order</b> — products, qty, sizes, colors, artwork, price, payment &amp; delivery. You can add a custom instruction (optional).</p>
+            <h3 className="text-sm font-bold text-slate-800">Order Summary</h3>
+            <p className="text-[11px] leading-snug text-slate-500">AI reads the whole chat and generates a summary of the customer's <b>latest order</b> — products, qty, sizes, colors, artwork, price, payment &amp; delivery — and auto-fills those details into the <b>Quote</b> tab. You can add a custom instruction (optional).</p>
           </div>
           <textarea value={ohPrompt} onChange={(e) => setOhPrompt(e.target.value)} rows={2}
             placeholder="Optional: what to focus on (e.g. 'only pricing and payment', or 'compare the last 2 orders')…"
@@ -1468,11 +1505,31 @@ export default function LeadPanel({ conv, onClose }) {
             {ohBusy ? 'Generating…' : (ohSummary ? '↻ Regenerate' : '✨ Generate order summary')}
           </button>
           {ohBusy && <div className="rounded-lg border border-dashed border-brand-200 bg-brand-50/40 p-4 text-center text-[12px] text-brand-700">🧾 Reading the chat and building the latest order summary…</div>}
-          {!ohBusy && ohSummary && (
+          {!ohBusy && ohSummary && ohEditing && (
+            <div className="rounded-lg border border-brand-200 bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Edit Order Summary</span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setOhEditing(false)} className="text-[11px] font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
+                  <button onClick={saveOhEdit} className="rounded-md bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-emerald-700">Save</button>
+                </div>
+              </div>
+              <textarea value={ohDraft} onChange={(e) => setOhDraft(e.target.value)} rows={12}
+                className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12.5px] leading-relaxed text-slate-800 outline-none focus:border-brand-500" />
+            </div>
+          )}
+          {!ohBusy && ohSummary && !ohEditing && (
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Latest Order Summary</span>
-                <button onClick={() => { navigator.clipboard?.writeText(ohSummary) }} className="text-[11px] font-semibold text-slate-400 hover:text-slate-600">Copy</button>
+                <div className="flex items-center gap-2.5">
+                  <button onClick={() => { setOhDraft(ohSummary); setOhEditing(true) }} className="text-[11px] font-semibold text-brand-600 hover:text-brand-700">✎ Edit</button>
+                  <button onClick={() => { navigator.clipboard?.writeText(ohSummary) }} className="text-[11px] font-semibold text-slate-400 hover:text-slate-600">Copy</button>
+                  <button onClick={sendOhToChat} disabled={ohSending}
+                    className="rounded-md bg-brand-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-brand-700 disabled:opacity-50">
+                    {ohSending ? 'Sending…' : '➤ Send to Chat'}
+                  </button>
+                </div>
               </div>
               <div className="space-y-0.5 text-[12.5px] leading-relaxed text-slate-800">
                 {ohSummary.split('\n').map((raw, i) => {
@@ -1493,19 +1550,16 @@ export default function LeadPanel({ conv, onClose }) {
               </div>
             </div>
           )}
+          {!ohBusy && ohFilledQuote && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2">
+              <span className="text-[11px] font-semibold text-emerald-800">✓ These details were filled into the Quote form.</span>
+              <button onClick={() => setTab('quote')}
+                className="shrink-0 rounded-md bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-emerald-700">
+                Open Quote →
+              </button>
+            </div>
+          )}
           {!ohBusy && !ohSummary && <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-[12px] text-slate-400">No summary yet — click "Generate" above.</div>}
-        </div>)}
-
-        {tab === 'product' && (<div className="space-y-3">
-          <div className={grid}>{renderFields(PROD_FIELDS)}</div>
-          <div id="fld-size_breakdown" className="scroll-mt-4"><SizeBreakdown rows={vals.size_breakdown} total={vals.total_quantity} filled={filled.size_breakdown} state={fs.size_breakdown} auditInfo={audit['size_breakdown']}
-            onChange={(v) => setVal('size_breakdown', v)} onValidate={validate('size_breakdown')} /></div>
-          <div id="fld-print_locations" className="scroll-mt-4"><PrintLocations value={vals.print_locations} filled={filled.print_locations} state={fs.print_locations} auditInfo={audit['print_locations']}
-            onChange={(v) => setVal('print_locations', v)} onValidate={validate('print_locations')} /></div>
-          <div className={grid}><Field k="special_instructions" label="Special Instructions" type="textarea" val={vals.special_instructions} filled={filled.special_instructions} state={fs.special_instructions} onChange={(v) => setVal('special_instructions', v)} onValidate={validate('special_instructions')} locked={!canValidate('product')} auditInfo={audit['special_instructions']} /></div>
-          <div className="rounded-lg bg-slate-50 p-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Artwork</div>
-          <div className={grid}>{renderFields(ART_FIELDS)}</div>
-          <p className="text-[10px] text-slate-400">Artwork files come from the chat (shown in the Files tab). "Received" is set automatically; the agent sets Quality/Approve.</p>
         </div>)}
 
         {tab === 'shipping' && (<div className="space-y-3">
@@ -1513,51 +1567,52 @@ export default function LeadPanel({ conv, onClose }) {
           <div className={grid}>{renderFields(SHIP_FIELDS)}</div>
         </div>)}
 
-        {tab === 'quote' && (<div className="space-y-3">
-          <DocBar label="Quotation" number={vals.quote_number} busy={genBusy === 'quotation'} msg={genBusy === '' && genMsg.startsWith('Quotation') ? genMsg : ''} onGenerate={() => generateDoc('quotation')} onPreview={() => openPreview('quotation')} />
-          <div id="fld-line_items" className="scroll-mt-4"><QuoteItems items={vals.line_items} filled={filled.line_items} state={fs.line_items} auditInfo={audit['line_items']}
-            onChange={(v) => setVal('line_items', v)} onValidate={validate('line_items')} /></div>
-          <div className={grid}><Field k="quote_notes" label="Notes (to customer)" type="textarea" val={vals.quote_notes} filled={filled.quote_notes} state={fs.quote_notes} onChange={(v) => setVal('quote_notes', v)} onValidate={validate('quote_notes')} locked={!canValidate('quote')} auditInfo={audit['quote_notes']} /></div>
-          <div className={grid}>{renderFields(QUOTE_FIELDS)}</div>
-        </div>)}
+        {/* The quotation IS Printshop's — its form, its numbering, its record.
+            The panel's own quote capture is gone from this tab: two forms for
+            one quotation is how the numbers came to disagree (the CRM was
+            minting QT-2026-NNNN while Printshop's book runs Q-2026-NNNN). What
+            the chat and the AI captured still arrives here, as the values this
+            form opens with. */}
+        {tab === 'quote' && (
+          <PrintshopQuoteTab conversationId={cid} lead={psLead} notify={toast}
+            onGoToCustomer={() => setTab('customer')} onGoToInvoice={() => setTab('invoice')} />
+        )}
 
-        {tab === 'invoice' && (<div className="space-y-3">
-          <DocBar label="Invoice" number={vals.invoice_number} busy={genBusy === 'invoice'} msg={genBusy === '' && genMsg.startsWith('Invoice') ? genMsg : ''} onGenerate={() => generateDoc('invoice')} onPreview={() => openPreview('invoice')} />
-          <div id="fld-invoice_lines" className="scroll-mt-4"><InvoiceLines items={vals.invoice_lines} filled={filled.invoice_lines} state={fs.invoice_lines} auditInfo={audit['invoice_lines']}
-            onChange={(v) => setVal('invoice_lines', v)} onValidate={validate('invoice_lines')} /></div>
-          <div className={grid}>{renderFields(INVOICE_FIELDS)}</div>
-          <div className={grid}><Field k="invoice_notes" label="Invoice Notes" type="textarea" val={vals.invoice_notes} filled={filled.invoice_notes} state={fs.invoice_notes} onChange={(v) => setVal('invoice_notes', v)} onValidate={validate('invoice_notes')} locked={!canValidate('invoice')} auditInfo={audit['invoice_notes']} /></div>
-          <p className="text-[10px] text-slate-400">Capture billing before the Sales Order is created. Each field saves with the lead as soon as you validate it.</p>
-        </div>)}
+        {/* The invoice IS Printshop's, for the same reason the quotation is: one
+            form, one numbering, one record. It opens from a quotation with
+            everything already filled in, and Printshop keeps at most one invoice
+            per quotation — so pressing Convert twice corrects the draft rather
+            than raising a second bill. */}
+        {tab === 'invoice' && (
+          <PrintshopInvoiceTab conversationId={cid} lead={psLead} notify={toast}
+            onGoToCustomer={() => setTab('customer')} onGoToQuote={() => setTab('quote')}
+            onGoToOrder={() => setTab('order')} />
+        )}
 
-        {tab === 'payment' && (<div className="space-y-3">
-          <div className={grid}>{renderFields(PAY_FIELDS)}</div>
-          {Number(vals.pay_fee) > 0 && (
-            <div className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px]"><span className="text-slate-500">Net received (after fee):</span> <span className="font-bold text-emerald-700">${Math.max(0, (Number(vals.pay_amount) || 0) - (Number(vals.pay_fee) || 0)).toFixed(2)}</span></div>
-          )}
-          <div className={grid}><Field k="pay_notes" label="Payment Notes" type="textarea" val={vals.pay_notes} filled={filled.pay_notes} state={fs.pay_notes} onChange={(v) => setVal('pay_notes', v)} onValidate={validate('pay_notes')} locked={!canValidate('payment')} auditInfo={audit['pay_notes']} /></div>
-          <p className="text-[10px] text-slate-400">Customer payment record — AI pre-fills from the data, the agent validates each field. Only the last 4 account digits are stored (sensitive data).</p>
-        </div>)}
+        {/*
+          Payment is one thing here: raise a link and send it. The manual entry
+          form that used to sit underneath was removed at the owner's request —
+          an agent in this inbox asks for money, they do not do bookkeeping, and
+          a payment taken another way is recorded in Printshop where the ledger
+          actually lives. The pay_* fields still exist on the lead; nothing is
+          shown for them here.
+        */}
+        {/* Payment: each invoice's own Printshop pay link — one link per invoice,
+            the same URL the customer pays on. Made when the invoice is sent, and
+            copyable / sendable to the chat from here. */}
+        {tab === 'payment' && (
+          <PrintshopPaymentTab conversationId={cid} lead={psLead} notify={toast}
+            onGoToCustomer={() => setTab('customer')} onGoToInvoice={() => setTab('invoice')} />
+        )}
 
-        {tab === 'order' && (<div className="space-y-3">
-          <DocBar label="Sales Order" number={vals.order_number} busy={genBusy === 'order'} msg={genBusy === '' && genMsg.startsWith('Sales Order') ? genMsg : ''} onGenerate={() => generateDoc('order')} onPreview={() => openPreview('order')} />
-          {/* Order items ab Invoice se aate hain (read-only) — alag order-lines maintain nahi karte. */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-            <div className="mb-1.5 text-[11px] font-bold text-slate-700">Order Items <span className="font-normal text-slate-400">— from the Invoice</span></div>
-            {(Array.isArray(vals.invoice_lines) && vals.invoice_lines.length) ? (
-              <div className="space-y-1">
-                {vals.invoice_lines.map((it, i) => (
-                  <div key={i} className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1 text-[11px] ring-1 ring-slate-100">
-                    <span className="min-w-0 truncate text-slate-700">{it.description || it.item_name || it.product || `Item ${i + 1}`}</span>
-                    <span className="whitespace-nowrap text-slate-500">{it.qty ?? it.quantity ?? ''} × ${it.unit_price ?? ''} = <b className="text-slate-700">${it.amount ?? ''}</b></span>
-                  </div>
-                ))}
-              </div>
-            ) : <div className="text-[11px] text-slate-400">No invoice items yet — fill the <b>Invoice</b> tab and they'll show here.</div>}
-          </div>
-          <div className={grid}>{renderFields(ORDER_FIELDS)}</div>
-          <p className="text-[10px] text-slate-400">Order details flow in from the Invoice / Payment — each field saves as soon as you validate it.</p>
-        </div>)}
+        {/* Sales Order is Printshop's now, like the others — and this is where
+            artwork is captured, which the quote and invoice deliberately skip.
+            Convert an invoice to a sales order (or start one), upload the
+            artwork, review the order, and send it to the chat. */}
+        {tab === 'order' && (
+          <PrintshopSalesOrderTab conversationId={cid} lead={psLead} notify={toast}
+            onGoToCustomer={() => setTab('customer')} onGoToInvoice={() => setTab('invoice')} />
+        )}
       </div>
 
       {/* Missing info strip */}
